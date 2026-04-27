@@ -34,6 +34,13 @@ if df_master.empty:
 years_list = sorted(df_master['투자연도'].unique().astype(int))
 min_y, max_y = min(years_list), max(years_list)
 
+def style_stats(x):
+    if isinstance(x, str) and '%' in x:
+        if '-' in x: return 'color: #1976D2; font-weight:bold;'
+        elif x != '0.0%': return 'color: #D32F2F; font-weight:bold;'
+    return ''
+
+# 이 아래부터 탭이 시작됩니다.
 tab1, tab2, tab3, tab4 = st.tabs(["📅 월별 상세 분석", "🕒 실시간 데일리 순위", "📈 전략 조합 백테스트", "🏅 스코어 커스텀 백테스트"])
 
 # ==========================================
