@@ -4,7 +4,7 @@ import pandas as pd
 def inject_custom_css():
     st.markdown("""
     <style>
-    .block-container { padding-top: 1.5rem !important; padding-bottom: 1rem !important; }
+    .block-container { padding-top: 2.8rem !important; padding-bottom: 1rem !important; }
     .main-title { font-size: 1.5rem !important; font-weight: bold; margin-bottom: 0.5rem; }
     .strategy-desc { font-size: 0.85rem; color: #9ca3af; margin-bottom: 10px; line-height: 1.2; }
     
