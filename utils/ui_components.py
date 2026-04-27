@@ -4,24 +4,20 @@ import pandas as pd
 def inject_custom_css():
     st.markdown("""
     <style>
+    /* 선생님이 맞추신 2.8rem 유지 */
     .block-container { padding-top: 2.8rem !important; padding-bottom: 1rem !important; }
     .main-title { font-size: 1.5rem !important; font-weight: bold; margin-bottom: 0.5rem; }
     .strategy-desc { font-size: 0.85rem; color: #9ca3af; margin-bottom: 5px; line-height: 1.2; }
     
     /* 라디오 버튼 한 줄 강제 고정 및 간격 조정 */
-    div[role="radiogroup"] { 
-        gap: 8px !important; 
-        flex-wrap: nowrap !important; 
-        overflow-x: auto; 
-    }
-    /* 입력창(Number Input) 디자인 최적화 */
-    div[data-testid="stNumberInput"] { width: 120px !important; }
+    div[role="radiogroup"] { gap: 8px !important; flex-wrap: nowrap !important; overflow-x: auto; }
     
     .settings-box { background-color: #f8fafc; padding: 20px; border-radius: 12px; border: 1px solid #e2e8f0; margin-bottom: 20px; }
     .title-link:hover { opacity: 0.7; transition: 0.2s; }
     th[data-testid="stTableColumnHeader"] div { white-space: pre-wrap !important; text-align: center !important; }
     </style>
     """, unsafe_allow_html=True)
+
 
 def apply_k200_styling(row, highlight_codes=None, overlap_codes=None):
     styles = [''] * len(row)
