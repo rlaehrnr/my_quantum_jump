@@ -43,8 +43,8 @@ with tab1:
     avail_years = sorted(df_master['투자연도'].unique().astype(str), reverse=True)
     
     # 💡 [수정 1] 한 행에 연도, 선정일, 투자월을 모두 배치
-    # 비율 조정: [연도 0.8, 선정일 1.5, 투자월 7.7]
-    c_y, c_date, c_m = st.columns([0.8, 1.5, 7.7])
+    # 비율 조정: [연도 1.2, 선정일 1.5, 투자월 7.7]
+    c_y, c_date, c_m = st.columns([1.2, 1.5, 7.7])
     
     with c_y: 
         selected_year = st.selectbox("📅 연도", avail_years, format_func=lambda x: f"{x}년", key="t1_y")
