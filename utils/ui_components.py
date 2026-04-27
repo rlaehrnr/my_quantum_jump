@@ -4,31 +4,17 @@ import pandas as pd
 def inject_custom_css():
     st.markdown("""
     <style>
-    /* 상단 여백을 충분히 주어 제목이 잘리지 않게 함 */
-    .block-container { padding-top: 4rem !important; padding-bottom: 1rem !important; }
+    /* 상단 여백 유지 */
+    .block-container { padding-top: 2.8rem !important; padding-bottom: 1rem !important; }
     .main-title { font-size: 1.8rem !important; font-weight: 800; margin-bottom: 1.5rem; }
     
-    /* 투자연도와 투자월의 라벨 폰트 및 높이 통일 */
-    div[data-testid="stSelectbox"] label, div[data-testid="stRadio"] label {
-        font-size: 0.95rem !important;
-        font-weight: 600 !important;
-        color: #334155 !important;
-        margin-bottom: 10px !important;
-        display: inline-block !important;
-        height: 24px;
-    }
-    
-    /* 라디오 버튼 간격 및 한 줄 고정, 위로 정렬 */
+    /* 라디오 버튼 간격 및 한 줄 고정 */
     div[role="radiogroup"] { 
-        gap: 10px !important; 
+        gap: 12px !important; 
         flex-wrap: nowrap !important; 
         overflow-x: auto; 
-        padding-top: 2px !important; 
     }
     
-    /* 백테스트 섹션 헤더 스타일 */
-    .bt-header { font-size: 1.1rem; font-weight: 700; color: #1e293b; margin-bottom: 8px; }
-
     .strategy-desc { font-size: 0.85rem; color: #64748b; margin-bottom: 8px; line-height: 1.4; }
     .title-link:hover { opacity: 0.7; transition: 0.2s; }
     th[data-testid="stTableColumnHeader"] div { white-space: pre-wrap !important; text-align: center !important; }
