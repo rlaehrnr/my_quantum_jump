@@ -15,9 +15,6 @@ def update_daily_momentum():
     base_date = today.strftime('%Y-%m-%d')
     print(f"✅ 데일리 기준일: {base_date}")
 
-    # ==========================================
-    # 1. 데일리 실시간 순위 데이터 생성
-    # ==========================================
     print("✅ 거래소 데이터 다운로드 중...")
     df_krx = fdr.StockListing('KOSPI')
     
@@ -44,7 +41,7 @@ def update_daily_momentum():
             if df_hist.empty: continue
             
             curr_price = df_hist['Close'].iloc[-1]
-            curr_vol = df_hist['Volume'].iloc[-1] if 'Volume' in df_hist.columns else 0 # 💡 거래량 추가
+            curr_vol = df_hist['Volume'].iloc[-1] if 'Volume' in df_hist.columns else 0
             
             def get_ret(target_dt):
                 past_df = df_hist[df_hist.index <= target_dt]
@@ -53,7 +50,8 @@ def update_daily_momentum():
             
             records.append({
                 '종목코드': code, '종목명': row['Name'], '기준일': base_date,
-                '시가총액': row['Marcap'], '종가': curr_price, '거래량': curr_vol, # 💡 지표 추가
+                '시가총액': int(row['Marcap'] / 100000000) if pd.notna(row['Marcap']) else 0, # 💡 바로 억 단위로 저장
+                '종가': curr_price, '거래량': curr_vol,
                 '1개월(%)': get_ret(dates['1개월']), '3개월(%)': get_ret(dates['3개월']),
                 '6개월(%)': get_ret(dates['6개월']), '12개월(%)': get_ret(dates['12개월']),
                 '이번달수익률': 0.0 
@@ -65,9 +63,7 @@ def update_daily_momentum():
     df_final.to_csv('data/momentum_data_daily.csv', index=False, encoding='utf-8-sig')
     print("🎉 데일리 데이터 업데이트 완료!")
 
-    # ==========================================
-    # 2. 최신 월간 백테스트 파일 업데이트 (이번달수익률 & 선정일 종가)
-    # ==========================================
+    # 최신 월간 백테스트 파일 업데이트
     print("✅ 최신 월간 파일(archive_kospi) 자동 갱신 시작...")
     archive_files = sorted(glob.glob('archive_kospi/only_kospi_*.csv'))
     
@@ -87,10 +83,10 @@ def update_daily_momentum():
                 try:
                     df_hist_m = fdr.DataReader(code, base_date_m, today)
                     if not df_hist_m.empty and len(df_hist_m) >= 1:
-                        base_p = df_hist_m['Close'].iloc[0] # 종목선정일 종가
-                        curr_p = df_hist_m['Close'].iloc[-1] # 오늘 종가
+                        base_p = df_hist_m['Close'].iloc[0]
+                        curr_p = df_hist_m['Close'].iloc[-1]
                         
-                        df_latest.at[idx, '종가'] = base_p # 💡 월간 파일에 종가 기록
+                        df_latest.at[idx, '종가'] = base_p 
                         if base_p > 0:
                             df_latest.at[idx, '이번달수익률'] = round(((curr_p / base_p) - 1) * 100, 2)
                 except: pass
