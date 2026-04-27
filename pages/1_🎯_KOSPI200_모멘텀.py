@@ -181,10 +181,54 @@ with tab1:
 # ==========================================
 with tab2:
     if os.path.exists(f_daily):
-        pass 
+        # 💡 데일리 파일 읽어오기
+        df_daily = pd.read_csv(f_daily, dtype={'종목코드': str})
+        df_daily['종목코드'] = df_daily['종목코드'].astype(str).str.zfill(6)
+        
+        b_date_d = df_daily['기준일'].iloc[0] if '기준일' in df_daily.columns else "오늘"
+        st.markdown(f"<div style='margin-top:10px; margin-bottom: 15px;'><h4>🕒 실시간 데일리 순위 <span style='font-size: 0.9rem; color: #64748b;'>(기준일: {b_date_d})</span></h4></div>", unsafe_allow_html=True)
+        
+        # 💡 전략 종목 추출
+        df_k200_d, df_perf_d, df_spec_d = get_strategy_stocks_k200(df_daily)
+        
+        # 네이버 증권 링크 생성
+        for df in [df_perf_d, df_spec_d, df_k200_d]:
+            df['통합티커_L'] = df.apply(lambda r: f"https://finance.naver.com/item/main.naver?code={r['종목코드']}#KOSPI:{r['종목코드']}", axis=1)
+            df['종목명_L'] = df.apply(lambda r: f"https://m.stock.naver.com/fchart/domestic/stock/{r['종목코드']}#{r['종목명']}", axis=1)
+
+        daily_cfg = {
+            "통합티커_L": st.column_config.LinkColumn("티커", display_text=r"#(.+)"), 
+            "종목명_L": st.column_config.LinkColumn("종목명", display_text=r"#(.+)"), 
+            "1개월(%)": st.column_config.NumberColumn(format="%.1f"), 
+            "3개월(%)": st.column_config.NumberColumn(format="%.1f"), 
+            "6개월(%)": st.column_config.NumberColumn(format="%.1f"), 
+            "12개월(%)": st.column_config.NumberColumn(format="%.1f"),
+        }
+        
+        c_d1, c_d2 = st.columns(2)
+        
+        overlap_codes_d = set(df_perf_d['종목코드']).intersection(set(df_spec_d['종목코드']))
+
+        with c_d1:
+            st.markdown(f"<h5 style='margin-bottom:0;'>🔥 퍼펙트 상승 <span style='font-size:13px; color:gray; font-weight:normal;'>({len(df_perf_d)}개)</span></h5>", unsafe_allow_html=True)
+            st.markdown('<p class="strategy-desc">1,3,6,12M 수익률 모두 상위 30% 이내 & 0보다 큰 종목</p>', unsafe_allow_html=True)
+            # 오늘 날짜 기준이므로 '이번달수익률'은 빼고 과거 지표만 보여줍니다
+            st.dataframe(df_perf_d[['통합티커_L', '종목명_L', '1개월(%)', '3개월(%)', '6개월(%)', '12개월(%)']].style.apply(apply_k200_styling, overlap_codes=overlap_codes_d, axis=1), 
+                         use_container_width=True, hide_index=True, column_config=daily_cfg)
+            
+        with c_d2:
+            st.markdown(f"<h5 style='margin-bottom:0;'>🐎 달리는 말 <span style='font-size:13px; color:gray; font-weight:normal;'>({len(df_spec_d)}개)</span></h5>", unsafe_allow_html=True)
+            st.markdown('<p class="strategy-desc">12M 수익률 상위 30% 이내 & 1M 수익률 상위 10% 이내</p>', unsafe_allow_html=True)
+            st.dataframe(df_spec_d[['통합티커_L', '종목명_L', '1개월(%)', '12개월(%)']].style.apply(apply_k200_styling, overlap_codes=overlap_codes_d, axis=1), 
+                         use_container_width=True, hide_index=True, column_config=daily_cfg)
+                         
+        st.markdown("---")
+        st.subheader("🏆 KOSPI 200 실시간 전체 순위")
+        st.dataframe(df_k200_d[['통합티커_L', '종목명_L', '1개월(%)', '3개월(%)', '6개월(%)', '12개월(%)']].style.apply(apply_k200_styling, axis=1), 
+                     use_container_width=True, height=600, hide_index=True, column_config=daily_cfg)
+                     
     else:
         st.info("데일리 수집봇(update_daily.py)이 아직 세팅되지 않았습니다. 파일(`data/momentum_data_daily.csv`)이 생성되면 여기에 실시간 순위가 나타납니다.")
-
 # ==========================================
 # 탭 3: 전략 조합 백테스트
 # ==========================================
