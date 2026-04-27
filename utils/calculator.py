@@ -120,3 +120,24 @@ def run_backtest_k200(df_all, start_yr, end_yr, ma_months, apply_timing, rank_p,
                 trade_logs.append({'투자월': m_str, '전략': '🐎 달리는 말', '매수순위': f"{i + rank_s[0]}위", '종목명': row['종목명'], '수익률(%)': row['이번달수익률']})
                 
     return pd.DataFrame(records).fillna(0.0), pd.DataFrame(trade_logs)
+
+
+# (utils/calculator.py 파일의 가장 맨 아래에 아래 코드를 추가해주세요)
+
+def get_idx_kr(target_date_str):
+    """ 특정 날짜 기준 코스피 지수의 최근 1개월, 3개월 수익률 계산 """
+    target_date = pd.to_datetime(target_date_str)
+    try:
+        df = fdr.DataReader('KS11', target_date - pd.DateOffset(months=18), target_date)
+        if df.empty: return 0.0, 0.0
+        curr_val = df.loc[df.index <= target_date]['Close'].iloc[-1]
+        last_date = df.index[df.index <= target_date][-1]
+        
+        def get_ret(m):
+            ref = (last_date.replace(day=1) - pd.DateOffset(months=m-1)) - timedelta(days=1)
+            p_df = df[df.index <= ref]
+            return round(((curr_val / p_df['Close'].iloc[-1]) - 1) * 100, 1) if not p_df.empty else 0.0
+            
+        return get_ret(1), get_ret(3)
+    except: 
+        return 0.0, 0.0
