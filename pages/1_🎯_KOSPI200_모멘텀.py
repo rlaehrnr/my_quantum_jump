@@ -50,7 +50,7 @@ with tab1:
     avail_years = sorted(df_master['투자연도'].unique().astype(str), reverse=True)
     
     # 💡 1. 컬럼 비율 수정: 가운데 '월 선택' 영역(7.0 -> 7.5)을 넓혀서 12월이 밀리지 않게 공간 확보
-    c_y, c_m, c_info = st.columns([0.8, 7.5, 1.7])
+    c_y, c_m, c_info = st.columns([1.2, 7.5, 1.7])
     
     with c_y: selected_year = st.selectbox("📅 투자 연도", avail_years, format_func=lambda x: f"{x}년", key="t1_y")
     
