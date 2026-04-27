@@ -55,23 +55,21 @@ with tab1:
     m_list = sorted(df_master[df_master['투자연도'] == int(selected_year)]['투자월'].apply(lambda x: x.split('-')[1]).unique())
     default_m_index = len(m_list) - 1 
 
-    # 💡 깔끔한 라벨링과 선정일 표시
     with c_m:
-        # 현재 선택된 달의 선정일을 찾기 위해 임시 계산
-        selected_month_tmp = st.session_state.get('t1_m', m_list[default_m_index])
-        df_tmp = df_master[(df_master['투자연도'] == int(selected_year)) & (df_master['투자월'].str.endswith(selected_month_tmp))].copy()
-        base_date_tmp = df_tmp['종목선정일'].iloc[0] if not df_tmp.empty else ""
-        
-        selected_month = st.radio(f"🌙 투자 월 (선정일: {base_date_tmp})", m_list, horizontal=True, format_func=lambda x: f"{x}월", key="t1_m", index=default_m_index)
+        month_label = st.empty()
+        selected_month = st.radio("투자 월", m_list, horizontal=True, format_func=lambda x: f"{x}월", key="t1_m", label_visibility="collapsed", index=default_m_index)
 
     target_month_str = f"{selected_year}-{selected_month}"
     df_monthly = df_master[df_master['투자월'] == target_month_str].copy()
     
     if not df_monthly.empty:
         base_date = df_monthly['종목선정일'].iloc[0]
+        
+        # 라벨링 정렬 복구
+        month_label.markdown(f"<div style='margin-bottom: 5px;'><b>🌙 투자 월</b> <span style='font-size: 0.85rem; color: #9ca3af;'>&nbsp;&nbsp;💡 선정일: {base_date}</span></div>", unsafe_allow_html=True)
+
         kospi_curr, kospi_mas = get_kospi_ma_all(base_date)
         
-        # --- [지수 MA 표 UI] ---
         ma_df = pd.DataFrame([{
             '지수_L': "https://m.stock.naver.com/domestic/index/KOSPI/total#KOSPI",
             '현재가_L': f"https://m.stock.naver.com/fchart/domestic/index/KOSPI#{kospi_curr:,.2f}",
@@ -179,6 +177,15 @@ with tab1:
                      column_order=['통합티커_L', '종목명_L', '1개월(%)', '3개월(%)', '6개월(%)', '12개월(%)', '이번달수익률'], column_config=main_cfg)
 
 # ==========================================
+# 탭 2: 데일리 실시간 순위
+# ==========================================
+with tab2:
+    if os.path.exists(f_daily):
+        pass 
+    else:
+        st.info("데일리 수집봇(update_daily.py)이 아직 세팅되지 않았습니다. 파일(`data/momentum_data_daily.csv`)이 생성되면 여기에 실시간 순위가 나타납니다.")
+
+# ==========================================
 # 탭 3: 전략 조합 백테스트
 # ==========================================
 with tab3:
@@ -191,6 +198,7 @@ with tab3:
         apply_timing = st.checkbox("🛑 마켓타이밍 적용 (선택 이평선 이탈 OR 1·3M 하락종목 100개↑ 시 현금)", value=True, key='t3_chk')
         
     st.markdown("<hr style='margin: 10px 0px;'>", unsafe_allow_html=True)
+    
     c2, c3, c4, c5 = st.columns([1, 1, 1, 1])
     with c2: perf_pct_t3 = st.slider("🔥 퍼펙트 상승 상위 %", 5, 50, 30, step=5, key="p3_p")
     with c3: rank_p_s, rank_p_e = st.slider("🔥 퍼펙트 상승 매수 순위", 1, 30, (1, 6), key="t3_rp")
@@ -205,8 +213,20 @@ with tab3:
             df_cum.loc[(pd.to_datetime(df_res['투자월'].iloc[0]) - pd.DateOffset(months=1)).strftime('%Y-%m')] = 100
             df_cum = df_cum.sort_index()
 
-            # 💡 [수정] 순서 변경: 통계 -> 다운로드 -> 차트 -> 기록
-            st.markdown("#### 📊 전략 핵심 통계 (초기 자본 100 기준)")
+            # 💡 다운로드 버튼을 제목 우측 끝으로 이동
+            col_stat_title, col_stat_btn = st.columns([8.5, 1.5])
+            with col_stat_title:
+                st.markdown("#### 📊 전략 핵심 통계 (초기 자본 100 기준)")
+            with col_stat_btn:
+                st.download_button(
+                    label="📥 상세내역 다운로드",
+                    data=df_trades.to_csv(index=False).encode('utf-8-sig'),
+                    file_name=f"KOSPI200_백테스트_{datetime.today().strftime('%Y%m%d')}.csv",
+                    mime="text/csv",
+                    use_container_width=True
+                )
+
+            # 💡 테이블 넓게 표시 (투자월 비율 살아남)
             stats = []
             for col in s_cols:
                 final_val = df_cum[col].iloc[-1]
@@ -216,17 +236,14 @@ with tab3:
                 win_rate = (df_res.loc[df_res['invested'], col] > 0).mean() * 100 if df_res['invested'].any() else 0
                 avg_ret = df_res.loc[df_res['invested'], col].mean() if df_res['invested'].any() else 0
                 mdd = ((df_cum[col] / df_cum[col].cummax()) - 1.0).min() * 100
-                stats.append({"전략명": col, "CAGR (연평균)": f"{cagr:.1f}%", "총 누적수익률": f"{total_ret:,.1f}%", "MDD (최대낙폭)": f"{mdd:.1f}%", "월별 승률": f"{win_rate:.1f}%", "평균 수익률": f"{avg_ret:.2f}%"})
+                invest_ratio = (df_res['invested'].sum() / len(df_res)) * 100 if len(df_res) > 0 else 0
+                
+                stats.append({"전략명": col, "CAGR (연평균)": f"{cagr:.1f}%", "총 누적수익률": f"{total_ret:,.1f}%", "MDD (최대낙폭)": f"{mdd:.1f}%", "투자월 비율": f"{invest_ratio:.1f}%", "월별 승률": f"{win_rate:.1f}%", "평균 수익률": f"{avg_ret:.2f}%"})
             
-            c_stat_t3, c_down_t3 = st.columns([8.5, 1.5])
-            with c_stat_t3:
-                df_stats = pd.DataFrame(stats)
-                try: styled_stats = df_stats.style.map(style_stats, subset=['CAGR (연평균)', '총 누적수익률', 'MDD (최대낙폭)'])
-                except AttributeError: styled_stats = df_stats.style.applymap(style_stats, subset=['CAGR (연평균)', '총 누적수익률', 'MDD (최대낙폭)'])
-                st.dataframe(styled_stats, use_container_width=True, hide_index=True)
-            with c_down_t3:
-                st.markdown("<div style='height:30px;'></div>", unsafe_allow_html=True)
-                st.download_button("📥 상세내역", df_trades.to_csv(index=False).encode('utf-8-sig'), f"K200_백테스트_{datetime.today().strftime('%Y%m%d')}.csv", "text/csv", use_container_width=True)
+            df_stats = pd.DataFrame(stats)
+            try: styled_stats = df_stats.style.map(style_stats, subset=['CAGR (연평균)', '총 누적수익률', 'MDD (최대낙폭)'])
+            except AttributeError: styled_stats = df_stats.style.applymap(style_stats, subset=['CAGR (연평균)', '총 누적수익률', 'MDD (최대낙폭)'])
+            st.dataframe(styled_stats, use_container_width=True, hide_index=True)
 
             fig = px.line(df_cum.reset_index().melt(id_vars='투자월'), x='투자월', y='value', color='variable', log_y=True, title="누적 자산 성장 곡선 (Log Scale)")
             st.plotly_chart(fig, use_container_width=True)
@@ -238,7 +255,14 @@ with tab3:
 # 탭 4: 스코어 커스텀 백테스트
 # ==========================================
 with tab4:
-    st.markdown("<h4 style='margin-top: 5px; margin-bottom: 0px;'>⚙️ 스코어 가중치 설정</h4>", unsafe_allow_html=True)
+    col_title, col_check = st.columns([1, 4])
+    with col_title: st.markdown("<h4 style='margin-top: 5px; margin-bottom: 0px;'>⚙️ 스코어 가중치 설정</h4>", unsafe_allow_html=True)
+    with col_check:
+        st.markdown("<div style='margin-top: 8px;'>", unsafe_allow_html=True)
+        # 💡 변수 분리
+        apply_timing_c = st.checkbox("🛑 마켓타이밍 적용", value=True, key='t4_chk')
+        st.markdown("</div>", unsafe_allow_html=True)
+        
     with st.form("custom_form", border=False):
         c1, c2, c3, c4, c5 = st.columns([1, 1, 1, 1, 0.8])
         with c1: w1 = st.number_input("📉 1개월 가중치", value=0.2, step=0.1, format="%.1f")
@@ -271,11 +295,15 @@ with tab4:
                 base_date_c = df_calc['종목선정일'].iloc[0]
                 base_ym_c = pd.to_datetime(base_date_c).strftime('%Y-%m')
                 is_below_ma = timing_df_t4.loc[base_ym_c, 'is_below_ma'] if base_ym_c in timing_df_t4.index else False
-                mult_c = 0.0 if (st.checkbox("🛑 타이밍 적용", value=True, key='t4_apply') and ((df_calc['1개월(%)'] < 0).sum() >= 100 or is_below_ma)) else 1.0
+                
+                # 💡 중복 생성 에러 해결 완료!
+                mult_c = 0.0 if (apply_timing_c and ((df_calc['1개월(%)'] < 0).sum() >= 100 or is_below_ma)) else 1.0
+                
                 df_calc['스코어'] = (df_calc['1개월(%)']*w1) + (df_calc['3개월(%)']*w3) + (df_calc['6개월(%)']*w6) + (df_calc['12개월(%)']*w12)
                 target = df_calc[df_calc['스코어']>=df_calc['스코어'].quantile(1-(custom_pct/100))].sort_values('스코어', ascending=False).iloc[rank_c_s-1:rank_c_e]
                 ret = (target['이번달수익률'].mean() * mult_c) if not target.empty else 0.0
                 records_c.append({'투자월': m_str, 'invested': mult_c > 0, '커스텀 전략': ret})
+                
                 if mult_c == 0: trade_logs_c.append({'투자월': m_str, '종목명': '현금', '수익률(%)': 0.0})
                 else: 
                     for _, r in target.iterrows(): trade_logs_c.append({'투자월': m_str, '종목명': r['종목명'], '수익률(%)': r['이번달수익률']})
@@ -286,23 +314,34 @@ with tab4:
                 df_cum_c.loc[(pd.to_datetime(df_res_c['투자월'].iloc[0]) - pd.DateOffset(months=1)).strftime('%Y-%m')] = 100
                 df_cum_c = df_cum_c.sort_index()
 
-                st.markdown("#### 📊 전략 핵심 통계")
+                # 💡 다운로드 버튼을 제목 우측 끝으로 이동
+                col_stat_title_c, col_stat_btn_c = st.columns([8.5, 1.5])
+                with col_stat_title_c:
+                    st.markdown("#### 📊 전략 핵심 통계")
+                with col_stat_btn_c:
+                    st.download_button(
+                        label="📥 상세내역 다운로드",
+                        data=pd.DataFrame(trade_logs_c).to_csv(index=False).encode('utf-8-sig'),
+                        file_name=f"K200_커스텀_{datetime.today().strftime('%Y%m%d')}.csv",
+                        mime="text/csv",
+                        use_container_width=True
+                    )
+
+                # 💡 테이블 넓게 표시
                 final_val_c = df_cum_c['커스텀 전략'].iloc[-1]
                 years_c = len(df_res_c) / 12
                 cagr_c = ((final_val_c / 100) ** (1 / years_c) - 1) * 100
                 mdd_c = ((df_cum_c['커스텀 전략'] / df_cum_c['커스텀 전략'].cummax()) - 1.0).min() * 100
-                stats_c = [{"전략명": "커스텀 스코어", "CAGR (연평균)": f"{cagr_c:.1f}%", "총 누적수익률": f"{final_val_c-100:,.1f}%", "MDD (최대낙폭)": f"{mdd_c:.1f}%", "월별 승률": f"{(df_res_c.loc[df_res_c['invested'], '커스텀 전략'] > 0).mean()*100:.1f}%", "평균 수익률": f"{df_res_c.loc[df_res_c['invested'], '커스텀 전략'].mean():.2f}%"}]
+                invest_ratio_c = (df_res_c['invested'].sum() / len(df_res_c)) * 100 if len(df_res_c) > 0 else 0
                 
-                c_stat_t4, c_down_t4 = st.columns([8.5, 1.5])
-                with c_stat_t4:
-                    df_stats_c = pd.DataFrame(stats_c)
-                    try: styled_stats_c = df_stats_c.style.map(style_stats, subset=['CAGR (연평균)', '총 누적수익률', 'MDD (최대낙폭)'])
-                    except AttributeError: styled_stats_c = df_stats_c.style.applymap(style_stats, subset=['CAGR (연평균)', '총 누적수익률', 'MDD (최대낙폭)'])
-                    st.dataframe(styled_stats_c, use_container_width=True, hide_index=True)
-                with c_down_t4:
-                    st.markdown("<div style='height:30px;'></div>", unsafe_allow_html=True)
-                    st.download_button("📥 상세내역", pd.DataFrame(trade_logs_c).to_csv(index=False).encode('utf-8-sig'), "K200_커스텀.csv", "text/csv", use_container_width=True)
+                stats_c = [{"전략명": "커스텀 스코어", "CAGR (연평균)": f"{cagr_c:.1f}%", "총 누적수익률": f"{final_val_c-100:,.1f}%", "MDD (최대낙폭)": f"{mdd_c:.1f}%", "투자월 비율": f"{invest_ratio_c:.1f}%", "월별 승률": f"{(df_res_c.loc[df_res_c['invested'], '커스텀 전략'] > 0).mean()*100:.1f}%", "평균 수익률": f"{df_res_c.loc[df_res_c['invested'], '커스텀 전략'].mean():.2f}%"}]
+                
+                df_stats_c = pd.DataFrame(stats_c)
+                try: styled_stats_c = df_stats_c.style.map(style_stats, subset=['CAGR (연평균)', '총 누적수익률', 'MDD (최대낙폭)'])
+                except AttributeError: styled_stats_c = df_stats_c.style.applymap(style_stats, subset=['CAGR (연평균)', '총 누적수익률', 'MDD (최대낙폭)'])
+                st.dataframe(styled_stats_c, use_container_width=True, hide_index=True)
 
                 st.plotly_chart(px.line(df_cum_c.reset_index(), x='투자월', y='커스텀 전략', log_y=True, title="커스텀 누적 성과"), use_container_width=True)
+                
                 with st.expander("📝 월별 상세 기록"):
                     st.dataframe(df_res_c.drop(columns=['invested']).set_index('투자월').style.format("{:.2f}%"), use_container_width=True)
