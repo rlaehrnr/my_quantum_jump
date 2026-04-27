@@ -5,26 +5,13 @@ from datetime import datetime, timedelta
 import os
 import FinanceDataReader as fdr
 
-# 페이지 설정
 st.set_page_config(page_title="KOSPI 200 모멘텀 터미널", layout="wide")
 
-# 유틸리티 함수 로드
 from utils.data_loader import load_archive_data
-from utils.calculator import (
-    get_cycle_year, PRESIDENTIAL_DANGEROUS_MONTHS, get_kospi_ma_all, 
-    get_strategy_stocks_k200, run_backtest_k200, get_kospi_timing_for_backtest, get_idx_kr
-)
+from utils.calculator import get_cycle_year, PRESIDENTIAL_DANGEROUS_MONTHS, get_kospi_ma_all, get_strategy_stocks_k200, run_backtest_k200, get_kospi_timing_for_backtest, get_idx_kr
 from utils.ui_components import inject_custom_css, apply_k200_styling, style_kospi_ma
 
-# CSS 주입
 inject_custom_css()
-
-# --- [헬퍼 함수: 통계표 색상] ---
-def style_stats(x):
-    if isinstance(x, str) and '%' in x:
-        if '-' in x: return 'color: #1976D2; font-weight:bold;'
-        elif x != '0.0%': return 'color: #D32F2F; font-weight:bold;'
-    return ''
 
 # --- [상단 타이틀] ---
 st.markdown('''
@@ -38,7 +25,6 @@ st.markdown('''
     </div>
 ''', unsafe_allow_html=True)
 
-# 데이터 로드
 df_master = load_archive_data("archive_kospi")
 f_daily = 'data/momentum_data_daily.csv'
 
@@ -46,14 +32,31 @@ if df_master.empty:
     st.error("🚨 archive_kospi 폴더에 데이터가 없습니다!")
     st.stop()
 
-# 공통 전처리 (우선주 제외 및 코드 6자리)
+# 공통 전처리
 df_master['종목코드'] = df_master['종목코드'].astype(str).str.zfill(6)
 df_master = df_master[df_master['종목코드'].str.endswith('0')].copy()
 
 years_list = sorted(df_master['투자연도'].unique().astype(int))
 min_y, max_y = min(years_list), max(years_list)
 
-# 탭 구성
+def style_stats(x):
+    if isinstance(x, str) and '%' in x:
+        if '-' in x: return 'color: #1976D2; font-weight:bold;'
+        elif x != '0.0%': return 'color: #D32F2F; font-weight:bold;'
+    return ''
+
+# 💡 [에러 원인 해결!] 공통 지수 설정(ma_cfg)을 맨 위에 전역 변수로 선언합니다.
+ma_cfg = {
+    "지수_L": st.column_config.LinkColumn("지수", display_text=r"#(.+)"),
+    "현재가_L": st.column_config.LinkColumn("현재가", display_text=r"#(.+)"),
+    "4개월선": st.column_config.NumberColumn("4개월선", format="%.2f"),
+    "5개월선": st.column_config.NumberColumn("5개월선", format="%.2f"),
+    "6개월선": st.column_config.NumberColumn("6개월선", format="%.2f"),
+    "10개월선": st.column_config.NumberColumn("10개월선", format="%.2f"),
+    "12개월선": st.column_config.NumberColumn("12개월선", format="%.2f"),
+    "base_price": None 
+}
+
 tab1, tab2, tab3, tab4 = st.tabs(["📅 월별 상세 분석", "🕒 실시간 데일리 순위", "📈 전략 조합 백테스트", "🏅 스코어 커스텀 백테스트"])
 
 # ==========================================
@@ -78,14 +81,14 @@ with tab1:
     
     if not df_monthly.empty:
         base_date = df_monthly['종목선정일'].iloc[0]
-        month_label.markdown(f"<div style='margin-bottom: 5px; color:#334155; font-size:0.95rem; font-weight:600;'><b>🌙 투자 월</b> <span style='font-size: 0.85rem; color: #9ca3af; font-weight:normal;'>&nbsp;&nbsp;💡 선정일: {base_date}</span></div>", unsafe_allow_html=True)
+        
+        # 💡 수정됨: 어두운 색상 제거 (테마 기본색 적용)
+        month_label.markdown(f"<div style='margin-bottom: 5px; font-size:0.95rem; font-weight:600;'><b>🌙 투자 월</b> <span style='font-size: 0.85rem; color: #9ca3af; font-weight:normal;'>&nbsp;&nbsp;💡 선정일: {base_date}</span></div>", unsafe_allow_html=True)
 
-        # 지수 이평선
         kospi_curr, kospi_mas = get_kospi_ma_all(base_date)
         ma_df = pd.DataFrame([{'지수_L': "https://m.stock.naver.com/domestic/index/KOSPI/total#KOSPI", '현재가_L': f"https://m.stock.naver.com/fchart/domestic/index/KOSPI#{kospi_curr:,.2f}", 'base_price': round(kospi_curr, 2), '4개월선': kospi_mas.get(4, 0), '5개월선': kospi_mas.get(5, 0), '6개월선': kospi_mas.get(6, 0), '10개월선': kospi_mas.get(10, 0), '12개월선': kospi_mas.get(12, 0)}])
-        st.dataframe(style_kospi_ma(ma_df), use_container_width=True, hide_index=True, column_config={"지수_L": st.column_config.LinkColumn("지수", display_text=r"#(.+)"), "현재가_L": st.column_config.LinkColumn("현재가", display_text=r"#(.+)"), "4개월선": st.column_config.NumberColumn(format="%.2f"), "5개월선": st.column_config.NumberColumn(format="%.2f"), "6개월선": st.column_config.NumberColumn(format="%.2f"), "10개월선": st.column_config.NumberColumn(format="%.2f"), "12개월선": st.column_config.NumberColumn(format="%.2f"), "base_price": None})
+        st.dataframe(style_kospi_ma(ma_df), use_container_width=True, hide_index=True, column_config=ma_cfg)
         
-        # 계기판 데이터
         df_k200_t1, df_perf_t1, df_spec_t1 = get_strategy_stocks_k200(df_monthly)
         kospi_1m, kospi_3m = get_idx_kr(base_date)
         neg_1m_cnt = (df_k200_t1['1개월(%)'] < 0).sum()
@@ -107,12 +110,10 @@ with tab1:
         with col6: st.markdown(f'<div style="background-color: {box_c}; padding: 10px; border-radius: 10px; text-align: center; border: 1px solid {text_c}; height: 95px; display: flex; flex-direction: column; justify-content: center;"><p style="margin: 0; font-size: 12px; color: {text_c}; font-weight: bold;">최종 판단 ({reason_desc or "안전"})</p><div style="margin: 4px 0 0 0; font-size: 1.5rem; font-weight: 900; color: {text_c};">{status}</div></div>', unsafe_allow_html=True)
         st.markdown("<hr style='margin: 1rem 0;'>", unsafe_allow_html=True)
 
-        # 종목 링크 생성
         for df in [df_perf_t1, df_spec_t1, df_k200_t1]:
             df['통합티커_L'] = df.apply(lambda r: f"https://finance.naver.com/item/main.naver?code={r['종목코드']}#KOSPI:{r['종목코드']}", axis=1)
             df['종목명_L'] = df.apply(lambda r: f"https://m.stock.naver.com/fchart/domestic/stock/{r['종목코드']}#{r['종목명']}", axis=1)
 
-        # 컬럼 설정 (과거 데이터 시총/종가 없을 때 대응)
         main_cfg = {
             "통합티커_L": st.column_config.LinkColumn("티커", display_text=r"#(.+)"), 
             "종목명_L": st.column_config.LinkColumn("종목명", display_text=r"#(.+)"), 
@@ -157,7 +158,6 @@ with tab1:
 
         st.markdown("---")
         st.subheader("🏆 KOSPI 200 시가총액 순위 (과거)")
-        # 존재하는 컬럼만 표시
         cols_m = [c for c in ['통합티커_L', '종목명_L', '시가총액', '종가', '1개월(%)', '3개월(%)', '6개월(%)', '12개월(%)', '이번달수익률'] if c in df_k200_t1.columns]
         st.dataframe(df_k200_t1.style.apply(apply_k200_styling, axis=1), use_container_width=True, height=600, hide_index=True, column_order=cols_m, column_config=main_cfg)
 
@@ -170,9 +170,9 @@ with tab2:
         df_daily['종목코드'] = df_daily['종목코드'].astype(str).str.zfill(6)
         b_date_d = df_daily['기준일'].iloc[0] if '기준일' in df_daily.columns else "오늘"
         
-        st.markdown(f"<div style='margin-bottom: 5px; color:#334155; font-size:0.95rem; font-weight:600;'><b>🕒 실시간 데일리 순위</b> <span style='font-size: 0.85rem; color: #9ca3af; font-weight:normal;'>&nbsp;&nbsp;💡 기준일: {b_date_d}</span></div>", unsafe_allow_html=True)
+        # 💡 수정됨: 어두운 색상 제거 (테마 기본색 적용)
+        st.markdown(f"<div style='margin-bottom: 5px; font-size:0.95rem; font-weight:600;'><b>🕒 실시간 데일리 순위</b> <span style='font-size: 0.85rem; color: #9ca3af; font-weight:normal;'>&nbsp;&nbsp;💡 기준일: {b_date_d}</span></div>", unsafe_allow_html=True)
         
-        # 지수 이평선 (데일리)
         kospi_curr_d, kospi_mas_d = get_kospi_ma_all(b_date_d)
         ma_df_d = pd.DataFrame([{'지수_L': "https://m.stock.naver.com/domestic/index/KOSPI/total#KOSPI", '현재가_L': f"https://m.stock.naver.com/fchart/domestic/index/KOSPI#{kospi_curr_d:,.2f}", 'base_price': round(kospi_curr_d, 2), '4개월선': kospi_mas_d.get(4, 0), '5개월선': kospi_mas_d.get(5, 0), '6개월선': kospi_mas_d.get(6, 0), '10개월선': kospi_mas_d.get(10, 0), '12개월선': kospi_mas_d.get(12, 0)}])
         st.dataframe(style_kospi_ma(ma_df_d), use_container_width=True, hide_index=True, column_config=ma_cfg)
@@ -204,17 +204,20 @@ with tab2:
             col_t1d, col_i1d, col_r1d = st.columns([4, 2, 4])
             with col_t1d: st.markdown(f"<h4 style='margin:0;'>🔥 퍼펙트 상승 <span style='font-size:13px; color:gray;'>({len(df_perf_d)}개)</span></h4>", unsafe_allow_html=True)
             with col_i1d: top_n_pd = st.number_input("pd_n", 1, max(1, len(df_perf_d)), min(5, len(df_perf_d)) if len(df_perf_d)>0 else 1, key="calc_pd", label_visibility="collapsed")
-            with col_r1d: st.markdown(f"<div style='margin-top:8px; font-size:0.85rem; font-weight:bold; color:#475569;'>상위 {top_n_pd}개 선택됨</div>", unsafe_allow_html=True)
+            with col_r1d: st.markdown(f"<div style='margin-top:8px; font-size:0.85rem; font-weight:bold;'>상위 {top_n_pd}개 선택됨</div>", unsafe_allow_html=True)
             
         with c_d2:
             col_t2d, col_i2d, col_r2d = st.columns([4, 2, 4])
             with col_t2d: st.markdown(f"<h4 style='margin:0;'>🐎 달리는 말 <span style='font-size:13px; color:gray;'>({len(df_spec_d)}개)</span></h4>", unsafe_allow_html=True)
             with col_i2d: top_n_sd = st.number_input("sd_n", 1, max(1, len(df_spec_d)), min(5, len(df_spec_d)) if len(df_spec_d)>0 else 1, key="calc_sd", label_visibility="collapsed")
-            with col_r2d: st.markdown(f"<div style='margin-top:8px; font-size:0.85rem; font-weight:bold; color:#475569;'>상위 {top_n_sd}개 선택됨</div>", unsafe_allow_html=True)
+            with col_r2d: st.markdown(f"<div style='margin-top:8px; font-size:0.85rem; font-weight:bold;'>상위 {top_n_sd}개 선택됨</div>", unsafe_allow_html=True)
 
-        overlap_d = set(df_perf_d.head(top_n_pd)['종목코드']).intersection(set(df_spec_d.head(top_n_sd)['종목코드']))
-        with c_d1: st.dataframe(df_perf_d.style.apply(apply_k200_styling, highlight_codes=df_perf_d.head(top_n_pd)['종목코드'].tolist(), overlap_codes=overlap_d, axis=1), use_container_width=True, hide_index=True, column_order=['통합티커_L', '종목명_L', '시가총액', '종가', '1개월(%)', '3개월(%)', '6개월(%)', '12개월(%)'], column_config=daily_cfg)
-        with c_d2: st.dataframe(df_spec_d.style.apply(apply_k200_styling, highlight_codes=df_spec_d.head(top_n_sd)['종목코드'].tolist(), overlap_codes=overlap_d, axis=1), use_container_width=True, hide_index=True, column_order=['통합티커_L', '종목명_L', '시가총액', '종가', '1개월(%)', '12개월(%)'], column_config=daily_cfg)
+        top_list_p_d = df_perf_d.head(top_n_pd)['종목코드'].tolist() if len(df_perf_d) > 0 else []
+        top_list_s_d = df_spec_d.head(top_n_sd)['종목코드'].tolist() if len(df_spec_d) > 0 else []
+        overlap_d = set(top_list_p_d).intersection(set(top_list_s_d))
+
+        with c_d1: st.dataframe(df_perf_d.style.apply(apply_k200_styling, highlight_codes=top_list_p_d, overlap_codes=overlap_d, axis=1), use_container_width=True, hide_index=True, column_order=['통합티커_L', '종목명_L', '시가총액', '종가', '1개월(%)', '3개월(%)', '6개월(%)', '12개월(%)'], column_config=daily_cfg)
+        with c_d2: st.dataframe(df_spec_d.style.apply(apply_k200_styling, highlight_codes=top_list_s_d, overlap_codes=overlap_d, axis=1), use_container_width=True, hide_index=True, column_order=['통합티커_L', '종목명_L', '시가총액', '종가', '1개월(%)', '12개월(%)'], column_config=daily_cfg)
 
         st.markdown("---")
         st.subheader("🏆 KOSPI 200 시가총액 순위 (오늘)")
@@ -250,7 +253,6 @@ with tab3:
             df_cum.loc[(pd.to_datetime(df_res['투자월'].iloc[0]) - pd.DateOffset(months=1)).strftime('%Y-%m')] = 100
             df_cum = df_cum.sort_index()
 
-            # [순서: 통계 -> 차트 -> 기록]
             col_t, col_b = st.columns([8.5, 1.5])
             with col_t: st.markdown("#### 📊 전략 핵심 통계 (초기 자본 100 기준)")
             with col_b: st.download_button("📥 상세내역 다운로드", df_trades.to_csv(index=False).encode('utf-8-sig'), "K200_조합_백테스트.csv", "text/csv", use_container_width=True)
