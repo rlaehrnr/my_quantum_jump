@@ -12,7 +12,7 @@ from utils.calculator import (
 )
 # 라이브 주가 확인용 (Tab 1에서 이번 달 수익률 실시간 계산용)
 from utils.calculator import fdr 
-
+st.set_page_config(page_title="KOSPI 200 모멘텀 터미널", layout="wide")
 # --- [1. 스타일 및 디자인 설정] ---
 st.markdown('''
 <style>
