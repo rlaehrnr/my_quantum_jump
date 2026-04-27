@@ -4,20 +4,32 @@ import pandas as pd
 def inject_custom_css():
     st.markdown("""
     <style>
-    /* 선생님이 맞추신 2.8rem 유지 */
-    .block-container { padding-top: 2.8rem !important; padding-bottom: 1rem !important; }
-    .main-title { font-size: 1.5rem !important; font-weight: bold; margin-bottom: 0.5rem; }
-    .strategy-desc { font-size: 0.85rem; color: #9ca3af; margin-bottom: 5px; line-height: 1.2; }
+    /* 상단 여백을 충분히 주어 제목이 잘리지 않게 함 */
+    .block-container { padding-top: 4rem !important; padding-bottom: 1rem !important; }
+    .main-title { font-size: 1.8rem !important; font-weight: 800; margin-bottom: 1.5rem; }
     
-    /* 💡 수정됨: 라디오 버튼 한 줄 고정 및 위로 바짝 붙이기 */
+    /* 투자연도와 투자월의 라벨 폰트 및 높이 통일 */
+    div[data-testid="stSelectbox"] label, div[data-testid="stRadio"] label {
+        font-size: 0.95rem !important;
+        font-weight: 600 !important;
+        color: #334155 !important;
+        margin-bottom: 10px !important;
+        display: inline-block !important;
+        height: 24px;
+    }
+    
+    /* 라디오 버튼 간격 및 한 줄 고정, 위로 정렬 */
     div[role="radiogroup"] { 
-        gap: 8px !important; 
+        gap: 10px !important; 
         flex-wrap: nowrap !important; 
         overflow-x: auto; 
         padding-top: 2px !important; 
     }
     
-    .settings-box { background-color: #f8fafc; padding: 20px; border-radius: 12px; border: 1px solid #e2e8f0; margin-bottom: 20px; }
+    /* 백테스트 섹션 헤더 스타일 */
+    .bt-header { font-size: 1.1rem; font-weight: 700; color: #1e293b; margin-bottom: 8px; }
+
+    .strategy-desc { font-size: 0.85rem; color: #64748b; margin-bottom: 8px; line-height: 1.4; }
     .title-link:hover { opacity: 0.7; transition: 0.2s; }
     th[data-testid="stTableColumnHeader"] div { white-space: pre-wrap !important; text-align: center !important; }
     </style>
@@ -34,11 +46,11 @@ def apply_k200_styling(row, highlight_codes=None, overlap_codes=None):
     code = row.get('종목코드')
     if code and '종목명_L' in row.index:
         name_idx = row.index.get_loc('종목명_L')
-        # 💡 수정됨: 겹치는 종목은 '보기 좋은 쨍한 빨간색 + 연빨강 배경'으로 강조
+        # 겹치는 종목 강조 (진한 빨강 글씨 + 부드러운 빨강 배경)
         if overlap_codes and code in overlap_codes: 
-            styles[name_idx] = 'color: #DC2626; font-weight: 900; background-color: #FEE2E2;'
+            styles[name_idx] = 'color: #B91C1C; font-weight: 900; background-color: #FEE2E2; border: 1px solid #FECACA;'
         elif highlight_codes and code in highlight_codes: 
-            styles[name_idx] = 'background-color: #E8F5E9; color: #2E7D32; font-weight: bold;'
+            styles[name_idx] = 'background-color: #E8F5E9; color: #065F46; font-weight: bold;'
     return styles
 
 def style_kospi_ma(df):
