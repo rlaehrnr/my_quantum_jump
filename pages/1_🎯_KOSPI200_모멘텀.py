@@ -77,6 +77,7 @@ with tab1:
     if not df_monthly.empty:
         base_date = df_monthly['종목선정일'].iloc[0]
         
+        # 💡 깔끔한 한 줄 라벨
         month_label.markdown(f"<div style='margin-bottom: 5px;'><b>🌙 투자 월</b> <span style='font-size: 0.85rem; color: #9ca3af;'>&nbsp;&nbsp;💡 선정일: {base_date}</span></div>", unsafe_allow_html=True)
 
         kospi_curr, kospi_mas = get_kospi_ma_all(base_date)
