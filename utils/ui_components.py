@@ -4,10 +4,19 @@ import pandas as pd
 def inject_custom_css():
     st.markdown("""
     <style>
-    .block-container { padding-top: 2.8rem !important; padding-bottom: 1rem !important; }
+    .block-container { padding-top: 1.5rem !important; padding-bottom: 1rem !important; }
     .main-title { font-size: 1.5rem !important; font-weight: bold; margin-bottom: 0.5rem; }
     .strategy-desc { font-size: 0.85rem; color: #9ca3af; margin-bottom: 10px; line-height: 1.2; }
-    div[role="radiogroup"] { gap: 15px !important; flex-wrap: wrap; padding-top: 6px; }
+    
+    /* 💡 수정된 부분: 라디오 버튼 간격 좁히기 및 한 줄 강제 고정 */
+    div[role="radiogroup"] { 
+        gap: 8px !important; 
+        flex-wrap: nowrap !important; 
+        overflow-x: auto; 
+        padding-top: 6px; 
+    }
+    div[data-testid="stWidgetLabel"] { margin-bottom: -10px; }
+    
     .settings-box { background-color: #f8fafc; padding: 20px; border-radius: 12px; border: 1px solid #e2e8f0; margin-bottom: 20px; }
     .title-link:hover { opacity: 0.7; transition: 0.2s; }
     th[data-testid="stTableColumnHeader"] div { white-space: pre-wrap !important; text-align: center !important; }
