@@ -15,7 +15,7 @@ inject_custom_css()
 # --- [상단 타이틀] ---
 st.markdown('''
     <div style="margin-bottom: 20px;">
-        <a href="https://stock.naver.com/" target="_blank" class="title-link" style="text-decoration: none; color: inherit;">
+        <a href="https://m.stock.naver.com/" target="_blank" class="title-link" style="text-decoration: none; color: inherit;">
             <div style="display: flex; align-items: center; flex-wrap: wrap; gap: 12px;">
                 <h1 style="margin: 0; padding: 0; font-size: 2.2rem; font-weight: 800; line-height: 1.2; word-break: keep-all;">🎯 KOSPI 200 모멘텀 터미널</h1>
                 <span style="font-size: 0.95rem; color: #3b82f6; background-color: #eff6ff; padding: 4px 10px; border-radius: 6px; border: 1px solid #bfdbfe; white-space: nowrap;">🔗 네이버 증권 이동</span>
@@ -279,6 +279,7 @@ with tab4:
         with st.spinner("커스텀 가중치 시뮬레이션 연산 중..."):
             timing_df_t4 = get_kospi_timing_for_backtest(ma_months_t4)
             records_c = []
+            trade_logs_c = [] # 💡 매수 내역 저장용 리스트 추가!
             
             for m_str in sorted(df_master['투자월'].dropna().unique()):
                 m_year = int(m_str.split('-')[0])
@@ -305,6 +306,13 @@ with tab4:
                 
                 records_c.append({'투자월': m_str, 'invested': mult_c > 0.0, f'🏅 커스텀 스코어 ({rank_c_s}~{rank_c_e}위)': ret_target})
                 
+                # 💡 매수 내역 기록 로직 추가
+                if mult_c == 0.0:
+                    trade_logs_c.append({'투자월': m_str, '전략': '마켓타이밍 작동', '매수순위': '-', '종목명': '현금 (투자중지)', '종목코드': '-', '수익률(%)': 0.0})
+                else:
+                    for i, (_, row) in enumerate(target_group.iterrows()):
+                        trade_logs_c.append({'투자월': m_str, '전략': '커스텀 스코어', '매수순위': f"{i + rank_c_s}위", '종목명': row['종목명'], '종목코드': row['종목코드'], '수익률(%)': row['이번달수익률']})
+
             df_res_c = pd.DataFrame(records_c).fillna(0.0)
             if not df_res_c.empty:
                 col_name = f'🏅 커스텀 스코어 ({rank_c_s}~{rank_c_e}위)'
@@ -316,6 +324,16 @@ with tab4:
 
                 fig_c = px.line(df_cum_c.reset_index(), x='투자월', y=col_name, log_y=True, title="커스텀 가중치 누적 성과")
                 st.plotly_chart(fig_c, use_container_width=True)
+                
+                # 💡 다운로드 버튼 추가!
+                df_trades_c = pd.DataFrame(trade_logs_c)
+                st.download_button(
+                    label="📥 커스텀 백테스트 매수 상세 내역 다운로드 (CSV)",
+                    data=df_trades_c.to_csv(index=False).encode('utf-8-sig'),
+                    file_name=f"KOSPI200_커스텀_백테스트_{datetime.today().strftime('%Y%m%d')}.csv",
+                    mime="text/csv",
+                    use_container_width=True
+                )
                 
                 st.markdown("#### 📊 전략 핵심 통계")
                 stats_c = []
