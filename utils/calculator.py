@@ -65,7 +65,7 @@ def get_strategy_stocks_k200(df_month, perf_pct=30, spec_12m=30):
     
     return df_k200, df_perf, df_spec
 
-def run_backtest_k200(df_all, start_yr, end_yr, ma_months, apply_timing, rank_p, rank_s):
+def run_backtest_k200(df_all, start_yr, end_yr, ma_months, apply_timing, rank_p, rank_s, perf_pct=30, spec_12m=30):
     timing_df = get_kospi_timing_for_backtest(ma_months)
     months = sorted(df_all['투자월'].dropna().unique())
     
@@ -84,14 +84,15 @@ def run_backtest_k200(df_all, start_yr, end_yr, ma_months, apply_timing, rank_p,
         base_date = m_data['종목선정일'].iloc[0]
         base_ym = pd.to_datetime(base_date).strftime('%Y-%m') 
         
-        df_k200, df_p, df_s = get_strategy_stocks_k200(m_data)
+        # 💡 슬라이더에서 받은 상위 % 조건을 필터링 함수로 넘겨줍니다!
+        df_k200, df_p, df_s = get_strategy_stocks_k200(m_data, perf_pct=perf_pct, spec_12m=spec_12m)
         
         neg_1m = (df_k200['1개월(%)'] < 0).sum()
         neg_3m = (df_k200['3개월(%)'] < 0).sum()
-        is_bad_breadth = (neg_1m >= 100 and neg_3m >= 100)
+        is_bad_market = (neg_1m >= 100 and neg_3m >= 100)
         is_below_ma = timing_df.loc[base_ym, 'is_below_ma'] if base_ym in timing_df.index else False
         
-        mult = 0.0 if (apply_timing and (is_bad_breadth or is_below_ma)) else 1.0
+        mult = 0.0 if (apply_timing and (is_bad_market or is_below_ma)) else 1.0
         
         target_p = df_p.iloc[rank_p[0]-1 : rank_p[1]]
         target_s = df_s.iloc[rank_s[0]-1 : rank_s[1]]
@@ -112,18 +113,14 @@ def run_backtest_k200(df_all, start_yr, end_yr, ma_months, apply_timing, rank_p,
         })
         
         if mult == 0.0:
-            trade_logs.append({'투자월': m_str, '전략': '마켓타이밍 작동', '매수순위': '-', '종목명': '현금 (투자중지)', '수익률(%)': 0.0})
+            trade_logs.append({'투자월': m_str, '전략': '마켓타이밍 작동', '매수순위': '-', '종목명': '현금 (투자중지)', '종목코드': '-', '수익률(%)': 0.0})
         else:
             for i, (_, row) in enumerate(target_p.iterrows()):
-                trade_logs.append({'투자월': m_str, '전략': '🔥 퍼펙트 상승', '매수순위': f"{i + rank_p[0]}위", '종목명': row['종목명'], '수익률(%)': row['이번달수익률']})
+                trade_logs.append({'투자월': m_str, '전략': '🔥 퍼펙트 상승', '매수순위': f"{i + rank_p[0]}위", '종목명': row['종목명'], '종목코드': row['종목코드'], '수익률(%)': row['이번달수익률']})
             for i, (_, row) in enumerate(target_s.iterrows()):
-                trade_logs.append({'투자월': m_str, '전략': '🐎 달리는 말', '매수순위': f"{i + rank_s[0]}위", '종목명': row['종목명'], '수익률(%)': row['이번달수익률']})
+                trade_logs.append({'투자월': m_str, '전략': '🐎 달리는 말', '매수순위': f"{i + rank_s[0]}위", '종목명': row['종목명'], '종목코드': row['종목코드'], '수익률(%)': row['이번달수익률']})
                 
     return pd.DataFrame(records).fillna(0.0), pd.DataFrame(trade_logs)
-
-
-# (utils/calculator.py 파일의 가장 맨 아래에 아래 코드를 추가해주세요)
-
 def get_idx_kr(target_date_str):
     """ 특정 날짜 기준 코스피 지수의 최근 1개월, 3개월 수익률 계산 """
     target_date = pd.to_datetime(target_date_str)
