@@ -36,6 +36,13 @@ if df_master.empty:
 df_master['종목코드'] = df_master['종목코드'].astype(str).str.zfill(6)
 df_master = df_master[df_master['종목코드'].str.endswith('0')].copy()
 
+# 💡 과거 데이터 호환 및 시총 단위 '억' 자동 변환 로직
+for col in ['시가총액', '종가', '거래량']:
+    if col in df_master.columns:
+        df_master[col] = pd.to_numeric(df_master[col], errors='coerce')
+if '시가총액' in df_master.columns and df_master['시가총액'].max() > 1000000000:
+    df_master['시가총액'] = df_master['시가총액'] / 100000000
+
 years_list = sorted(df_master['투자연도'].unique().astype(int))
 min_y, max_y = min(years_list), max(years_list)
 
@@ -45,7 +52,6 @@ def style_stats(x):
         elif x != '0.0%': return 'color: #D32F2F; font-weight:bold;'
     return ''
 
-# 💡 [에러 원인 해결!] 공통 지수 설정(ma_cfg)을 맨 위에 전역 변수로 선언합니다.
 ma_cfg = {
     "지수_L": st.column_config.LinkColumn("지수", display_text=r"#(.+)"),
     "현재가_L": st.column_config.LinkColumn("현재가", display_text=r"#(.+)"),
@@ -67,7 +73,9 @@ with tab1:
     c_y, c_m = st.columns([1.2, 8.8])
     
     with c_y: 
-        selected_year = st.selectbox("투자 연도", avail_years, format_func=lambda x: f"{x}년", key="t1_y")
+        # 💡 투자연도 라벨을 투자월 라벨과 완벽히 동일한 디자인으로 적용!
+        st.markdown("<div style='margin-bottom: 5px; font-size:0.95rem; font-weight:600;'><b>📅 투자 연도</b></div>", unsafe_allow_html=True)
+        selected_year = st.selectbox("투자 연도", avail_years, format_func=lambda x: f"{x}년", key="t1_y", label_visibility="collapsed")
     
     m_list = sorted(df_master[df_master['투자연도'] == int(selected_year)]['투자월'].apply(lambda x: x.split('-')[1]).unique())
     default_m_index = len(m_list) - 1 
@@ -82,7 +90,6 @@ with tab1:
     if not df_monthly.empty:
         base_date = df_monthly['종목선정일'].iloc[0]
         
-        # 💡 수정됨: 어두운 색상 제거 (테마 기본색 적용)
         month_label.markdown(f"<div style='margin-bottom: 5px; font-size:0.95rem; font-weight:600;'><b>🌙 투자 월</b> <span style='font-size: 0.85rem; color: #9ca3af; font-weight:normal;'>&nbsp;&nbsp;💡 선정일: {base_date}</span></div>", unsafe_allow_html=True)
 
         kospi_curr, kospi_mas = get_kospi_ma_all(base_date)
@@ -117,8 +124,8 @@ with tab1:
         main_cfg = {
             "통합티커_L": st.column_config.LinkColumn("티커", display_text=r"#(.+)"), 
             "종목명_L": st.column_config.LinkColumn("종목명", display_text=r"#(.+)"), 
-            "시가총액": st.column_config.NumberColumn("시가총액", format="%,d"),
-            "종가": st.column_config.NumberColumn("종가", format="%,d"),
+            "시가총액": st.column_config.NumberColumn("시가총액(억)", format="%,.0f"),
+            "종가": st.column_config.NumberColumn("종가", format="%,.0f"),
             "1개월(%)": st.column_config.NumberColumn(format="%.1f"), 
             "3개월(%)": st.column_config.NumberColumn(format="%.1f"), 
             "6개월(%)": st.column_config.NumberColumn(format="%.1f"), 
@@ -170,7 +177,13 @@ with tab2:
         df_daily['종목코드'] = df_daily['종목코드'].astype(str).str.zfill(6)
         b_date_d = df_daily['기준일'].iloc[0] if '기준일' in df_daily.columns else "오늘"
         
-        # 💡 수정됨: 어두운 색상 제거 (테마 기본색 적용)
+        # 데일리 데이터에도 시가총액 억 변환 적용 (혹시나 원본이 원단위일 경우)
+        for col in ['시가총액', '종가', '거래량']:
+            if col in df_daily.columns:
+                df_daily[col] = pd.to_numeric(df_daily[col], errors='coerce')
+        if '시가총액' in df_daily.columns and df_daily['시가총액'].max() > 1000000000:
+            df_daily['시가총액'] = df_daily['시가총액'] / 100000000
+        
         st.markdown(f"<div style='margin-bottom: 5px; font-size:0.95rem; font-weight:600;'><b>🕒 실시간 데일리 순위</b> <span style='font-size: 0.85rem; color: #9ca3af; font-weight:normal;'>&nbsp;&nbsp;💡 기준일: {b_date_d}</span></div>", unsafe_allow_html=True)
         
         kospi_curr_d, kospi_mas_d = get_kospi_ma_all(b_date_d)
@@ -197,27 +210,24 @@ with tab2:
             df['통합티커_L'] = df.apply(lambda r: f"https://finance.naver.com/item/main.naver?code={r['종목코드']}#KOSPI:{r['종목코드']}", axis=1)
             df['종목명_L'] = df.apply(lambda r: f"https://m.stock.naver.com/fchart/domestic/stock/{r['종목코드']}#{r['종목명']}", axis=1)
 
-        daily_cfg = {"통합티커_L": st.column_config.LinkColumn("티커", display_text=r"#(.+)"), "종목명_L": st.column_config.LinkColumn("종목명", display_text=r"#(.+)"), "시가총액": st.column_config.NumberColumn("시가총액", format="%,d"), "종가": st.column_config.NumberColumn("종가", format="%,d"), "거래량": st.column_config.NumberColumn("거래량", format="%,d"), "1개월(%)": st.column_config.NumberColumn(format="%.1f"), "3개월(%)": st.column_config.NumberColumn(format="%.1f"), "6개월(%)": st.column_config.NumberColumn(format="%.1f"), "12개월(%)": st.column_config.NumberColumn(format="%.1f")}
+        daily_cfg = {"통합티커_L": st.column_config.LinkColumn("티커", display_text=r"#(.+)"), "종목명_L": st.column_config.LinkColumn("종목명", display_text=r"#(.+)"), "시가총액": st.column_config.NumberColumn("시가총액(억)", format="%,.0f"), "종가": st.column_config.NumberColumn("종가", format="%,.0f"), "거래량": st.column_config.NumberColumn("거래량", format="%,.0f"), "1개월(%)": st.column_config.NumberColumn(format="%.1f"), "3개월(%)": st.column_config.NumberColumn(format="%.1f"), "6개월(%)": st.column_config.NumberColumn(format="%.1f"), "12개월(%)": st.column_config.NumberColumn(format="%.1f")}
 
         c_d1, c_d2 = st.columns(2)
         with c_d1:
             col_t1d, col_i1d, col_r1d = st.columns([4, 2, 4])
             with col_t1d: st.markdown(f"<h4 style='margin:0;'>🔥 퍼펙트 상승 <span style='font-size:13px; color:gray;'>({len(df_perf_d)}개)</span></h4>", unsafe_allow_html=True)
             with col_i1d: top_n_pd = st.number_input("pd_n", 1, max(1, len(df_perf_d)), min(5, len(df_perf_d)) if len(df_perf_d)>0 else 1, key="calc_pd", label_visibility="collapsed")
-            with col_r1d: st.markdown(f"<div style='margin-top:8px; font-size:0.85rem; font-weight:bold;'>상위 {top_n_pd}개 선택됨</div>", unsafe_allow_html=True)
+            with col_r1d: st.markdown(f"<div style='margin-top:8px; font-size:0.85rem; font-weight:bold; color:#475569;'>상위 {top_n_pd}개 선택됨</div>", unsafe_allow_html=True)
             
         with c_d2:
             col_t2d, col_i2d, col_r2d = st.columns([4, 2, 4])
             with col_t2d: st.markdown(f"<h4 style='margin:0;'>🐎 달리는 말 <span style='font-size:13px; color:gray;'>({len(df_spec_d)}개)</span></h4>", unsafe_allow_html=True)
             with col_i2d: top_n_sd = st.number_input("sd_n", 1, max(1, len(df_spec_d)), min(5, len(df_spec_d)) if len(df_spec_d)>0 else 1, key="calc_sd", label_visibility="collapsed")
-            with col_r2d: st.markdown(f"<div style='margin-top:8px; font-size:0.85rem; font-weight:bold;'>상위 {top_n_sd}개 선택됨</div>", unsafe_allow_html=True)
+            with col_r2d: st.markdown(f"<div style='margin-top:8px; font-size:0.85rem; font-weight:bold; color:#475569;'>상위 {top_n_sd}개 선택됨</div>", unsafe_allow_html=True)
 
-        top_list_p_d = df_perf_d.head(top_n_pd)['종목코드'].tolist() if len(df_perf_d) > 0 else []
-        top_list_s_d = df_spec_d.head(top_n_sd)['종목코드'].tolist() if len(df_spec_d) > 0 else []
-        overlap_d = set(top_list_p_d).intersection(set(top_list_s_d))
-
-        with c_d1: st.dataframe(df_perf_d.style.apply(apply_k200_styling, highlight_codes=top_list_p_d, overlap_codes=overlap_d, axis=1), use_container_width=True, hide_index=True, column_order=['통합티커_L', '종목명_L', '시가총액', '종가', '1개월(%)', '3개월(%)', '6개월(%)', '12개월(%)'], column_config=daily_cfg)
-        with c_d2: st.dataframe(df_spec_d.style.apply(apply_k200_styling, highlight_codes=top_list_s_d, overlap_codes=overlap_d, axis=1), use_container_width=True, hide_index=True, column_order=['통합티커_L', '종목명_L', '시가총액', '종가', '1개월(%)', '12개월(%)'], column_config=daily_cfg)
+        overlap_d = set(df_perf_d.head(top_n_pd)['종목코드']).intersection(set(df_spec_d.head(top_n_sd)['종목코드']))
+        with c_d1: st.dataframe(df_perf_d.style.apply(apply_k200_styling, highlight_codes=df_perf_d.head(top_n_pd)['종목코드'].tolist(), overlap_codes=overlap_d, axis=1), use_container_width=True, hide_index=True, column_order=['통합티커_L', '종목명_L', '시가총액', '종가', '1개월(%)', '3개월(%)', '6개월(%)', '12개월(%)'], column_config=daily_cfg)
+        with c_d2: st.dataframe(df_spec_d.style.apply(apply_k200_styling, highlight_codes=df_spec_d.head(top_n_sd)['종목코드'].tolist(), overlap_codes=overlap_d, axis=1), use_container_width=True, hide_index=True, column_order=['통합티커_L', '종목명_L', '시가총액', '종가', '1개월(%)', '12개월(%)'], column_config=daily_cfg)
 
         st.markdown("---")
         st.subheader("🏆 KOSPI 200 시가총액 순위 (오늘)")
@@ -261,11 +271,19 @@ with tab3:
             for col in s_cols:
                 final_val = df_cum[col].iloc[-1]
                 years = len(df_res)/12
-                cagr = ((final_val/100)**(1/years)-1)*100
-                win_rate = (df_res.loc[df_res['invested'], col]>0).mean()*100
+                cagr = ((final_val/100)**(1/years)-1)*100 if final_val > 0 else -100
+                win_rate = (df_res.loc[df_res['invested'], col]>0).mean()*100 if df_res['invested'].any() else 0
                 mdd = ((df_cum[col]/df_cum[col].cummax())-1).min()*100
-                stats.append({"전략명": col, "CAGR (연평균)": f"{cagr:.1f}%", "총 누적수익률": f"{final_val-100:,.1f}%", "MDD (최대낙폭)": f"{mdd:.1f}%", "투자월 비율": f"{(df_res['invested'].sum()/len(df_res))*100:.1f}%", "월별 승률": f"{win_rate:.1f}%", "평균 수익률": f"{df_res.loc[df_res['invested'], col].mean():.2f}%"})
-            st.dataframe(pd.DataFrame(stats).style.applymap(style_stats, subset=['CAGR (연평균)', '총 누적수익률', 'MDD (최대낙폭)']), use_container_width=True, hide_index=True)
+                stats.append({"전략명": col, "CAGR (연평균)": f"{cagr:.1f}%", "총 누적수익률": f"{final_val-100:,.1f}%", "MDD (최대낙폭)": f"{mdd:.1f}%", "투자월 비율": f"{(df_res['invested'].sum()/len(df_res))*100:.1f}%", "월별 승률": f"{win_rate:.1f}%", "평균 수익률": f"{df_res.loc[df_res['invested'], col].mean():.2f}%" if df_res['invested'].any() else "0.00%"})
+            
+            # 💡 에러 방어: 스타일 적용 (최신 Pandas map 함수 우선 적용)
+            df_stats = pd.DataFrame(stats)
+            try:
+                styled_stats = df_stats.style.map(style_stats, subset=['CAGR (연평균)', '총 누적수익률', 'MDD (최대낙폭)'])
+            except AttributeError:
+                styled_stats = df_stats.style.applymap(style_stats, subset=['CAGR (연평균)', '총 누적수익률', 'MDD (최대낙폭)'])
+            st.dataframe(styled_stats, use_container_width=True, hide_index=True)
+            
             st.plotly_chart(px.line(df_cum.reset_index().melt(id_vars='투자월'), x='투자월', y='value', color='variable', log_y=True, title="누적 자산 성장 곡선 (Log Scale)"), use_container_width=True)
             with st.expander("📝 월별 상세 기록 보기"): st.dataframe(df_res.drop(columns=['invested']).set_index('투자월').style.format("{:.2f}%"), use_container_width=True)
 
@@ -325,9 +343,17 @@ with tab4:
 
                 final_val_c = df_cum_c['커스텀 전략'].iloc[-1]
                 years_c = len(df_res_c) / 12
-                cagr_c = ((final_val_c/100)**(1/years_c)-1)*100
+                cagr_c = ((final_val_c/100)**(1/years_c)-1)*100 if final_val_c > 0 else -100
                 mdd_c = ((df_cum_c['커스텀 전략']/df_cum_c['커스텀 전략'].cummax())-1).min()*100
-                stats_c = [{"전략명": "커스텀 스코어", "CAGR (연평균)": f"{cagr_c:.1f}%", "총 누적수익률": f"{final_val_c-100:,.1f}%", "MDD (최대낙폭)": f"{mdd_c:.1f}%", "투자월 비율": f"{(df_res_c['invested'].sum()/len(df_res_c))*100:.1f}%", "월별 승률": f"{(df_res_c.loc[df_res_c['invested'], '커스텀 전략']>0).mean()*100:.1f}%", "평균 수익률": f"{df_res_c.loc[df_res_c['invested'], '커스텀 전략'].mean():.2f}%"}]
-                st.dataframe(pd.DataFrame(stats_c).style.applymap(style_stats, subset=['CAGR (연평균)', '총 누적수익률', 'MDD (최대낙폭)']), use_container_width=True, hide_index=True)
+                stats_c = [{"전략명": "커스텀 스코어", "CAGR (연평균)": f"{cagr_c:.1f}%", "총 누적수익률": f"{final_val_c-100:,.1f}%", "MDD (최대낙폭)": f"{mdd_c:.1f}%", "투자월 비율": f"{(df_res_c['invested'].sum()/len(df_res_c))*100:.1f}%", "월별 승률": f"{(df_res_c.loc[df_res_c['invested'], '커스텀 전략']>0).mean()*100:.1f}%" if df_res_c['invested'].any() else "0.0%", "평균 수익률": f"{df_res_c.loc[df_res_c['invested'], '커스텀 전략'].mean():.2f}%" if df_res_c['invested'].any() else "0.00%"}]
+                
+                # 💡 에러 방어: 스타일 적용 (최신 Pandas map 함수 우선 적용)
+                df_stats_c = pd.DataFrame(stats_c)
+                try:
+                    styled_stats_c = df_stats_c.style.map(style_stats, subset=['CAGR (연평균)', '총 누적수익률', 'MDD (최대낙폭)'])
+                except AttributeError:
+                    styled_stats_c = df_stats_c.style.applymap(style_stats, subset=['CAGR (연평균)', '총 누적수익률', 'MDD (최대낙폭)'])
+                st.dataframe(styled_stats_c, use_container_width=True, hide_index=True)
+                
                 st.plotly_chart(px.line(df_cum_c.reset_index(), x='투자월', y='커스텀 전략', log_y=True, title="커스텀 누적 성과"), use_container_width=True)
                 with st.expander("📝 월별 상세 기록 보기"): st.dataframe(df_res_c.drop(columns=['invested']).set_index('투자월').style.format("{:.2f}%"), use_container_width=True)
