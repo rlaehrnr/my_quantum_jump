@@ -28,7 +28,7 @@ def inject_custom_css():
     </style>
     """, unsafe_allow_html=True)
 
-def apply_k200_styling(row, highlight_codes=None, overlap_codes=None):
+def apply_korea_styling(row, highlight_codes=None, overlap_codes=None):
     styles = [''] * len(row)
     if '이번달수익률' in row.index:
         col_idx = row.index.get_loc('이번달수익률')
