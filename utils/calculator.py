@@ -38,34 +38,34 @@ def get_kospi_timing_for_backtest(ma_months):
     timing_df['is_below_ma'] = timing_df['Close'] < timing_df['MA']
     return timing_df.set_index('YearMonth')
 
-def get_strategy_stocks_k200(df_month, perf_pct=30, spec_12m=30):
-    df_k200 = df_month.copy()
-    if '시가총액' in df_k200.columns:
-        df_k200['시가총액'] = pd.to_numeric(df_k200['시가총액'], errors='coerce').fillna(0)
-        df_k200 = df_k200.sort_values(by='시가총액', ascending=False).head(200)
+def get_strategy_stocks_korea(df_month, perf_pct=30, spec_12m=30):
+    df_korea = df_month.copy()
+    if '시가총액' in df_korea.columns:
+        df_korea['시가총액'] = pd.to_numeric(df_korea['시가총액'], errors='coerce').fillna(0)
+        df_korea = df_korea.sort_values(by='시가총액', ascending=False).head(200)
 
     q_perf = 1.0 - (perf_pct / 100.0)
     q_spec = 1.0 - (spec_12m / 100.0)
     
-    q_1 = df_k200['1개월(%)'].quantile(q_perf)
-    q_3 = df_k200['3개월(%)'].quantile(q_perf)
-    q_6 = df_k200['6개월(%)'].quantile(q_perf)
-    q_12 = df_k200['12개월(%)'].quantile(q_perf)
+    q_1 = df_korea['1개월(%)'].quantile(q_perf)
+    q_3 = df_korea['3개월(%)'].quantile(q_perf)
+    q_6 = df_korea['6개월(%)'].quantile(q_perf)
+    q_12 = df_korea['12개월(%)'].quantile(q_perf)
     
-    t_12 = df_k200['12개월(%)'].quantile(q_spec)
-    t_1 = df_k200['1개월(%)'].quantile(0.9) 
+    t_12 = df_korea['12개월(%)'].quantile(q_spec)
+    t_1 = df_korea['1개월(%)'].quantile(0.9) 
     
-    cond_p = (df_k200['1개월(%)']>=q_1)&(df_k200['3개월(%)']>=q_3)&(df_k200['6개월(%)']>=q_6)&(df_k200['12개월(%)']>=q_12) & \
-             (df_k200['1개월(%)']>0)&(df_k200['3개월(%)']>0)&(df_k200['6개월(%)']>0)&(df_k200['12개월(%)']>0)
+    cond_p = (df_korea['1개월(%)']>=q_1)&(df_korea['3개월(%)']>=q_3)&(df_korea['6개월(%)']>=q_6)&(df_korea['12개월(%)']>=q_12) & \
+             (df_korea['1개월(%)']>0)&(df_korea['3개월(%)']>0)&(df_korea['6개월(%)']>0)&(df_korea['12개월(%)']>0)
              
-    cond_s = (df_k200['12개월(%)']>=t_12)&(df_k200['1개월(%)']>=t_1)
+    cond_s = (df_korea['12개월(%)']>=t_12)&(df_korea['1개월(%)']>=t_1)
     
-    df_perf = df_k200[cond_p].sort_values('3개월(%)', ascending=False)
-    df_spec = df_k200[cond_s].sort_values('1개월(%)', ascending=False)
+    df_perf = df_korea[cond_p].sort_values('3개월(%)', ascending=False)
+    df_spec = df_korea[cond_s].sort_values('1개월(%)', ascending=False)
     
-    return df_k200, df_perf, df_spec
+    return df_korea, df_perf, df_spec
 
-def run_backtest_k200(df_all, start_yr, end_yr, ma_months, apply_timing, rank_p, rank_s, perf_pct=30, spec_12m=30):
+def run_backtest_korea(df_all, start_yr, end_yr, ma_months, apply_timing, rank_p, rank_s, perf_pct=30, spec_12m=30):
     timing_df = get_kospi_timing_for_backtest(ma_months)
     months = sorted(df_all['투자월'].dropna().unique())
     
@@ -85,10 +85,10 @@ def run_backtest_k200(df_all, start_yr, end_yr, ma_months, apply_timing, rank_p,
         base_ym = pd.to_datetime(base_date).strftime('%Y-%m') 
         
         # 💡 슬라이더에서 받은 상위 % 조건을 필터링 함수로 넘겨줍니다!
-        df_k200, df_p, df_s = get_strategy_stocks_k200(m_data, perf_pct=perf_pct, spec_12m=spec_12m)
+        df_korea, df_p, df_s = get_strategy_stocks_korea(m_data, perf_pct=perf_pct, spec_12m=spec_12m)
         
-        neg_1m = (df_k200['1개월(%)'] < 0).sum()
-        neg_3m = (df_k200['3개월(%)'] < 0).sum()
+        neg_1m = (df_korea['1개월(%)'] < 0).sum()
+        neg_3m = (df_korea['3개월(%)'] < 0).sum()
         is_bad_market = (neg_1m >= 100 and neg_3m >= 100)
         is_below_ma = timing_df.loc[base_ym, 'is_below_ma'] if base_ym in timing_df.index else False
         
