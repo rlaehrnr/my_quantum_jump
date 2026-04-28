@@ -36,11 +36,11 @@ if df_master.empty:
 df_master['종목코드'] = df_master['종목코드'].astype(str).str.zfill(6)
 df_master = df_master[df_master['종목코드'].str.endswith('0')].copy()
 
-# 시총 및 숫자 데이터 안전 처리
+# 시총 및 숫자 데이터 안전 처리 (무조건 억 단위 변환되도록 기준치 하향 조정)
 for col in ['시가총액', '종가', '거래량']:
     if col in df_master.columns:
         df_master[col] = pd.to_numeric(df_master[col], errors='coerce').fillna(0)
-if '시가총액' in df_master.columns and df_master['시가총액'].max() > 1000000000:
+if '시가총액' in df_master.columns and df_master['시가총액'].max() > 10000000:
     df_master['시가총액'] = df_master['시가총액'] / 100000000
 
 years_list = sorted(df_master['투자연도'].unique().astype(int))
@@ -233,9 +233,12 @@ with tab2:
         df_daily['종목코드'] = df_daily['종목코드'].astype(str).str.zfill(6)
         b_date_d = df_daily['기준일'].iloc[0] if '기준일' in df_daily.columns else "오늘"
         
+        # 💡 데일리 시총/종가/거래량 억 단위 변환
         for col in ['시가총액', '종가', '거래량']:
             if col in df_daily.columns:
                 df_daily[col] = pd.to_numeric(df_daily[col], errors='coerce').fillna(0)
+        if '시가총액' in df_daily.columns and df_daily['시가총액'].max() > 10000000:
+            df_daily['시가총액'] = df_daily['시가총액'] / 100000000
         
         st.markdown(f"<div style='margin-bottom: 5px; font-size:0.95rem; font-weight:600;'><b>🕒 실시간 데일리 순위</b> <span style='font-size: 0.85rem; color: #9ca3af; font-weight:normal;'>&nbsp;&nbsp;💡 기준일: {b_date_d}</span></div>", unsafe_allow_html=True)
         
@@ -285,7 +288,8 @@ with tab2:
         with c_d2: st.dataframe(df_spec_d.style.apply(apply_k200_styling, highlight_codes=df_spec_d.head(top_n_s)['종목코드'].tolist(), overlap_codes=overlap_d, axis=1), use_container_width=True, hide_index=True, column_order=['통합티커_L', '종목명_L', '시가총액', '종가', '1개월(%)', '12개월(%)'], column_config=daily_cfg)
 
         st.markdown("---")
-        st.subheader("🏆 KOSPI 200 시가총액 순위 (로봇 수집 기준)")
+        # 💡 [변경] 표 제목 로봇수집 기준 -> 기준일 변경
+        st.markdown(f"### 🏆 KOSPI 200 시가총액 순위 <span style='font-size: 0.85rem; color: #9ca3af; font-weight:normal;'>&nbsp;&nbsp;💡 기준일: {b_date_d}</span>", unsafe_allow_html=True)
         cols_d = [c for c in ['통합티커_L', '종목명_L', '시가총액', '종가', '거래량', '1개월(%)', '3개월(%)', '6개월(%)', '12개월(%)'] if c in df_k200_d.columns]
         st.dataframe(df_k200_d.style.apply(apply_k200_styling, axis=1), use_container_width=True, height=600, hide_index=True, column_order=cols_d, column_config=daily_cfg)
     else:
@@ -295,7 +299,7 @@ with tab2:
 # 탭 3: 전략 조합 백테스트
 # ==========================================
 with tab3:
-    st.markdown("<h4 style='margin-top: 5px; margin-bottom: 0px;'>⚙️ 시뮬레이션 설정</h4>", unsafe_allow_html=True)
+    st.markdown("<h4 style='margin:0;'>⚙️ 시뮬레이션 설정</h4>", unsafe_allow_html=True)
     c1, c_ma, c_chk = st.columns([1, 1, 1.5])
     with c1: start_year, end_year = st.slider("📅 테스트 기간", min_y, max_y, (min_y, max_y), key='t3_yr')
     with c_ma: ma_months_t3 = st.slider("📉 마켓타이밍 (개월선)", 1, 12, 6, key='t3_ma')
@@ -333,7 +337,6 @@ with tab3:
             
             st.dataframe(get_styled_stats(pd.DataFrame(stats)), use_container_width=True, hide_index=True)
             
-            # --- [MDD 역대 순위] ---
             st.markdown("#### 📉 MDD 역대 순위 (Top 10)")
             mdd_strat_t3 = st.radio("전략 선택", s_cols, horizontal=True, label_visibility="collapsed", key="mdd_radio_t3")
             df_mdd_t3 = get_mdd_history(df_cum[mdd_strat_t3])
@@ -411,7 +414,6 @@ with tab4:
                 
                 st.dataframe(get_styled_stats(pd.DataFrame(stats_c)), use_container_width=True, hide_index=True)
                 
-                # --- [MDD 역대 순위] ---
                 st.markdown("#### 📉 MDD 역대 순위 (Top 10)")
                 df_mdd_c = get_mdd_history(df_cum_c['커스텀 전략'])
                 try: styled_mdd_c = df_mdd_c.style.map(lambda x: 'color: #1976D2; font-weight:bold;' if '%' in str(x) else '', subset=['MDD'])
