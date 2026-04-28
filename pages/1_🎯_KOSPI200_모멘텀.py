@@ -3,6 +3,7 @@ import pandas as pd
 import plotly.express as px
 from datetime import datetime, timedelta
 import os
+import FinanceDataReader as fdr
 
 st.set_page_config(page_title="KOSPI 200 모멘텀 터미널", layout="wide")
 
@@ -72,7 +73,6 @@ ma_cfg = {
     "base_price": None 
 }
 
-# 💡 월별 상세 탭 컬럼 설정 (시총, 종가 표시)
 main_cfg = {
     "통합티커_L": st.column_config.LinkColumn("티커", display_text=r"#(.+)"), 
     "종목명_L": st.column_config.LinkColumn("종목명", display_text=r"#(.+)"), 
@@ -125,16 +125,20 @@ with tab1:
         cycle_year = get_cycle_year(int(selected_year))
         bad_m_str = ", ".join(f"{m}월" for m in PRESIDENTIAL_DANGEROUS_MONTHS.get(cycle_year, [])) or "없음"
         is_bad_market = (neg_1m_cnt >= 100) and (neg_3m_cnt >= 100)
-        is_below_ma = (kospi_curr > 0) and (kospi_curr < kospi_mas.get(4, 0))
+        
+        # 💡 [변경] 판단 기준을 6개월선으로 수정
+        is_below_ma = (kospi_curr > 0) and (kospi_curr < kospi_mas.get(6, 0))
         status, box_c, text_c = ("🛑 투자 중지", "#FFEBEE", "#C62828") if (is_bad_market or is_below_ma) else ("✅ 투자 진행", "#E8F5E9", "#2E7D32")
-        reason_desc = ("하락장" if is_bad_market else "") + (" + " if is_bad_market and is_below_ma else "") + ("4개월선 이탈" if is_below_ma else "")
+        reason_desc = ("하락장" if is_bad_market else "") + (" + " if is_bad_market and is_below_ma else "") + ("6개월선 이탈" if is_below_ma else "")
 
         col1, col2, col3, col4, col5, col6 = st.columns([0.9, 0.9, 1.0, 1.0, 1.4, 1.6])
         with col1: st.metric("📈 KOSPI 1M", f"{kospi_1m}%")
         with col2: st.metric("📈 KOSPI 3M", f"{kospi_3m}%")
         with col3: st.metric("📉 1개월 하락", f"{neg_1m_cnt}개")
         with col4: st.metric("📉 3개월 하락", f"{neg_3m_cnt}개")
-        with col5: st.markdown(f'<div style="background-color: #f0f2f6; padding: 10px; border-radius: 10px; text-align: center; border: 1px solid #d1d5db; height: 95px; display: flex; flex-direction: column; justify-content: center;"><div style="font-size: 13px; font-weight: bold; color: #333;">🇺🇸대통령 <span style="color:#0047AB;">{cycle_year}년차</span> ({selected_year}년)</div><div style="font-size: 12px; color: #D84315; font-weight:bold;">위험달: {bad_m_str}</div></div>', unsafe_allow_html=True)
+        
+        # 💡 [변경] US대통령 글씨 크기 확대 (13px -> 15px)
+        with col5: st.markdown(f'<div style="background-color: #f0f2f6; padding: 10px; border-radius: 10px; text-align: center; border: 1px solid #d1d5db; height: 95px; display: flex; flex-direction: column; justify-content: center;"><div style="font-size: 15px; font-weight: bold; color: #333;">🇺🇸대통령 <span style="color:#0047AB;">{cycle_year}년차</span> ({selected_year}년)</div><div style="font-size: 12px; color: #D84315; font-weight:bold;">위험달: {bad_m_str}</div></div>', unsafe_allow_html=True)
         with col6: st.markdown(f'<div style="background-color: {box_c}; padding: 10px; border-radius: 10px; text-align: center; border: 1px solid {text_c}; height: 95px; display: flex; flex-direction: column; justify-content: center;"><p style="margin: 0; font-size: 12px; color: {text_c}; font-weight: bold;">최종 판단 ({reason_desc or "안전"})</p><div style="margin: 4px 0 0 0; font-size: 1.5rem; font-weight: 900; color: {text_c};">{status}</div></div>', unsafe_allow_html=True)
         st.markdown("<hr style='margin: 1rem 0;'>", unsafe_allow_html=True)
 
@@ -166,7 +170,6 @@ with tab1:
         overlap_codes = set(df_perf_t1.head(top_n_p)['종목코드']).intersection(set(df_spec_t1.head(top_n_s)['종목코드']))
         
         with c_l:
-            # 💡 전략 추출 표에서는 '종가' 제외 (공간 최적화)
             st.dataframe(df_perf_t1.style.apply(apply_k200_styling, highlight_codes=df_perf_t1.head(top_n_p)['종목코드'].tolist(), overlap_codes=overlap_codes, axis=1), 
                          use_container_width=True, hide_index=True, column_order=['통합티커_L', '종목명_L', '1개월(%)', '3개월(%)', '6개월(%)', '12개월(%)', '이번달수익률'], column_config=main_cfg)
         with c_r:
@@ -175,7 +178,6 @@ with tab1:
 
         st.markdown("---")
         st.subheader("🏆 KOSPI 200 시가총액 순위 (선정일 기준)")
-        # 💡 전체 순위판에는 시총, 종가 표시
         cols_m = [c for c in ['통합티커_L', '종목명_L', '시가총액', '종가', '1개월(%)', '3개월(%)', '6개월(%)', '12개월(%)', '이번달수익률'] if c in df_k200_t1.columns]
         st.dataframe(df_k200_t1.style.apply(apply_k200_styling, axis=1), use_container_width=True, height=600, hide_index=True, column_order=cols_m, column_config=main_cfg)
 
@@ -188,7 +190,6 @@ with tab2:
         df_daily['종목코드'] = df_daily['종목코드'].astype(str).str.zfill(6)
         b_date_d = df_daily['기준일'].iloc[0] if '기준일' in df_daily.columns else "오늘"
         
-        # 💡 데일리 시총/종가/거래량 안전 보정
         for col in ['시가총액', '종가', '거래량']:
             if col in df_daily.columns:
                 df_daily[col] = pd.to_numeric(df_daily[col], errors='coerce').fillna(0)
@@ -206,46 +207,43 @@ with tab2:
         neg_1m_d = (df_k200_d['1개월(%)'] < 0).sum()
         neg_3m_d = (df_k200_d['3개월(%)'] < 0).sum()
         
-        status_d, box_d, text_d = ("🛑 투자 중지", "#FFEBEE", "#C62828") if (neg_1m_d >= 100 and neg_3m_d >= 100 or kospi_curr_d < kospi_mas_d.get(4, 0)) else ("✅ 투자 진행", "#E8F5E9", "#2E7D32")
+        # 💡 [변경] 데일리 탭 판단 기준을 6개월선으로 수정
+        is_below_ma_d = (kospi_curr_d > 0) and (kospi_curr_d < kospi_mas_d.get(6, 0))
+        status_d, box_d, text_d = ("🛑 투자 중지", "#FFEBEE", "#C62828") if (neg_1m_d >= 100 and neg_3m_d >= 100 or is_below_ma_d) else ("✅ 투자 진행", "#E8F5E9", "#2E7D32")
+        reason_desc_d = ("하락장" if (neg_1m_d >= 100 and neg_3m_d >= 100) else "") + (" + " if (neg_1m_d >= 100 and neg_3m_d >= 100) and is_below_ma_d else "") + ("6개월선 이탈" if is_below_ma_d else "")
         
+        # 💡 [변경] 데일리 탭 US대통령 글씨 추가
+        target_year_d = int(b_date_d.split('-')[0])
+        cycle_year_d = get_cycle_year(target_year_d)
+        bad_m_str_d = ", ".join(f"{m}월" for m in PRESIDENTIAL_DANGEROUS_MONTHS.get(cycle_year_d, [])) or "없음"
+
         col1d, col2d, col3d, col4d, col5d, col6d = st.columns([0.9, 0.9, 1.0, 1.0, 1.4, 1.6])
         with col1d: st.metric("📈 KOSPI 1M", f"{kospi_1m_d}%")
         with col2d: st.metric("📈 KOSPI 3M", f"{kospi_3m_d}%")
         with col3d: st.metric("📉 1개월 하락", f"{neg_1m_d}개")
         with col4d: st.metric("📉 3개월 하락", f"{neg_3m_d}개")
-        with col5d: st.markdown(f'<div style="background-color: #f0f2f6; padding: 10px; border-radius: 10px; text-align: center; border: 1px solid #d1d5db; height: 95px; display: flex; flex-direction: column; justify-content: center;"><div style="font-size: 13px; font-weight: bold; color: #333;">🇺🇸 실시간 모니터링</div><div style="font-size: 12px; color: #64748b;">로봇 수집일 기준</div></div>', unsafe_allow_html=True)
-        with col6d: st.markdown(f'<div style="background-color: {box_d}; padding: 10px; border-radius: 10px; text-align: center; border: 1px solid {text_d}; height: 95px; display: flex; flex-direction: column; justify-content: center;"><p style="margin: 0; font-size: 12px; color: {text_d}; font-weight: bold;">오늘의 시장 상태</p><div style="margin: 4px 0 0 0; font-size: 1.5rem; font-weight: 900; color: {text_d};">{status_d}</div></div>', unsafe_allow_html=True)
+        with col5d: st.markdown(f'<div style="background-color: #f0f2f6; padding: 10px; border-radius: 10px; text-align: center; border: 1px solid #d1d5db; height: 95px; display: flex; flex-direction: column; justify-content: center;"><div style="font-size: 15px; font-weight: bold; color: #333;">🇺🇸대통령 <span style="color:#0047AB;">{cycle_year_d}년차</span> ({target_year_d}년)</div><div style="font-size: 12px; color: #D84315; font-weight:bold;">위험달: {bad_m_str_d}</div></div>', unsafe_allow_html=True)
+        with col6d: st.markdown(f'<div style="background-color: {box_d}; padding: 10px; border-radius: 10px; text-align: center; border: 1px solid {text_d}; height: 95px; display: flex; flex-direction: column; justify-content: center;"><p style="margin: 0; font-size: 12px; color: {text_d}; font-weight: bold;">최종 판단 ({reason_desc_d or "안전"})</p><div style="margin: 4px 0 0 0; font-size: 1.5rem; font-weight: 900; color: {text_d};">{status_d}</div></div>', unsafe_allow_html=True)
         st.markdown("<hr style='margin: 1rem 0;'>", unsafe_allow_html=True)
 
         for df in [df_perf_d, df_spec_d, df_k200_d]:
             df['통합티커_L'] = df.apply(lambda r: f"https://finance.naver.com/item/main.naver?code={r['종목코드']}#KOSPI:{r['종목코드']}", axis=1)
             df['종목명_L'] = df.apply(lambda r: f"https://m.stock.naver.com/fchart/domestic/stock/{r['종목코드']}#{r['종목명']}", axis=1)
 
-        # 💡 데일리 탭 전용 컬럼 포맷
-        daily_cfg = {
-            "통합티커_L": st.column_config.LinkColumn("티커", display_text=r"#(.+)"), 
-            "종목명_L": st.column_config.LinkColumn("종목명", display_text=r"#(.+)"), 
-            "시가총액": st.column_config.NumberColumn("시가총액(억)", format="%,.0f"), 
-            "종가": st.column_config.NumberColumn("어제 종가", format="%,.0f"), 
-            "거래량": st.column_config.NumberColumn("어제 거래량", format="%,.0f"), 
-            "1개월(%)": st.column_config.NumberColumn(format="%.1f"), 
-            "3개월(%)": st.column_config.NumberColumn(format="%.1f"), 
-            "6개월(%)": st.column_config.NumberColumn(format="%.1f"), 
-            "12개월(%)": st.column_config.NumberColumn(format="%.1f")
-        }
+        daily_cfg = {"통합티커_L": st.column_config.LinkColumn("티커", display_text=r"#(.+)"), "종목명_L": st.column_config.LinkColumn("종목명", display_text=r"#(.+)"), "시가총액": st.column_config.NumberColumn("시가총액(억)", format="%,.0f"), "종가": st.column_config.NumberColumn("어제 종가", format="%,.0f"), "거래량": st.column_config.NumberColumn("어제 거래량", format="%,.0f"), "1개월(%)": st.column_config.NumberColumn(format="%.1f"), "3개월(%)": st.column_config.NumberColumn(format="%.1f"), "6개월(%)": st.column_config.NumberColumn(format="%.1f"), "12개월(%)": st.column_config.NumberColumn(format="%.1f")}
 
         c_d1, c_d2 = st.columns(2)
         with c_d1:
             col_t1d, col_i1d, col_r1d = st.columns([4, 2, 4])
             with col_t1d: st.markdown(f"<h4 style='margin:0;'>🔥 퍼펙트 상승 <span style='font-size:13px; color:gray;'>({len(df_perf_d)}개)</span></h4>", unsafe_allow_html=True)
             with col_i1d: top_n_pd = st.number_input("pd_n", 1, max(1, len(df_perf_d)), min(5, len(df_perf_d)) if len(df_perf_d)>0 else 1, key="calc_pd", label_visibility="collapsed")
-            with col_r1d: st.markdown(f"<div style='margin-top:8px; font-size:0.85rem; font-weight:bold; color:#475569;'>상위 {top_n_pd}개 선택됨</div>", unsafe_allow_html=True)
+            with col_r1d: st.markdown(f"<div style='margin-top:8px; font-size:0.85rem; font-weight:bold;'>상위 {top_n_pd}개 선택됨</div>", unsafe_allow_html=True)
             
         with c_d2:
             col_t2d, col_i2d, col_r2d = st.columns([4, 2, 4])
             with col_t2d: st.markdown(f"<h4 style='margin:0;'>🐎 달리는 말 <span style='font-size:13px; color:gray;'>({len(df_spec_d)}개)</span></h4>", unsafe_allow_html=True)
             with col_i2d: top_n_sd = st.number_input("sd_n", 1, max(1, len(df_spec_d)), min(5, len(df_spec_d)) if len(df_spec_d)>0 else 1, key="calc_sd", label_visibility="collapsed")
-            with col_r2d: st.markdown(f"<div style='margin-top:8px; font-size:0.85rem; font-weight:bold; color:#475569;'>상위 {top_n_sd}개 선택됨</div>", unsafe_allow_html=True)
+            with col_r2d: st.markdown(f"<div style='margin-top:8px; font-size:0.85rem; font-weight:bold;'>상위 {top_n_sd}개 선택됨</div>", unsafe_allow_html=True)
 
         top_list_p_d = df_perf_d.head(top_n_pd)['종목코드'].tolist() if len(df_perf_d) > 0 else []
         top_list_s_d = df_spec_d.head(top_n_sd)['종목코드'].tolist() if len(df_spec_d) > 0 else []
@@ -268,10 +266,11 @@ with tab3:
     st.markdown("<h4 style='margin-top: 5px; margin-bottom: 0px;'>⚙️ 시뮬레이션 설정</h4>", unsafe_allow_html=True)
     c1, c_ma, c_chk = st.columns([1, 1, 1.5])
     with c1: start_year, end_year = st.slider("📅 테스트 기간", min_y, max_y, (min_y, max_y), key='t3_yr')
-    with c_ma: ma_months_t3 = st.slider("📉 마켓타이밍 (개월선)", 1, 12, 4, key='t3_ma')
+    # 💡 [변경] 마켓타이밍 기본값 6개월
+    with c_ma: ma_months_t3 = st.slider("📉 마켓타이밍 (개월선)", 1, 12, 6, key='t3_ma')
     with c_chk:
         st.markdown("<div style='margin-top: 35px;'></div>", unsafe_allow_html=True)
-        apply_timing = st.checkbox("🛑 마켓타이밍 적용 (개월선 이탈 OR 하락종목 100개↑ 시 현금)", value=True, key='t3_chk')
+        apply_timing = st.checkbox(f"🛑 마켓타이밍 적용 ({ma_months_t3}개월선 이탈 OR 하락종목 100개↑ 시 현금)", value=True, key='t3_chk')
     
     st.markdown("<hr style='margin: 10px 0px;'>", unsafe_allow_html=True)
     c2, c3, c4, c5 = st.columns([1, 1, 1, 1])
@@ -309,8 +308,14 @@ with tab3:
 # 탭 4: 스코어 커스텀 백테스트
 # ==========================================
 with tab4:
-    st.markdown("<h4 style='margin-top: 5px; margin-bottom: 0px;'>⚙️ 스코어 가중치 설정</h4>", unsafe_allow_html=True)
-    apply_timing_c = st.checkbox("🛑 마켓타이밍 적용", value=True, key='t4_chk_main')
+    # 💡 [변경] 마켓타이밍 체크박스를 가중치 설정 제목 옆으로 이동하고 동적으로 표시
+    current_ma_c = st.session_state.get('t4_ma', 6)
+    col_title_c, col_check_c = st.columns([1, 4])
+    with col_title_c:
+        st.markdown("<h4 style='margin-top: 5px; margin-bottom: 0px;'>⚙️ 스코어 가중치 설정</h4>", unsafe_allow_html=True)
+    with col_check_c:
+        st.markdown("<div style='margin-top: 12px;'></div>", unsafe_allow_html=True)
+        apply_timing_c = st.checkbox(f"🛑 마켓타이밍 적용 ({current_ma_c}개월선 이탈 OR 하락종목 100개↑ 시 현금)", value=True, key='t4_chk_main')
     
     with st.form("custom_form", border=False):
         c1, c2, c3, c4, c5 = st.columns([1, 1, 1, 1, 0.8])
@@ -325,7 +330,8 @@ with tab4:
     st.markdown("<hr style='margin: 15px 0px;'>", unsafe_allow_html=True)
     c6, c_ma_c, c7, c8 = st.columns([1, 0.8, 1, 1])
     with c6: start_year_c, end_year_c = st.slider("📅 테스트 기간", min_y, max_y, (min_y, max_y), key='t4_yr')
-    with c_ma_c: ma_months_t4 = st.slider("📉 마켓타이밍", 1, 12, 4, key='t4_ma')
+    # 💡 [변경] 마켓타이밍 기본값 6개월
+    with c_ma_c: ma_months_t4 = st.slider("📉 마켓타이밍", 1, 12, 6, key='t4_ma')
     with c7: custom_pct = st.slider("🏅 상위 %", 5, 50, 30, step=5)
     with c8: rank_c_s, rank_c_e = st.slider("🏅 매수 순위", 1, 30, (1, 10), key='t4_rnk')
 
