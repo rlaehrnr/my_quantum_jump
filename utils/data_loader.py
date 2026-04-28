@@ -1,51 +1,33 @@
-import pandas as pd
-import glob
-import os
 import streamlit as st
+import pandas as pd
+import os
+import glob
 
-@st.cache_data(show_spinner=False)
-def load_archive_data(folder_path="archive_kospi"):
+def get_folder_hash(folder_path):
+    """폴더 내 모든 CSV 파일의 수정 시간을 합산하여 변경 여부를 확인하는 함수"""
+    files = glob.glob(os.path.join(folder_path, "*.csv"))
+    if not files:
+        return 0
+    # 모든 파일의 수정 시간(mtime)을 더해서 반환
+    return sum(os.path.getmtime(f) for f in files)
+
+@st.cache_data(ttl="1h") # 💡 1시간마다 혹은 파일 변경 시 자동으로 갱신
+def load_archive_data(folder_path, folder_hash):
     """
-    지정된 폴더에서 과거 월별 모멘텀 CSV 파일들을 모두 읽어와 하나의 데이터프레임으로 합칩니다.
+    folder_hash가 인자로 들어가기 때문에, 
+    파일 내용이 바뀌어 hash가 변하면 자동으로 캐시를 버리고 새로 로드합니다.
     """
-    files = glob.glob(f"{folder_path}/*.csv")
-    if not files: 
+    all_files = glob.glob(os.path.join(folder_path, "*.csv"))
+    li = []
+    for filename in all_files:
+        try:
+            df = pd.read_csv(filename, index_col=None, header=0, dtype={'종목코드': str})
+            li.append(df)
+        except Exception as e:
+            print(f"Error loading {filename}: {e}")
+            
+    if not li:
         return pd.DataFrame()
         
-    dfs = []
-    for f in files:
-        # utf-8-sig로 읽어서 한글 깨짐 원천 방지
-        df = pd.read_csv(f, encoding='utf-8-sig', dtype={'종목코드': str})
-        df.columns = df.columns.str.replace(' ', '')
-        
-        # 💡 [핵심] 골든 룰 자동 변환 (과거 데이터 호환성 유지)
-        rename_dict = {}
-        if '기준일(월말)' in df.columns: rename_dict['기준일(월말)'] = '종목선정일'
-        elif '기준일' in df.columns: rename_dict['기준일'] = '종목선정일'
-        if '다음달수익률(%)' in df.columns: rename_dict['다음달수익률(%)'] = '이번달수익률'
-        if rename_dict:
-            df.rename(columns=rename_dict, inplace=True)
-            
-        if '종목코드' in df.columns:
-            df['종목코드'] = df['종목코드'].astype(str).str.zfill(6)
-            
-        # 파일명에서 투자월, 투자연도 추출 (예: momentum_kospi_2026_03.csv)
-        fname = os.path.basename(f)
-        try:
-            parts = fname.replace(".csv", "").split("_")
-            year = parts[-2]
-            month = parts[-1]
-            df['투자월'] = f"{year}-{month}"
-            df['투자연도'] = int(year)
-        except Exception as e:
-            pass # 파일명 규칙이 다를 경우 패스
-            
-        # 숫자형 변환 안전 처리
-        for c in ['1개월(%)', '3개월(%)', '6개월(%)', '12개월(%)', '이번달수익률']:
-            if c in df.columns:
-                df[c] = pd.to_numeric(df[c], errors='coerce').fillna(0.0)
-                
-        dfs.append(df)
-        
-    if not dfs: return pd.DataFrame()
-    return pd.concat(dfs, ignore_index=True)
+    frame = pd.concat(li, axis=0, ignore_index=True)
+    return frame
