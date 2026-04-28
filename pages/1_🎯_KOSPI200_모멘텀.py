@@ -13,24 +13,17 @@ from utils.ui_components import inject_custom_css, apply_k200_styling, style_kos
 
 inject_custom_css()
 
-# --- [상단 타이틀] ---
-c_title, c_btn = st.columns([8, 2])
-with c_title:
-    st.markdown('''
-        <div style="margin-bottom: 20px;">
-            <a href="https://m.stock.naver.com/" target="_blank" class="title-link" style="text-decoration: none; color: inherit;">
-                <div style="display: flex; align-items: center; flex-wrap: wrap; gap: 12px;">
-                    <h1 style="margin: 0; padding: 0; font-size: 2.2rem; font-weight: 800; line-height: 1.2; word-break: keep-all;">🎯 KOSPI 200 모멘텀 터미널</h1>
-                    <span style="font-size: 0.95rem; color: #3b82f6; background-color: #eff6ff; padding: 4px 10px; border-radius: 6px; border: 1px solid #bfdbfe; white-space: nowrap;">🔗 네이버 증권 이동</span>
-                </div>
-            </a>
-        </div>
-    ''', unsafe_allow_html=True)
-with c_btn:
-    st.markdown("<div style='margin-top: 15px;'></div>", unsafe_allow_html=True)
-    if st.button("🔄 데이터 새로고침", use_container_width=True):
-        st.cache_data.clear()
-        st.rerun()
+# --- [상단 타이틀 (새로고침 버튼 제거 완료!)] ---
+st.markdown('''
+    <div style="margin-bottom: 20px;">
+        <a href="https://m.stock.naver.com/" target="_blank" class="title-link" style="text-decoration: none; color: inherit;">
+            <div style="display: flex; align-items: center; flex-wrap: wrap; gap: 12px;">
+                <h1 style="margin: 0; padding: 0; font-size: 2.2rem; font-weight: 800; line-height: 1.2; word-break: keep-all;">🎯 KOSPI 200 모멘텀 터미널</h1>
+                <span style="font-size: 0.95rem; color: #3b82f6; background-color: #eff6ff; padding: 4px 10px; border-radius: 6px; border: 1px solid #bfdbfe; white-space: nowrap;">🔗 네이버 증권 이동</span>
+            </div>
+        </a>
+    </div>
+''', unsafe_allow_html=True)
 
 df_master = load_archive_data("archive_kospi")
 f_daily = 'data/momentum_data_daily.csv'
@@ -43,6 +36,7 @@ if df_master.empty:
 df_master['종목코드'] = df_master['종목코드'].astype(str).str.zfill(6)
 df_master = df_master[df_master['종목코드'].str.endswith('0')].copy()
 
+# 시총 및 숫자 데이터 안전 처리
 for col in ['시가총액', '종가', '거래량']:
     if col in df_master.columns:
         df_master[col] = pd.to_numeric(df_master[col], errors='coerce').fillna(0)
@@ -52,9 +46,7 @@ if '시가총액' in df_master.columns and df_master['시가총액'].max() > 100
 years_list = sorted(df_master['투자연도'].unique().astype(int))
 min_y, max_y = min(years_list), max(years_list)
 
-# ==========================================
 # ⚡ [초고속 튜닝] 캐싱(Caching) 헬퍼 함수들
-# ==========================================
 @st.cache_data(show_spinner=False)
 def cached_run_backtest_k200(df, start_year, end_year, ma_months, apply_timing, rank_p, rank_s, perf_pct, spec_12m):
     return run_backtest_k200(df, start_year, end_year, ma_months, apply_timing, rank_p, rank_s, perf_pct=perf_pct, spec_12m=spec_12m)
@@ -202,6 +194,7 @@ with tab1:
     
     if not df_monthly.empty:
         base_date = df_monthly['종목선정일'].iloc[0]
+        
         month_label.markdown(f"<div style='margin-bottom: 5px; font-size:0.95rem; font-weight:600;'><b>🌙 투자 월</b> <span style='font-size: 0.85rem; color: #9ca3af; font-weight:normal;'>&nbsp;&nbsp;💡 선정일: {base_date}</span></div>", unsafe_allow_html=True)
 
         kospi_curr, kospi_mas = get_kospi_ma_all(base_date)
@@ -226,7 +219,6 @@ with tab1:
         with col2: st.metric("📈 KOSPI 3M", f"{kospi_3m}%")
         with col3: st.metric("📉 1개월 하락", f"{neg_1m_cnt}개")
         with col4: st.metric("📉 3개월 하락", f"{neg_3m_cnt}개")
-        
         with col5: st.markdown(f'<div style="background-color: #f0f2f6; padding: 10px; border-radius: 10px; text-align: center; border: 1px solid #d1d5db; height: 95px; display: flex; flex-direction: column; justify-content: center;"><div style="font-size: 12px; font-weight: bold; color: #64748b; margin-bottom: 2px;">🇺🇸대통령 <span style="color:#0047AB;">{cycle_year}년차</span> ({selected_year}년)</div><div style="font-size: 16px; color: #D84315; font-weight:900;">🚨 위험달: {bad_m_str}</div></div>', unsafe_allow_html=True)
         with col6: st.markdown(f'<div style="background-color: {box_c}; padding: 10px; border-radius: 10px; text-align: center; border: 1px solid {text_c}; height: 95px; display: flex; flex-direction: column; justify-content: center;"><p style="margin: 0; font-size: 12px; color: {text_c}; font-weight: bold;">최종 판단 ({reason_desc or "안전"})</p><div style="margin: 4px 0 0 0; font-size: 1.5rem; font-weight: 900; color: {text_c};">{status}</div></div>', unsafe_allow_html=True)
         st.markdown("<hr style='margin: 1rem 0;'>", unsafe_allow_html=True)
@@ -282,6 +274,8 @@ with tab2:
         for col in ['시가총액', '종가', '거래량']:
             if col in df_daily.columns:
                 df_daily[col] = pd.to_numeric(df_daily[col], errors='coerce').fillna(0)
+        if '시가총액' in df_daily.columns and df_daily['시가총액'].max() > 10000000:
+            df_daily['시가총액'] = df_daily['시가총액'] / 100000000
         
         st.markdown(f"<div style='margin-bottom: 5px; font-size:0.95rem; font-weight:600;'><b>🕒 실시간 데일리 순위</b> <span style='font-size: 0.85rem; color: #9ca3af; font-weight:normal;'>&nbsp;&nbsp;💡 기준일: {b_date_d}</span></div>", unsafe_allow_html=True)
         
@@ -357,7 +351,6 @@ with tab3:
     with c5: rank_s_s, rank_s_e = st.slider("🐎 달리는말 순위", 1, 30, (1, 2), key="t3_rs")
 
     with st.spinner("엔진 구동 중..."):
-        # 💡 [캐싱 적용] 탭을 이동해도 엔진이 다시 돌지 않음!
         df_res, df_trades = cached_run_backtest_k200(df_master, start_year, end_year, ma_months_t3, apply_timing, (rank_p_s, rank_p_e), (rank_s_s, rank_s_e), perf_pct_t3, spec_12m_pct_t3)
         if not df_res.empty:
             s_cols_raw = [c for c in df_res.columns if c not in ['투자월', 'invested']]
@@ -427,7 +420,6 @@ with tab4:
     if apply_weights or 'custom_run' not in st.session_state: st.session_state['custom_run'] = True
     if st.session_state.get('custom_run', False):
         with st.spinner("커스텀 시뮬레이션 중..."):
-            # 💡 [캐싱 적용] 빠른 커스텀 백테스트 수행
             df_res_c, df_trades_c = cached_run_custom_backtest(df_master, start_year_c, end_year_c, ma_months_t4, apply_timing_c, w1, w3, w6, w12, custom_pct, rank_c_s, rank_c_e)
 
             if not df_res_c.empty:
@@ -438,7 +430,7 @@ with tab4:
                 col_tc, col_bc = st.columns([8.5, 1.5])
                 with col_tc: st.markdown("#### 📊 전략 핵심 통계")
                 with col_bc: st.download_button("📥 상세내역 다운로드", df_trades_c.to_csv(index=False).encode('utf-8-sig'), "K200_커스텀_백테스트.csv", "text/csv", use_container_width=True)
-                
+
                 final_val_c = df_cum_c['커스텀 전략'].iloc[-1]
                 years_c = len(df_res_c) / 12
                 cagr_c = ((final_val_c/100)**(1/years_c)-1)*100 if final_val_c > 0 else -100
@@ -449,7 +441,9 @@ with tab4:
                 st.markdown("#### 🗓️ 상세 분석 (월별 수익률 히트맵 & MDD)")
                 col_hm_c, col_mdd_c = st.columns([6, 4])
                 with col_hm_c: st.dataframe(get_monthly_heatmap(df_res_c, '커스텀 전략'), use_container_width=True)
-                with col_mdd_c: st.dataframe(get_mdd_history(df_cum_c['커스텀 전략']), use_container_width=True, hide_index=True)
+                with col_mdd_c:
+                    st.markdown("**[커스텀 전략] MDD 역대 순위 (Top 10)**")
+                    st.dataframe(get_mdd_history(df_cum_c['커스텀 전략']), use_container_width=True, hide_index=True)
 
                 st.plotly_chart(px.line(df_cum_c.reset_index(), x='투자월', y='커스텀 전략', log_y=True, title="커스텀 누적 성과"), use_container_width=True)
                 with st.expander("📝 월별 전체 상세 기록 보기"): st.dataframe(df_res_c.drop(columns=['invested']).set_index('투자월').style.format("{:.2f}%"), use_container_width=True)
