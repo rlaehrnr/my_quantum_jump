@@ -56,6 +56,58 @@ def get_styled_stats(df_stats):
     try: return df_stats.style.map(style_stats, subset=['CAGR (연평균)', '총 누적수익률', 'MDD (최대낙폭)'])
     except AttributeError: return df_stats.style.applymap(style_stats, subset=['CAGR (연평균)', '총 누적수익률', 'MDD (최대낙폭)'])
 
+# --- [MDD 역대 순위 계산 헬퍼 함수] ---
+def get_mdd_history(equity_series):
+    df = equity_series.to_frame(name='equity')
+    records = []
+    
+    peak_date = df.index[0]
+    peak_val = df['equity'].iloc[0]
+    trough_date = peak_date
+    trough_val = peak_val
+    in_dd = False
+    
+    for date, row in df.iterrows():
+        val = row['equity']
+        if val >= peak_val:
+            if in_dd:
+                dd_pct = (trough_val / peak_val - 1) * 100
+                if dd_pct < -0.01:
+                    records.append({'MDD': dd_pct, '시작일': peak_date, '최저일': trough_date, '회복일': date})
+                in_dd = False
+            peak_val = val
+            peak_date = date
+            trough_val = val
+            trough_date = date
+        else:
+            in_dd = True
+            if val < trough_val:
+                trough_val = val
+                trough_date = date
+                
+    if in_dd:
+        dd_pct = (trough_val / peak_val - 1) * 100
+        if dd_pct < -0.01:
+            records.append({'MDD': dd_pct, '시작일': peak_date, '최저일': trough_date, '회복일': '진행중'})
+            
+    res_df = pd.DataFrame(records)
+    if res_df.empty:
+        return pd.DataFrame(columns=['MDD', '기간', '회복기간'])
+        
+    res_df = res_df.sort_values('MDD').head(10).reset_index(drop=True)
+    
+    def calc_months(s, e):
+        if e == '진행중': return '진행중'
+        sd = pd.to_datetime(s)
+        ed = pd.to_datetime(e)
+        return f"{(ed.year - sd.year) * 12 + (ed.month - sd.month)}개월"
+        
+    res_df['기간'] = res_df.apply(lambda r: f"{r['시작일']} ~ {r['최저일']}", axis=1)
+    res_df['회복기간'] = res_df.apply(lambda r: calc_months(r['시작일'], r['회복일']), axis=1)
+    res_df['MDD'] = res_df['MDD'].apply(lambda x: f"{x:.2f}%")
+    
+    return res_df[['MDD', '기간', '회복기간']]
+
 ma_cfg = {
     "지수_L": st.column_config.LinkColumn("지수", display_text=r"#(.+)"),
     "현재가_L": st.column_config.LinkColumn("현재가", display_text=r"#(.+)"),
@@ -67,7 +119,6 @@ ma_cfg = {
     "base_price": None 
 }
 
-# 탭 구성 (리밸런싱 탭 삭제됨)
 tab1, tab2, tab3, tab4 = st.tabs(["📅 월별 상세 분석", "🕒 실시간 데일리 순위", "📈 전략 조합 백테스트", "🏅 스코어 커스텀 백테스트"])
 
 # ==========================================
@@ -117,6 +168,7 @@ with tab1:
         with col2: st.metric("📈 KOSPI 3M", f"{kospi_3m}%")
         with col3: st.metric("📉 1개월 하락", f"{neg_1m_cnt}개")
         with col4: st.metric("📉 3개월 하락", f"{neg_3m_cnt}개")
+        
         with col5: st.markdown(f'<div style="background-color: #f0f2f6; padding: 10px; border-radius: 10px; text-align: center; border: 1px solid #d1d5db; height: 95px; display: flex; flex-direction: column; justify-content: center;"><div style="font-size: 12px; font-weight: bold; color: #64748b; margin-bottom: 2px;">🇺🇸대통령 <span style="color:#0047AB;">{cycle_year}년차</span> ({selected_year}년)</div><div style="font-size: 16px; color: #D84315; font-weight:900;">🚨 위험달: {bad_m_str}</div></div>', unsafe_allow_html=True)
         with col6: st.markdown(f'<div style="background-color: {box_c}; padding: 10px; border-radius: 10px; text-align: center; border: 1px solid {text_c}; height: 95px; display: flex; flex-direction: column; justify-content: center;"><p style="margin: 0; font-size: 12px; color: {text_c}; font-weight: bold;">최종 판단 ({reason_desc or "안전"})</p><div style="margin: 4px 0 0 0; font-size: 1.5rem; font-weight: 900; color: {text_c};">{status}</div></div>', unsafe_allow_html=True)
         st.markdown("<hr style='margin: 1rem 0;'>", unsafe_allow_html=True)
@@ -134,7 +186,7 @@ with tab1:
             "3개월(%)": st.column_config.NumberColumn(format="%.1f"), 
             "6개월(%)": st.column_config.NumberColumn(format="%.1f"), 
             "12개월(%)": st.column_config.NumberColumn(format="%.1f"),
-            "이번달수익률": st.column_config.NumberColumn(f"{selected_month}월 수익률(%)", format="%.2f") 
+            "이번달수익률": st.column_config.NumberColumn("이번달 수익률(%)", format="%.2f") 
         }
 
         c_l, c_r = st.columns(2)
@@ -143,7 +195,6 @@ with tab1:
         with c_l:
             col_t1, col_i1, col_r1 = st.columns([4, 2, 4])
             with col_t1: st.markdown(f"<h4 style='margin:0;'>🔥 퍼펙트 상승 <span style='font-size:13px; color:gray;'>({count_p}개)</span></h4>", unsafe_allow_html=True)
-            # 💡 [변경] 기본값 6개로 설정
             with col_i1: top_n_p = st.number_input("p_n", 1, max(1, count_p), min(6, count_p) if count_p > 0 else 1, key="calc_p", label_visibility="collapsed")
             with col_r1:
                 avg_ret_p = df_perf_t1.head(top_n_p)['이번달수익률'].mean() if count_p > 0 else 0
@@ -153,7 +204,6 @@ with tab1:
         with c_r:
             col_t2, col_i2, col_r2 = st.columns([4, 2, 4])
             with col_t2: st.markdown(f"<h4 style='margin:0;'>🐎 달리는 말 <span style='font-size:13px; color:gray;'>({count_s}개)</span></h4>", unsafe_allow_html=True)
-            # 💡 [변경] 기본값 2개로 설정
             with col_i2: top_n_s = st.number_input("s_n", 1, max(1, count_s), min(2, count_s) if count_s > 0 else 1, key="calc_s", label_visibility="collapsed")
             with col_r2:
                 avg_ret_s = df_spec_t1.head(top_n_s)['이번달수익률'].mean() if count_s > 0 else 0
@@ -170,7 +220,6 @@ with tab1:
                          use_container_width=True, hide_index=True, column_order=['통합티커_L', '종목명_L', '1개월(%)', '12개월(%)', '이번달수익률'], column_config=main_cfg)
 
         st.markdown("---")
-        # 💡 [변경] 선정일 직접 작게 표시
         st.markdown(f"### 🏆 KOSPI 200 시가총액 순위 <span style='font-size: 0.85rem; color: #9ca3af; font-weight:normal;'>&nbsp;&nbsp;💡 선정일: {base_date}</span>", unsafe_allow_html=True)
         cols_m = [c for c in ['통합티커_L', '종목명_L', '시가총액', '종가', '1개월(%)', '3개월(%)', '6개월(%)', '12개월(%)', '이번달수익률'] if c in df_k200_t1.columns]
         st.dataframe(df_k200_t1.style.apply(apply_k200_styling, axis=1), use_container_width=True, height=600, hide_index=True, column_order=cols_m, column_config=main_cfg)
@@ -213,7 +262,7 @@ with tab2:
         with col3d: st.metric("📉 1개월 하락", f"{neg_1m_d}개")
         with col4d: st.metric("📉 3개월 하락", f"{neg_3m_d}개")
         with col5d: st.markdown(f'<div style="background-color: #f0f2f6; padding: 10px; border-radius: 10px; text-align: center; border: 1px solid #d1d5db; height: 95px; display: flex; flex-direction: column; justify-content: center;"><div style="font-size: 12px; font-weight: bold; color: #64748b; margin-bottom: 2px;">🇺🇸대통령 <span style="color:#0047AB;">{cycle_year_d}년차</span> ({target_year_d}년)</div><div style="font-size: 16px; color: #D84315; font-weight:900;">🚨 위험달: {bad_m_str_d}</div></div>', unsafe_allow_html=True)
-        with col6d: st.markdown(f'<div style="background-color: {box_d}; padding: 10px; border-radius: 10px; text-align: center; border: 1px solid {text_c}; height: 95px; display: flex; flex-direction: column; justify-content: center;"><p style="margin: 0; font-size: 12px; color: {text_d}; font-weight: bold;">오늘의 시장 상태</p><div style="margin: 4px 0 0 0; font-size: 1.5rem; font-weight: 900; color: {text_d};">{status_d}</div></div>', unsafe_allow_html=True)
+        with col6d: st.markdown(f'<div style="background-color: {box_d}; padding: 10px; border-radius: 10px; text-align: center; border: 1px solid {text_d}; height: 95px; display: flex; flex-direction: column; justify-content: center;"><p style="margin: 0; font-size: 12px; color: {text_d}; font-weight: bold;">오늘의 시장 상태</p><div style="margin: 4px 0 0 0; font-size: 1.5rem; font-weight: 900; color: {text_d};">{status_d}</div></div>', unsafe_allow_html=True)
         st.markdown("<hr style='margin: 1rem 0;'>", unsafe_allow_html=True)
 
         for df in [df_perf_d, df_spec_d, df_k200_d]:
@@ -222,7 +271,6 @@ with tab2:
 
         daily_cfg = {"통합티커_L": st.column_config.LinkColumn("티커", display_text=r"#(.+)"), "종목명_L": st.column_config.LinkColumn("종목명", display_text=r"#(.+)"), "시가총액": st.column_config.NumberColumn("시가총액(억)", format="%,.0f"), "종가": st.column_config.NumberColumn("어제 종가", format="%,.0f"), "거래량": st.column_config.NumberColumn("어제 거래량", format="%,.0f"), "1개월(%)": st.column_config.NumberColumn(format="%.1f"), "3개월(%)": st.column_config.NumberColumn(format="%.1f"), "6개월(%)": st.column_config.NumberColumn(format="%.1f"), "12개월(%)": st.column_config.NumberColumn(format="%.1f")}
 
-        # 💡 [동기화] 월간 탭에서 입력한 top_n_p, top_n_s 값을 그대로 사용하여 색칠만 반영
         c_d1, c_d2 = st.columns(2)
         with c_d1:
             st.markdown(f"<h4 style='margin:0;'>🔥 퍼펙트 상승 <span style='font-size:13px; color:gray;'>({len(df_perf_d)}개)</span></h4>", unsafe_allow_html=True)
@@ -284,6 +332,15 @@ with tab3:
                 stats.append({"전략명": col, "CAGR (연평균)": f"{cagr:.1f}%", "총 누적수익률": f"{final_val-100:,.1f}%", "MDD (최대낙폭)": f"{mdd:.1f}%", "투자월 비율": f"{(df_res['invested'].sum()/len(df_res))*100:.1f}%", "월별 승률": f"{win_rate:.1f}%", "평균 수익률": f"{df_res.loc[df_res['invested'], col].mean():.2f}%" if df_res['invested'].any() else "0.00%"})
             
             st.dataframe(get_styled_stats(pd.DataFrame(stats)), use_container_width=True, hide_index=True)
+            
+            # --- [MDD 역대 순위] ---
+            st.markdown("#### 📉 MDD 역대 순위 (Top 10)")
+            mdd_strat_t3 = st.radio("전략 선택", s_cols, horizontal=True, label_visibility="collapsed", key="mdd_radio_t3")
+            df_mdd_t3 = get_mdd_history(df_cum[mdd_strat_t3])
+            try: styled_mdd_t3 = df_mdd_t3.style.map(lambda x: 'color: #1976D2; font-weight:bold;' if '%' in str(x) else '', subset=['MDD'])
+            except AttributeError: styled_mdd_t3 = df_mdd_t3.style.applymap(lambda x: 'color: #1976D2; font-weight:bold;' if '%' in str(x) else '', subset=['MDD'])
+            st.dataframe(styled_mdd_t3, use_container_width=True, hide_index=True)
+            
             st.plotly_chart(px.line(df_cum.reset_index().melt(id_vars='투자월'), x='투자월', y='value', color='variable', log_y=True, title="누적 자산 성장 곡선 (Log Scale)"), use_container_width=True)
             with st.expander("📝 월별 상세 기록 보기"): st.dataframe(df_res.drop(columns=['invested']).set_index('투자월').style.format("{:.2f}%"), use_container_width=True)
 
@@ -353,5 +410,13 @@ with tab4:
                 stats_c = [{"전략명": "커스텀 스코어", "CAGR (연평균)": f"{cagr_c:.1f}%", "총 누적수익률": f"{final_val_c-100:,.1f}%", "MDD (최대낙폭)": f"{mdd_c:.1f}%", "투자월 비율": f"{(df_res_c['invested'].sum()/len(df_res_c))*100:.1f}%", "월별 승률": f"{(df_res_c.loc[df_res_c['invested'], '커스텀 전략']>0).mean()*100:.1f}%" if df_res_c['invested'].any() else "0.0%", "평균 수익률": f"{df_res_c.loc[df_res_c['invested'], '커스텀 전략'].mean():.2f}%" if df_res_c['invested'].any() else "0.00%"}]
                 
                 st.dataframe(get_styled_stats(pd.DataFrame(stats_c)), use_container_width=True, hide_index=True)
+                
+                # --- [MDD 역대 순위] ---
+                st.markdown("#### 📉 MDD 역대 순위 (Top 10)")
+                df_mdd_c = get_mdd_history(df_cum_c['커스텀 전략'])
+                try: styled_mdd_c = df_mdd_c.style.map(lambda x: 'color: #1976D2; font-weight:bold;' if '%' in str(x) else '', subset=['MDD'])
+                except AttributeError: styled_mdd_c = df_mdd_c.style.applymap(lambda x: 'color: #1976D2; font-weight:bold;' if '%' in str(x) else '', subset=['MDD'])
+                st.dataframe(styled_mdd_c, use_container_width=True, hide_index=True)
+
                 st.plotly_chart(px.line(df_cum_c.reset_index(), x='투자월', y='커스텀 전략', log_y=True, title="커스텀 누적 성과"), use_container_width=True)
                 with st.expander("📝 월별 상세 기록 보기"): st.dataframe(df_res_c.drop(columns=['invested']).set_index('투자월').style.format("{:.2f}%"), use_container_width=True)
