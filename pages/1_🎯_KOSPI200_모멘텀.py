@@ -13,23 +13,17 @@ from utils.ui_components import inject_custom_css, apply_k200_styling, style_kos
 
 inject_custom_css()
 
-c_title, c_btn = st.columns([8, 2])
-with c_title:
-    st.markdown('''
-        <div style="margin-bottom: 20px;">
-            <a href="https://m.stock.naver.com/" target="_blank" class="title-link" style="text-decoration: none; color: inherit;">
-                <div style="display: flex; align-items: center; flex-wrap: wrap; gap: 12px;">
-                    <h1 style="margin: 0; padding: 0; font-size: 2.2rem; font-weight: 800; line-height: 1.2; word-break: keep-all;">🎯 KOSPI 200 모멘텀 터미널</h1>
-                    <span style="font-size: 0.95rem; color: #3b82f6; background-color: #eff6ff; padding: 4px 10px; border-radius: 6px; border: 1px solid #bfdbfe; white-space: nowrap;">🔗 네이버 증권 이동</span>
-                </div>
-            </a>
-        </div>
-    ''', unsafe_allow_html=True)
-with c_btn:
-    st.markdown("<div style='margin-top: 15px;'></div>", unsafe_allow_html=True)
-    if st.button("🔄 데이터 새로고침", use_container_width=True):
-        st.cache_data.clear()
-        st.rerun()
+# --- [상단 타이틀 (새로고침 버튼 제거)] ---
+st.markdown('''
+    <div style="margin-bottom: 20px;">
+        <a href="https://m.stock.naver.com/" target="_blank" class="title-link" style="text-decoration: none; color: inherit;">
+            <div style="display: flex; align-items: center; flex-wrap: wrap; gap: 12px;">
+                <h1 style="margin: 0; padding: 0; font-size: 2.2rem; font-weight: 800; line-height: 1.2; word-break: keep-all;">🎯 KOSPI 200 모멘텀 터미널</h1>
+                <span style="font-size: 0.95rem; color: #3b82f6; background-color: #eff6ff; padding: 4px 10px; border-radius: 6px; border: 1px solid #bfdbfe; white-space: nowrap;">🔗 네이버 증권 이동</span>
+            </div>
+        </a>
+    </div>
+''', unsafe_allow_html=True)
 
 df_master = load_archive_data("archive_kospi")
 f_daily = 'data/momentum_data_daily.csv'
@@ -85,7 +79,8 @@ main_cfg = {
     "이번달수익률": st.column_config.NumberColumn("이번달 수익률(%)", format="%.2f") 
 }
 
-tab1, tab2, tab3, tab4 = st.tabs(["📅 월별 상세 분석", "🕒 실시간 데일리 순위", "📈 전략 조합 백테스트", "🏅 스코어 커스텀 백테스트"])
+# 💡 [신규] 탭 구조 업데이트 (리밸런싱 탭 3번째 배치)
+tab1, tab2, tab3, tab4, tab5 = st.tabs(["📅 월별 상세 분석", "🕒 실시간 데일리 순위", "⚖️ 내 포트폴리오 리밸런싱", "📈 전략 조합 백테스트", "🏅 스코어 커스텀 백테스트"])
 
 # ==========================================
 # 탭 1: 월별 상세 분석
@@ -126,7 +121,7 @@ with tab1:
         bad_m_str = ", ".join(f"{m}월" for m in PRESIDENTIAL_DANGEROUS_MONTHS.get(cycle_year, [])) or "없음"
         is_bad_market = (neg_1m_cnt >= 100) and (neg_3m_cnt >= 100)
         
-        # 💡 [변경] 판단 기준을 6개월선으로 수정
+        # 6개월선 기준
         is_below_ma = (kospi_curr > 0) and (kospi_curr < kospi_mas.get(6, 0))
         status, box_c, text_c = ("🛑 투자 중지", "#FFEBEE", "#C62828") if (is_bad_market or is_below_ma) else ("✅ 투자 진행", "#E8F5E9", "#2E7D32")
         reason_desc = ("하락장" if is_bad_market else "") + (" + " if is_bad_market and is_below_ma else "") + ("6개월선 이탈" if is_below_ma else "")
@@ -137,8 +132,8 @@ with tab1:
         with col3: st.metric("📉 1개월 하락", f"{neg_1m_cnt}개")
         with col4: st.metric("📉 3개월 하락", f"{neg_3m_cnt}개")
         
-        # 💡 [변경] US대통령 글씨 크기 확대 (13px -> 15px)
-        with col5: st.markdown(f'<div style="background-color: #f0f2f6; padding: 10px; border-radius: 10px; text-align: center; border: 1px solid #d1d5db; height: 95px; display: flex; flex-direction: column; justify-content: center;"><div style="font-size: 15px; font-weight: bold; color: #333;">🇺🇸대통령 <span style="color:#0047AB;">{cycle_year}년차</span> ({selected_year}년)</div><div style="font-size: 12px; color: #D84315; font-weight:bold;">위험달: {bad_m_str}</div></div>', unsafe_allow_html=True)
+        # 💡 [디자인 수정] 위험달 폰트를 눈에 확 띄게 키움
+        with col5: st.markdown(f'<div style="background-color: #f0f2f6; padding: 10px; border-radius: 10px; text-align: center; border: 1px solid #d1d5db; height: 95px; display: flex; flex-direction: column; justify-content: center;"><div style="font-size: 12px; font-weight: bold; color: #64748b; margin-bottom: 2px;">🇺🇸대통령 <span style="color:#0047AB;">{cycle_year}년차</span> ({selected_year}년)</div><div style="font-size: 16px; color: #D84315; font-weight:900;">🚨 위험달: {bad_m_str}</div></div>', unsafe_allow_html=True)
         with col6: st.markdown(f'<div style="background-color: {box_c}; padding: 10px; border-radius: 10px; text-align: center; border: 1px solid {text_c}; height: 95px; display: flex; flex-direction: column; justify-content: center;"><p style="margin: 0; font-size: 12px; color: {text_c}; font-weight: bold;">최종 판단 ({reason_desc or "안전"})</p><div style="margin: 4px 0 0 0; font-size: 1.5rem; font-weight: 900; color: {text_c};">{status}</div></div>', unsafe_allow_html=True)
         st.markdown("<hr style='margin: 1rem 0;'>", unsafe_allow_html=True)
 
@@ -152,7 +147,7 @@ with tab1:
         with c_l:
             col_t1, col_i1, col_r1 = st.columns([4, 2, 4])
             with col_t1: st.markdown(f"<h4 style='margin:0;'>🔥 퍼펙트 상승 <span style='font-size:13px; color:gray;'>({count_p}개)</span></h4>", unsafe_allow_html=True)
-            with col_i1: top_n_p = st.number_input("p_n", 1, max(1, count_p), min(5, count_p) if count_p > 0 else 1, key="calc_p", label_visibility="collapsed")
+            with col_i1: top_n_p = st.number_input("p_n", 1, max(1, count_p), min(6, count_p) if count_p > 0 else 1, key="calc_p", label_visibility="collapsed")
             with col_r1:
                 avg_ret_p = df_perf_t1.head(top_n_p)['이번달수익률'].mean() if count_p > 0 else 0
                 st.markdown(f"<div style='margin-top:8px; font-size:0.85rem; font-weight:bold;'>상위 {top_n_p}개 평균: <span style='color:{'#D32F2F' if avg_ret_p>0 else '#1976D2'};'>{avg_ret_p:+.2f}%</span></div>", unsafe_allow_html=True)
@@ -161,7 +156,7 @@ with tab1:
         with c_r:
             col_t2, col_i2, col_r2 = st.columns([4, 2, 4])
             with col_t2: st.markdown(f"<h4 style='margin:0;'>🐎 달리는 말 <span style='font-size:13px; color:gray;'>({count_s}개)</span></h4>", unsafe_allow_html=True)
-            with col_i2: top_n_s = st.number_input("s_n", 1, max(1, count_s), min(5, count_s) if count_s > 0 else 1, key="calc_s", label_visibility="collapsed")
+            with col_i2: top_n_s = st.number_input("s_n", 1, max(1, count_s), min(2, count_s) if count_s > 0 else 1, key="calc_s", label_visibility="collapsed")
             with col_r2:
                 avg_ret_s = df_spec_t1.head(top_n_s)['이번달수익률'].mean() if count_s > 0 else 0
                 st.markdown(f"<div style='margin-top:8px; font-size:0.85rem; font-weight:bold;'>상위 {top_n_s}개 평균: <span style='color:{'#D32F2F' if avg_ret_s>0 else '#1976D2'};'>{avg_ret_s:+.2f}%</span></div>", unsafe_allow_html=True)
@@ -207,12 +202,11 @@ with tab2:
         neg_1m_d = (df_k200_d['1개월(%)'] < 0).sum()
         neg_3m_d = (df_k200_d['3개월(%)'] < 0).sum()
         
-        # 💡 [변경] 데일리 탭 판단 기준을 6개월선으로 수정
+        # 6개월선 기준
         is_below_ma_d = (kospi_curr_d > 0) and (kospi_curr_d < kospi_mas_d.get(6, 0))
         status_d, box_d, text_d = ("🛑 투자 중지", "#FFEBEE", "#C62828") if (neg_1m_d >= 100 and neg_3m_d >= 100 or is_below_ma_d) else ("✅ 투자 진행", "#E8F5E9", "#2E7D32")
         reason_desc_d = ("하락장" if (neg_1m_d >= 100 and neg_3m_d >= 100) else "") + (" + " if (neg_1m_d >= 100 and neg_3m_d >= 100) and is_below_ma_d else "") + ("6개월선 이탈" if is_below_ma_d else "")
         
-        # 💡 [변경] 데일리 탭 US대통령 글씨 추가
         target_year_d = int(b_date_d.split('-')[0])
         cycle_year_d = get_cycle_year(target_year_d)
         bad_m_str_d = ", ".join(f"{m}월" for m in PRESIDENTIAL_DANGEROUS_MONTHS.get(cycle_year_d, [])) or "없음"
@@ -222,7 +216,9 @@ with tab2:
         with col2d: st.metric("📈 KOSPI 3M", f"{kospi_3m_d}%")
         with col3d: st.metric("📉 1개월 하락", f"{neg_1m_d}개")
         with col4d: st.metric("📉 3개월 하락", f"{neg_3m_d}개")
-        with col5d: st.markdown(f'<div style="background-color: #f0f2f6; padding: 10px; border-radius: 10px; text-align: center; border: 1px solid #d1d5db; height: 95px; display: flex; flex-direction: column; justify-content: center;"><div style="font-size: 15px; font-weight: bold; color: #333;">🇺🇸대통령 <span style="color:#0047AB;">{cycle_year_d}년차</span> ({target_year_d}년)</div><div style="font-size: 12px; color: #D84315; font-weight:bold;">위험달: {bad_m_str_d}</div></div>', unsafe_allow_html=True)
+        
+        # 💡 [디자인 수정] 위험달 폰트를 눈에 확 띄게 키움
+        with col5d: st.markdown(f'<div style="background-color: #f0f2f6; padding: 10px; border-radius: 10px; text-align: center; border: 1px solid #d1d5db; height: 95px; display: flex; flex-direction: column; justify-content: center;"><div style="font-size: 12px; font-weight: bold; color: #64748b; margin-bottom: 2px;">🇺🇸대통령 <span style="color:#0047AB;">{cycle_year_d}년차</span> ({target_year_d}년)</div><div style="font-size: 16px; color: #D84315; font-weight:900;">🚨 위험달: {bad_m_str_d}</div></div>', unsafe_allow_html=True)
         with col6d: st.markdown(f'<div style="background-color: {box_d}; padding: 10px; border-radius: 10px; text-align: center; border: 1px solid {text_d}; height: 95px; display: flex; flex-direction: column; justify-content: center;"><p style="margin: 0; font-size: 12px; color: {text_d}; font-weight: bold;">최종 판단 ({reason_desc_d or "안전"})</p><div style="margin: 4px 0 0 0; font-size: 1.5rem; font-weight: 900; color: {text_d};">{status_d}</div></div>', unsafe_allow_html=True)
         st.markdown("<hr style='margin: 1rem 0;'>", unsafe_allow_html=True)
 
@@ -236,21 +232,18 @@ with tab2:
         with c_d1:
             col_t1d, col_i1d, col_r1d = st.columns([4, 2, 4])
             with col_t1d: st.markdown(f"<h4 style='margin:0;'>🔥 퍼펙트 상승 <span style='font-size:13px; color:gray;'>({len(df_perf_d)}개)</span></h4>", unsafe_allow_html=True)
-            with col_i1d: top_n_pd = st.number_input("pd_n", 1, max(1, len(df_perf_d)), min(5, len(df_perf_d)) if len(df_perf_d)>0 else 1, key="calc_pd", label_visibility="collapsed")
-            with col_r1d: st.markdown(f"<div style='margin-top:8px; font-size:0.85rem; font-weight:bold;'>상위 {top_n_pd}개 선택됨</div>", unsafe_allow_html=True)
+            with col_i1d: top_n_pd = st.number_input("pd_n", 1, max(1, len(df_perf_d)), min(6, len(df_perf_d)) if len(df_perf_d)>0 else 1, key="calc_pd", label_visibility="collapsed")
+            with col_r1d: st.markdown(f"<div style='margin-top:8px; font-size:0.85rem; font-weight:bold; color:#475569;'>상위 {top_n_pd}개 선택됨</div>", unsafe_allow_html=True)
             
         with c_d2:
             col_t2d, col_i2d, col_r2d = st.columns([4, 2, 4])
             with col_t2d: st.markdown(f"<h4 style='margin:0;'>🐎 달리는 말 <span style='font-size:13px; color:gray;'>({len(df_spec_d)}개)</span></h4>", unsafe_allow_html=True)
-            with col_i2d: top_n_sd = st.number_input("sd_n", 1, max(1, len(df_spec_d)), min(5, len(df_spec_d)) if len(df_spec_d)>0 else 1, key="calc_sd", label_visibility="collapsed")
-            with col_r2d: st.markdown(f"<div style='margin-top:8px; font-size:0.85rem; font-weight:bold;'>상위 {top_n_sd}개 선택됨</div>", unsafe_allow_html=True)
+            with col_i2d: top_n_sd = st.number_input("sd_n", 1, max(1, len(df_spec_d)), min(2, len(df_spec_d)) if len(df_spec_d)>0 else 1, key="calc_sd", label_visibility="collapsed")
+            with col_r2d: st.markdown(f"<div style='margin-top:8px; font-size:0.85rem; font-weight:bold; color:#475569;'>상위 {top_n_sd}개 선택됨</div>", unsafe_allow_html=True)
 
-        top_list_p_d = df_perf_d.head(top_n_pd)['종목코드'].tolist() if len(df_perf_d) > 0 else []
-        top_list_s_d = df_spec_d.head(top_n_sd)['종목코드'].tolist() if len(df_spec_d) > 0 else []
-        overlap_d = set(top_list_p_d).intersection(set(top_list_s_d))
-
-        with c_d1: st.dataframe(df_perf_d.style.apply(apply_k200_styling, highlight_codes=top_list_p_d, overlap_codes=overlap_d, axis=1), use_container_width=True, hide_index=True, column_order=['통합티커_L', '종목명_L', '1개월(%)', '3개월(%)', '6개월(%)', '12개월(%)'], column_config=daily_cfg)
-        with c_d2: st.dataframe(df_spec_d.style.apply(apply_k200_styling, highlight_codes=top_list_s_d, overlap_codes=overlap_d, axis=1), use_container_width=True, hide_index=True, column_order=['통합티커_L', '종목명_L', '1개월(%)', '12개월(%)'], column_config=daily_cfg)
+        overlap_d = set(df_perf_d.head(top_n_pd)['종목코드']).intersection(set(df_spec_d.head(top_n_sd)['종목코드']))
+        with c_d1: st.dataframe(df_perf_d.style.apply(apply_k200_styling, highlight_codes=df_perf_d.head(top_n_pd)['종목코드'].tolist(), overlap_codes=overlap_d, axis=1), use_container_width=True, hide_index=True, column_order=['통합티커_L', '종목명_L', '시가총액', '종가', '1개월(%)', '3개월(%)', '6개월(%)', '12개월(%)'], column_config=daily_cfg)
+        with c_d2: st.dataframe(df_spec_d.style.apply(apply_k200_styling, highlight_codes=df_spec_d.head(top_n_sd)['종목코드'].tolist(), overlap_codes=overlap_d, axis=1), use_container_width=True, hide_index=True, column_order=['통합티커_L', '종목명_L', '시가총액', '종가', '1개월(%)', '12개월(%)'], column_config=daily_cfg)
 
         st.markdown("---")
         st.subheader("🏆 KOSPI 200 시가총액 순위 (로봇 수집 기준)")
@@ -260,13 +253,112 @@ with tab2:
         st.info("데일리 데이터 파일이 아직 생성되지 않았습니다.")
 
 # ==========================================
-# 탭 3: 전략 조합 백테스트
+# 탭 3: 💡 내 포트폴리오 리밸런싱 (신설)
 # ==========================================
 with tab3:
+    st.markdown("<h4 style='margin-top: 5px; margin-bottom: 0px;'>⚖️ 내 포트폴리오 리밸런싱 계산기</h4>", unsafe_allow_html=True)
+    st.markdown("<p style='color: #64748b; font-size: 0.9rem;'>보유 수량과 목표 비중을 입력하면 매매해야 할 정확한 수량을 알려줍니다. 데이터는 브라우저를 꺼도 저장됩니다.</p>", unsafe_allow_html=True)
+    
+    port_file = 'data/my_portfolio.csv'
+    if os.path.exists(port_file):
+        df_port = pd.read_csv(port_file)
+    else:
+        df_port = pd.DataFrame([{"종목명": "", "현재 보유수량": 0, "목표 비중(%)": 0.0} for _ in range(10)])
+        
+    # 가격 참조 데이터프레임 설정 (데일리 최신 데이터 우선, 없으면 월간 최신 데이터)
+    if 'df_k200_d' in locals() and not df_k200_d.empty: ref_df = df_k200_d
+    elif 'df_k200_t1' in locals() and not df_k200_t1.empty: ref_df = df_k200_t1
+    else: ref_df = pd.DataFrame()
+
+    if not ref_df.empty:
+        price_map = dict(zip(ref_df['종목명'], ref_df['종가']))
+        k200_names = [""] + sorted(ref_df['종목명'].dropna().unique().tolist())
+        
+        c_cash, c_blank = st.columns([3, 7])
+        with c_cash:
+            current_cash = st.number_input("💵 계좌 내 여유 현금 (원)", value=0, step=1000000)
+            
+        st.markdown("##### 📝 편입 종목 및 비중 입력")
+        edited_port = st.data_editor(
+            df_port,
+            column_config={
+                "종목명": st.column_config.SelectboxColumn("종목명 (선택)", options=k200_names, required=True),
+                "현재 보유수량": st.column_config.NumberColumn("현재 보유수량 (주)", min_value=0, step=1),
+                "목표 비중(%)": st.column_config.NumberColumn("목표 비중 (%)", min_value=0.0, max_value=100.0, step=1.0)
+            },
+            num_rows="dynamic",
+            use_container_width=True
+        )
+        
+        if st.button("💾 입력 내용 영구 저장", use_container_width=True):
+            os.makedirs('data', exist_ok=True)
+            edited_port.to_csv(port_file, index=False, encoding='utf-8-sig')
+            st.success("데이터가 안전하게 저장되었습니다!")
+            
+        st.markdown("---")
+        st.markdown("##### 📊 리밸런싱 실행 결과")
+        
+        # 입력된 종목만 필터링하여 계산
+        calc_df = edited_port[edited_port['종목명'].str.strip() != ""].copy()
+        calc_df = calc_df.dropna(subset=['종목명'])
+        
+        if not calc_df.empty:
+            calc_df['현재가'] = calc_df['종목명'].map(price_map).fillna(0).astype(int)
+            calc_df['현재 평가금액'] = calc_df['현재 보유수량'] * calc_df['현재가']
+            
+            total_stock_val = calc_df['현재 평가금액'].sum()
+            total_asset = total_stock_val + current_cash
+            
+            calc_df['목표 평가금액'] = (total_asset * (calc_df['목표 비중(%)'] / 100)).astype(int)
+            calc_df['차액'] = calc_df['목표 평가금액'] - calc_df['현재 평가금액']
+            
+            # 주식은 소수점 매매가 안되므로 반올림 처리
+            calc_df['필요 매매수량'] = (calc_df['차액'] / calc_df['현재가']).round().fillna(0).astype(int)
+            calc_df['예상 체결금액'] = calc_df['필요 매매수량'] * calc_df['현재가']
+            
+            calc_df['매매 구분'] = calc_df['필요 매매수량'].apply(lambda x: "🔴 매수" if x > 0 else ("🔵 매도" if x < 0 else "⚪ 유지"))
+            
+            res_cols = ['종목명', '현재가', '현재 보유수량', '현재 평가금액', '목표 비중(%)', '목표 평가금액', '매매 구분', '필요 매매수량', '예상 체결금액']
+            res_display = calc_df[res_cols].copy()
+            
+            # 표 색상 스타일링
+            def style_rebalance(row):
+                styles = [''] * len(row)
+                action = row['매매 구분']
+                if '매수' in action:
+                    for i, col in enumerate(row.index):
+                        if col in ['매매 구분', '필요 매매수량', '예상 체결금액']: styles[i] = 'color: #D32F2F; font-weight: bold; background-color: #FFEBEE;'
+                elif '매도' in action:
+                    for i, col in enumerate(row.index):
+                        if col in ['매매 구분', '필요 매매수량', '예상 체결금액']: styles[i] = 'color: #1976D2; font-weight: bold; background-color: #E3F2FD;'
+                return styles
+            
+            st.dataframe(
+                res_display.style.apply(style_rebalance, axis=1).format({
+                    "현재가": "{:,.0f}", "현재 평가금액": "{:,.0f}", "목표 평가금액": "{:,.0f}", "예상 체결금액": "{:,.0f}"
+                }),
+                use_container_width=True, hide_index=True
+            )
+            
+            # 요약 지표
+            c_sum1, c_sum2, c_sum3 = st.columns(3)
+            with c_sum1: st.info(f"💰 포트폴리오 총 자산 (현금포함): **{total_asset:,.0f} 원**")
+            with c_sum2: st.warning(f"🔴 이번 달 총 매수 금액: **{res_display[res_display['필요 매매수량'] > 0]['예상 체결금액'].sum():,.0f} 원**")
+            with c_sum3: st.success(f"🔵 이번 달 총 매도 금액: **{abs(res_display[res_display['필요 매매수량'] < 0]['예상 체결금액'].sum()):,.0f} 원**")
+            
+            weight_sum = calc_df['목표 비중(%)'].sum()
+            if abs(weight_sum - 100.0) > 0.1:
+                st.error(f"⚠️ 현재 목표 비중의 합이 **{weight_sum}%** 입니다. 정확한 리밸런싱을 위해 합이 100%가 되도록 조정해 주세요.")
+    else:
+        st.warning("가격 데이터를 불러올 수 없어 계산기를 실행할 수 없습니다.")
+
+# ==========================================
+# 탭 4: 전략 조합 백테스트
+# ==========================================
+with tab4:
     st.markdown("<h4 style='margin-top: 5px; margin-bottom: 0px;'>⚙️ 시뮬레이션 설정</h4>", unsafe_allow_html=True)
     c1, c_ma, c_chk = st.columns([1, 1, 1.5])
     with c1: start_year, end_year = st.slider("📅 테스트 기간", min_y, max_y, (min_y, max_y), key='t3_yr')
-    # 💡 [변경] 마켓타이밍 기본값 6개월
     with c_ma: ma_months_t3 = st.slider("📉 마켓타이밍 (개월선)", 1, 12, 6, key='t3_ma')
     with c_chk:
         st.markdown("<div style='margin-top: 35px;'></div>", unsafe_allow_html=True)
@@ -305,10 +397,9 @@ with tab3:
             with st.expander("📝 월별 상세 기록 보기"): st.dataframe(df_res.drop(columns=['invested']).set_index('투자월').style.format("{:.2f}%"), use_container_width=True)
 
 # ==========================================
-# 탭 4: 스코어 커스텀 백테스트
+# 탭 5: 스코어 커스텀 백테스트
 # ==========================================
-with tab4:
-    # 💡 [변경] 마켓타이밍 체크박스를 가중치 설정 제목 옆으로 이동하고 동적으로 표시
+with tab5:
     current_ma_c = st.session_state.get('t4_ma', 6)
     col_title_c, col_check_c = st.columns([1, 4])
     with col_title_c:
@@ -330,7 +421,6 @@ with tab4:
     st.markdown("<hr style='margin: 15px 0px;'>", unsafe_allow_html=True)
     c6, c_ma_c, c7, c8 = st.columns([1, 0.8, 1, 1])
     with c6: start_year_c, end_year_c = st.slider("📅 테스트 기간", min_y, max_y, (min_y, max_y), key='t4_yr')
-    # 💡 [변경] 마켓타이밍 기본값 6개월
     with c_ma_c: ma_months_t4 = st.slider("📉 마켓타이밍", 1, 12, 6, key='t4_ma')
     with c7: custom_pct = st.slider("🏅 상위 %", 5, 50, 30, step=5)
     with c8: rank_c_s, rank_c_e = st.slider("🏅 매수 순위", 1, 30, (1, 10), key='t4_rnk')
