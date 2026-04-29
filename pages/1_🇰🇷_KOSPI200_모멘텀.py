@@ -13,7 +13,6 @@ from utils.ui_components import inject_custom_css, apply_korea_styling, style_ko
 
 inject_custom_css()
 
-# 💡 [추가] 코스닥 지수 이동평균선을 계산하는 헬퍼 함수
 @st.cache_data(ttl=3600)
 def get_kosdaq_ma_all(target_date_str):
     target_date = pd.to_datetime(target_date_str)
@@ -82,11 +81,9 @@ def cached_run_custom_backtest(df, start_year_c, end_year_c, ma_months_t4, apply
         
         base_ym_c = pd.to_datetime(df_calc['종목선정일'].iloc[0]).strftime('%Y-%m')
         is_below_ma = timing_dict.get(base_ym_c, False)
-        
         neg_1m_c = (df_calc['1개월(%)'] < 0).sum()
         neg_3m_c = (df_calc['3개월(%)'] < 0).sum()
         is_bad_market_c = (neg_1m_c >= 100 and neg_3m_c >= 100)
-        
         mult_c = 0.0 if (apply_timing_c and (is_bad_market_c or is_below_ma)) else 1.0
         
         df_calc['스코어'] = (df_calc['1개월(%)']*w1) + (df_calc['3개월(%)']*w3) + (df_calc['6개월(%)']*w6) + (df_calc['12개월(%)']*w12)
@@ -118,7 +115,6 @@ with tab1:
         base_date = df_monthly['종목선정일'].iloc[0]
         month_label.markdown(f"<div style='margin-bottom: 5px; font-size:0.95rem; font-weight:600;'><b>🌙 투자 월</b> <span style='font-size: 0.85rem; color: #9ca3af; font-weight:normal;'>&nbsp;&nbsp;💡 선정일: {base_date}</span></div>", unsafe_allow_html=True)
 
-        # 💡 [KOSPI & KOSDAQ 2줄 출력]
         kospi_curr, kospi_mas = get_kospi_ma_all(base_date)
         kosdaq_curr, kosdaq_mas = get_kosdaq_ma_all(base_date)
         ma_df = pd.DataFrame([
@@ -134,14 +130,15 @@ with tab1:
         
         df_perf_t1['순위'] = range(1, len(df_perf_t1) + 1)
         df_spec_t1['순위'] = range(1, len(df_spec_t1) + 1)
-        cap_col = '시가총액(억)' if '시가총액(억)' in df_korea_t1.columns else '시가총액'
-        if cap_col in df_korea_t1.columns:
-            df_korea_t1 = df_korea_t1.sort_values(cap_col, ascending=False)
+        if '시가총액' in df_korea_t1.columns:
+            df_korea_t1 = df_korea_t1.sort_values('시가총액', ascending=False)
         df_korea_t1['순위'] = range(1, len(df_korea_t1) + 1)
 
-        cycle_year = get_cycle_year(int(selected_year))
-        is_bad_market = (neg_1m_cnt >= 100) and (neg_3m_cnt >= 100)
+        # 💡 [복구] 월별 상세 분석 탭은 미국 대통령 주기로 고정
+        cycle_year_t1 = get_cycle_year(int(selected_year))
+        bad_m_str_t1 = ", ".join(f"{m}월" for m in PRESIDENTIAL_DANGEROUS_MONTHS.get(cycle_year_t1, [])) or "없음"
         
+        is_bad_market = (neg_1m_cnt >= 100) and (neg_3m_cnt >= 100)
         is_below_ma = (kospi_curr > 0) and (kospi_curr < kospi_mas.get(6, 0))
         status, box_c, text_c = ("🛑 투자 중지", "#FFEBEE", "#C62828") if (is_bad_market or is_below_ma) else ("✅ 투자 진행", "#E8F5E9", "#2E7D32")
         reason_desc = ("하락장" if is_bad_market else "") + (" + " if is_bad_market and is_below_ma else "") + ("6개월선 이탈" if is_below_ma else "")
@@ -152,7 +149,7 @@ with tab1:
         with col2: st.metric("📈 KOSPI 3M", f"{kospi_3m}%")
         with col3: st.metric("📉 1개월 하락", f"{neg_1m_cnt}개")
         with col4: st.metric("📉 3개월 하락", f"{neg_3m_cnt}개")
-        with col5: st.markdown(f'<div style="background-color: #f0f2f6; padding: 10px; border-radius: 10px; text-align: center; border: 1px solid #d1d5db; height: 95px; display: flex; flex-direction: column; justify-content: center;"><div style="font-size: 12px; font-weight: bold; color: #64748b; margin-bottom: 2px;">과거 데이터</div><div style="font-size: 15px; color: #333; font-weight:900;">VIX 분석 불가</div></div>', unsafe_allow_html=True)
+        with col5: st.markdown(f'<div style="background-color: #f0f2f6; padding: 10px; border-radius: 10px; text-align: center; border: 1px solid #d1d5db; height: 95px; display: flex; flex-direction: column; justify-content: center;"><div style="font-size: 12px; font-weight: bold; color: #64748b; margin-bottom: 2px;">🇺🇸대통령 <span style="color:#0047AB;">{cycle_year_t1}년차</span> ({selected_year}년)</div><div style="font-size: 16px; color: #D84315; font-weight:900;">🚨 위험달: {bad_m_str_t1}</div></div>', unsafe_allow_html=True)
         with col6: st.markdown(f'<div style="background-color: {box_c}; padding: 10px; border-radius: 10px; text-align: center; border: 1px solid {text_c}; height: 95px; display: flex; flex-direction: column; justify-content: center;"><p style="margin: 0; font-size: 12px; color: {text_c}; font-weight: bold;">최종 판단 ({reason_desc})</p><div style="margin: 4px 0 0 0; font-size: 1.5rem; font-weight: 900; color: {text_c};">{status}</div></div>', unsafe_allow_html=True)
         st.markdown("<hr style='margin: 1rem 0;'>", unsafe_allow_html=True)
 
@@ -208,7 +205,6 @@ with tab2:
         
         st.markdown(f"<div style='margin-bottom: 5px; font-size:0.95rem; font-weight:600;'><b>🕒 실시간 데일리 순위</b> <span style='font-size: 0.85rem; color: #9ca3af; font-weight:normal;'>&nbsp;&nbsp;💡 기준일: {b_date_d}</span></div>", unsafe_allow_html=True)
         
-        # 💡 [KOSPI & KOSDAQ 2줄 출력]
         kospi_curr_d, kospi_mas_d = get_kospi_ma_all(safe_date)
         kosdaq_curr_d, kosdaq_mas_d = get_kosdaq_ma_all(safe_date)
         ma_df_d = pd.DataFrame([
@@ -231,17 +227,12 @@ with tab2:
 
         is_below_ma_d = (kospi_curr_d > 0) and (kospi_curr_d < kospi_mas_d.get(6, 0))
         is_bad_market_d = (neg_1m_d >= 100) and (neg_3m_d >= 100)
-        
         status_d, box_d, text_d = ("🛑 투자 중지", "#FFEBEE", "#C62828") if (is_bad_market_d or is_below_ma_d) else ("✅ 투자 진행", "#E8F5E9", "#2E7D32")
         reason_desc_d = ("하락장" if is_bad_market_d else "") + (" + " if is_bad_market_d and is_below_ma_d else "") + ("6개월선 이탈" if is_below_ma_d else "")
         if not is_bad_market_d and not is_below_ma_d: reason_desc_d = "안전"
 
-        # 💡 [신규] VIX 35 돌파 로직
         vix_file = 'data/vix data.csv'
-        vix_latest_high = "데이터없음"
-        vix_35_date_str = "-"
-        vix_35_high = "-"
-        days_diff_str = "-"
+        vix_latest_high, vix_35_date_str, vix_35_high, days_diff_str = "데이터없음", "-", "-", "-"
         is_vix_warning = False
 
         if os.path.exists(vix_file):
@@ -250,19 +241,15 @@ with tab2:
                 vix_df['날짜'] = pd.to_datetime(vix_df['날짜'])
                 vix_df = vix_df.sort_values('날짜')
                 if not vix_df.empty:
-                    # 전일 고가 (가장 최근 데이터)
                     vix_latest_high = f"{vix_df['고가'].iloc[-1]:.2f}"
-                    
                     high_35_df = vix_df[vix_df['고가'] >= 35.0]
                     if not high_35_df.empty:
                         last_35_row = high_35_df.iloc[-1]
-                        vix_35_date_str = last_35_row['날짜'].strftime('%y/%m/%d') # YY/MM/DD
+                        vix_35_date_str = last_35_row['날짜'].strftime('%y/%m/%d')
                         vix_35_high = f"{last_35_row['고가']:.2f}"
-                        
                         days_diff = (pd.to_datetime(safe_date) - last_35_row['날짜']).days
                         days_diff_str = f"{days_diff}일 경과"
-                        if 0 <= days_diff <= 20:
-                            is_vix_warning = True
+                        if 0 <= days_diff <= 20: is_vix_warning = True
             except: pass
 
         col1d, col2d, col3d, col4d, col5d, col6d = st.columns([0.9, 0.9, 1.0, 1.0, 1.4, 1.6])
@@ -271,18 +258,21 @@ with tab2:
         with col3d: st.metric("📉 1개월 하락", f"{neg_1m_d}개")
         with col4d: st.metric("📉 3개월 하락", f"{neg_3m_d}개")
         
-        # 💡 VIX 박스 UI 렌더링 (경고 시 빨간색, 아닐 시 흰색)
+        # 💡 [수정] VIX 박스 클릭 시 네이버 증권으로 이동하는 링크 추가
         vix_bg = "#FFF0F0" if is_vix_warning else "#FFFFFF"
         vix_border = "#FFCDD2" if is_vix_warning else "#d1d5db"
         vix_title_color = "#C62828" if is_vix_warning else "#64748b"
         vix_val_color = "#D84315" if is_vix_warning else "#333333"
         vix_icon = "🚨" if is_vix_warning else "📊"
         
-        vix_html = f'''<div style="background-color: {vix_bg}; padding: 10px; border-radius: 10px; text-align: center; border: 1px solid {vix_border}; height: 95px; display: flex; flex-direction: column; justify-content: center;">
-        <div style="font-size: 12px; font-weight: bold; color: {vix_title_color}; margin-bottom: 2px;">{vix_icon} VIX 35 돌파</div>
-        <div style="font-size: 11px; font-weight: bold; color: {vix_title_color}; margin-bottom: 4px;">VIX {vix_35_high} - {vix_35_date_str}돌파 ({days_diff_str})</div>
-        <div style="font-size: 15px; color: {vix_val_color}; font-weight:900;">전일 고가: {vix_latest_high}</div>
-        </div>'''
+        vix_html = f'''
+        <a href="https://m.stock.naver.com/worldstock/index/.VIX/total" target="_blank" style="text-decoration: none; color: inherit;">
+            <div class="title-link" style="background-color: {vix_bg}; padding: 10px; border-radius: 10px; text-align: center; border: 1px solid {vix_border}; height: 95px; display: flex; flex-direction: column; justify-content: center;">
+                <div style="font-size: 12px; font-weight: bold; color: {vix_title_color}; margin-bottom: 2px;">{vix_icon} VIX 35 돌파</div>
+                <div style="font-size: 11px; font-weight: bold; color: {vix_title_color}; margin-bottom: 4px;">VIX {vix_35_high} - {vix_35_date_str}돌파 ({days_diff_str})</div>
+                <div style="font-size: 15px; color: {vix_val_color}; font-weight:900;">전일 고가: {vix_latest_high}</div>
+            </div>
+        </a>'''
         
         with col5d: st.markdown(vix_html, unsafe_allow_html=True)
         with col6d: st.markdown(f'<div style="background-color: {box_d}; padding: 10px; border-radius: 10px; text-align: center; border: 1px solid {text_d}; height: 95px; display: flex; flex-direction: column; justify-content: center;"><p style="margin: 0; font-size: 12px; color: {text_d}; font-weight: bold;">오늘의 시장 상태 ({reason_desc_d})</p><div style="margin: 4px 0 0 0; font-size: 1.5rem; font-weight: 900; color: {text_d};">{status_d}</div></div>', unsafe_allow_html=True)
@@ -293,7 +283,6 @@ with tab2:
             df['종목명_L'] = df.apply(lambda r: f"https://m.stock.naver.com/fchart/domestic/stock/{r['종목코드']}#{r['종목명']}", axis=1)
 
         c_d1, c_d2 = st.columns(2)
-        
         overlap_d = set(df_perf_d.head(top_n_p)['종목코드']).intersection(set(df_spec_d.head(top_n_s)['종목코드']))
         
         with c_d1:
@@ -332,21 +321,12 @@ with tab3:
         df_res, df_trades = cached_run_backtest_korea(df_master, start_year, end_year, ma_months_t3, apply_timing, (rank_p_s, rank_p_e), (rank_s_s, rank_s_e), perf_pct_t3, spec_12m_pct_t3)
         if not df_res.empty:
             s_cols_raw = [c for c in df_res.columns if c not in ['투자월', 'invested']]
-            
-            target_order = [
-                f'🔥 퍼펙트 상승 ({rank_p_s}~{rank_p_e}위)', 
-                f'🐎 달리는 말 ({rank_s_s}~{rank_s_e}위)', 
-                '앙상블 (50:50 전략)', 
-                '통합 전략 (중복 제외 1/N)',
-                '통합 전략 (중복 인정 1/N)'
-            ]
+            target_order = [f'🔥 퍼펙트 상승 ({rank_p_s}~{rank_p_e}위)', f'🐎 달리는 말 ({rank_s_s}~{rank_s_e}위)', '앙상블 (50:50 전략)', '통합 전략 (중복 제외 1/N)', '통합 전략 (중복 인정 1/N)']
             s_cols = [c for c in target_order if c in s_cols_raw] + [c for c in s_cols_raw if c not in target_order]
-            
             df_cum = (1 + df_res.set_index('투자월')[s_cols] / 100).cumprod() * 100
             df_cum.loc[(pd.to_datetime(df_res['투자월'].iloc[0]) - pd.DateOffset(months=1)).strftime('%Y-%m')] = 100
             df_cum = df_cum.sort_index()
 
-            # 💡 [변경] 다운로드 버튼 넓이 7.5 : 2.5로 조정하여 한 줄 표시
             col_t, col_b = st.columns([7.5, 2.5])
             with col_t: st.markdown("#### 📊 전략 핵심 통계 (초기 자본 100 기준)")
             with col_b: st.download_button("📥 상세내역 다운로드", df_trades.to_csv(index=False).encode('utf-8-sig'), "조합_백테스트.csv", "text/csv", use_container_width=True)
@@ -359,16 +339,13 @@ with tab3:
                 win_rate = (df_res.loc[df_res['invested'], col]>0).mean()*100 if df_res['invested'].any() else 0
                 mdd = ((df_cum[col]/df_cum[col].cummax())-1).min()*100
                 stats.append({"전략명": col, "CAGR (연평균)": f"{cagr:.1f}%", "총 누적수익률": f"{final_val-100:,.1f}%", "MDD (최대낙폭)": f"{mdd:.1f}%", "투자월 비율": f"{(df_res['invested'].sum()/len(df_res))*100:.1f}%", "월별 승률": f"{win_rate:.1f}%", "평균 수익률": f"{df_res.loc[df_res['invested'], col].mean():.2f}%" if df_res['invested'].any() else "0.00%"})
-            
             st.dataframe(get_styled_stats(pd.DataFrame(stats)), use_container_width=True, hide_index=True)
             
             st.markdown("#### 🗓️ 상세 분석 (월별 수익률 히트맵 & MDD)")
             analysis_strat_t3 = st.radio("분석할 전략을 선택하세요", s_cols, horizontal=True, index=0, key="analysis_radio_t3")
-            
             col_hm, col_mdd = st.columns([6, 4])
             with col_hm: st.dataframe(get_monthly_heatmap(df_res, analysis_strat_t3), use_container_width=True)
             with col_mdd: st.dataframe(get_mdd_history(df_cum[analysis_strat_t3]), use_container_width=True, hide_index=True)
-            
             st.plotly_chart(px.line(df_cum.reset_index().melt(id_vars='투자월'), x='투자월', y='value', color='variable', log_y=True, title="누적 자산 성장 곡선 (Log Scale)"), use_container_width=True)
             with st.expander("📝 월별 전체 상세 기록 보기"): st.dataframe(df_res.drop(columns=['invested']).set_index('투자월').style.format("{:.2f}%"), use_container_width=True)
 
@@ -401,13 +378,11 @@ with tab4:
     if st.session_state.get('custom_run', False):
         with st.spinner("커스텀 시뮬레이션 중..."):
             df_res_c, df_trades_c = cached_run_custom_backtest(df_master, start_year_c, end_year_c, ma_months_t4, apply_timing_c, w1, w3, w6, w12, custom_pct, rank_c_s, rank_c_e)
-
             if not df_res_c.empty:
                 df_cum_c = (1 + df_res_c.set_index('투자월')[['커스텀 전략']] / 100).cumprod() * 100
                 df_cum_c.loc[(pd.to_datetime(df_res_c['투자월'].iloc[0]) - pd.DateOffset(months=1)).strftime('%Y-%m')] = 100
                 df_cum_c = df_cum_c.sort_index()
 
-                # 💡 [변경] 다운로드 버튼 넓이 7.5 : 2.5로 조정
                 col_tc, col_bc = st.columns([7.5, 2.5])
                 with col_tc: st.markdown("#### 📊 전략 핵심 통계")
                 with col_bc: st.download_button("📥 상세내역 다운로드", df_trades_c.to_csv(index=False).encode('utf-8-sig'), "커스텀_백테스트.csv", "text/csv", use_container_width=True)
@@ -422,6 +397,5 @@ with tab4:
                 col_hm_c, col_mdd_c = st.columns([6, 4])
                 with col_hm_c: st.dataframe(get_monthly_heatmap(df_res_c, '커스텀 전략'), use_container_width=True)
                 with col_mdd_c: st.dataframe(get_mdd_history(df_cum_c['커스텀 전략']), use_container_width=True, hide_index=True)
-
                 st.plotly_chart(px.line(df_cum_c.reset_index(), x='투자월', y='커스텀 전략', log_y=True, title="커스텀 누적 성과"), use_container_width=True)
                 with st.expander("📝 월별 전체 상세 기록 보기"): st.dataframe(df_res_c.drop(columns=['invested']).set_index('투자월').style.format("{:.2f}%"), use_container_width=True)
