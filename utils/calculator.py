@@ -50,10 +50,10 @@ def get_kospi_timing_for_backtest(ma_months):
     ks11 = fdr.DataReader('KS11', '2005-01-01')
     ma_days = ma_months * 20
     ks11['MA'] = ks11['Close'].rolling(ma_days).mean()
-    ks11['YearMonth'] = ks11.index.to_period('M').astype(str)
     timing_df = ks11.resample('ME').last()
     timing_df['is_below_ma'] = timing_df['Close'] < timing_df['MA']
-    # 💡 [중요] 반드시 Series 형태로 반환하여 Lookup 에러 방지
+    # 💡 [핵심 해결] 인덱스를 '2023-11' 같은 '글자'로 바꿔서 1:1 매칭이 되게 합니다.
+    timing_df.index = timing_df.index.strftime('%Y-%m')
     return timing_df['is_below_ma']
 
 def get_strategy_stocks_korea(df):
@@ -78,14 +78,12 @@ def _base_backtest_engine(df, start_year, end_year, ma_months, apply_timing, ran
     timing_df = get_kospi_timing_for_backtest(ma_months)
     months = [m for m in sorted(df['투자월'].dropna().unique()) if start_year <= int(m.split('-')[0]) <= end_year]
     records, trade_logs = [], []
-    
     for m in months:
         m_data = df[df['투자월'] == m].copy()
         if m_data.empty: continue
-        
         base_ym = pd.to_datetime(m_data['종목선정일'].iloc[0]).strftime('%Y-%m')
         
-        # 💡 [에러 해결 핵심] .get()과 bool()을 사용하여 단일 True/False 값만 추출
+        # 💡 이제 timing_df의 인덱스가 글자이므로 .get()이 정확히 값 하나만 가져옵니다.
         is_below_ma = bool(timing_df.get(base_ym, False))
         
         is_bad_market = False
@@ -94,7 +92,6 @@ def _base_backtest_engine(df, start_year, end_year, ma_months, apply_timing, ran
             neg_3m = (m_data['3개월(%)'] < 0).sum()
             is_bad_market = (neg_1m >= market_threshold) and (neg_3m >= market_threshold)
         
-        # 이제 is_below_ma와 is_bad_market은 확실히 단일 Boolean입니다.
         mult = 0.0 if (apply_timing and (is_below_ma or is_bad_market)) else 1.0
         
         q_p, q_s = 1.0 - (perf_pct / 100.0), 1.0 - (spec_12m_pct / 100.0)
