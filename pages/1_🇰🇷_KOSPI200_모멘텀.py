@@ -51,8 +51,8 @@ min_y, max_y = min(years_list), max(years_list)
 
 # --- [캐싱 및 헬퍼 함수] ---
 @st.cache_data(show_spinner=False)
-def cached_run_backtest_korea(df, start_year, end_year, ma_months, apply_timing, rank_p, rank_s, perf_pct, spec_12m):
-    return run_backtest_korea(df, start_year, end_year, ma_months, apply_timing, rank_p, rank_s, perf_pct=perf_pct, spec_12m=spec_12m)
+def cached_run_backtest_korea(df, start_year, end_year, ma_months, apply_timing, rank_p, rank_s, perf_pct, spec_12m_pct):
+    return run_backtest_k200(df, start_year, end_year, ma_months, apply_timing, rank_p, rank_s, perf_pct, spec_12m_pct)
 
 @st.cache_data(show_spinner=False)
 def cached_run_custom_backtest(df, start_year_c, end_year_c, ma_months_t4, apply_timing_c, w1, w3, w6, w12, custom_pct, rank_c_s, rank_c_e):
@@ -365,7 +365,12 @@ with tab3:
     with c5: rank_s_s, rank_s_e = st.slider("🐎 달리는말 순위", 1, 30, (1, 2), key="t3_rs")
 
     with st.spinner("엔진 구동 중..."):
-        df_res, df_trades = cached_run_backtest_korea(df_master, start_year, end_year, ma_months_t3, apply_timing, (rank_p_s, rank_p_e), (rank_s_s, rank_s_e), perf_pct_t3, spec_12m_pct_t3)
+    # 💡 마지막 인자 이름을 일치시켜 호출
+    df_res, df_trades = cached_run_backtest_korea(
+        df_master, start_year, end_year, ma_months_t3, apply_timing, 
+        (rank_p_s, rank_p_e), (rank_s_s, rank_s_e), 
+        perf_pct_t3, spec_12m_pct_t3
+    )
         if not df_res.empty:
             s_cols_raw = [c for c in df_res.columns if c not in ['투자월', 'invested']]
             target_order = ['앙상블 (전체 10~20종목)', '통합 전략 (순위 합)', '🔥 퍼펙트 상승 (1~10위)', '🐎 달리는 말 (1~5위)']
