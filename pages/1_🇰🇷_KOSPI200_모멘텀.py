@@ -326,17 +326,26 @@ with tab3:
     with c_chk:
         st.markdown("<div style='margin-top: 35px;'></div>", unsafe_allow_html=True)
         apply_timing = st.checkbox("🛑 마켓타이밍 적용 (1&3M 하락 100개↑ & MA 이탈 시 현금)", value=True, key='t3_chk')
+    
+    st.markdown("<hr style='margin: 10px 0px;'>", unsafe_allow_html=True)
     c2, c3, c4, c5 = st.columns([1, 1, 1, 1])
     with c2: perf_pct_t3 = st.slider("🔥 퍼펙트 상위 %", 5, 50, 30, step=5)
     with c3: rank_p_s, rank_p_e = st.slider("🔥 퍼펙트 순위", 1, 30, (1, 6))
     with c4: spec_12m_pct_t3 = st.slider("🐎 달리는말 상위 %", 5, 50, 30, step=5)
     with c5: rank_s_s, rank_s_e = st.slider("🐎 달리는말 순위", 1, 30, (1, 2))
-    
+
     with st.spinner("엔진 구동 중..."):
         df_res, df_trades = cached_run_backtest_korea(df_master, start_year, end_year, ma_months_t3, apply_timing, (rank_p_s, rank_p_e), (rank_s_s, rank_s_e), perf_pct_t3, spec_12m_pct_t3)
         if not df_res.empty:
             s_cols_raw = [c for c in df_res.columns if c not in ['투자월', 'invested']]
-            target_order = ['앙상블 (전체 10~20종목)', '통합 전략 (순위 합)', f'🔥 퍼펙트 상승 ({rank_p_s}~{rank_p_e}위)', f'🐎 달리는 말 ({rank_s_s}~{rank_s_e}위)']
+            
+            # 💡 [순서 고정 로직] 요청하신 순서대로 정확하게 이름표를 맞췄습니다.
+            target_order = [
+                f'🔥 퍼펙트 상승 ({rank_p_s}~{rank_p_e}위)', 
+                f'🐎 달리는 말 ({rank_s_s}~{rank_s_e}위)', 
+                '앙상블 (전략 50:50)', 
+                '통합 전략 (순위 합)'
+            ]
             s_cols = [c for c in target_order if c in s_cols_raw] + [c for c in s_cols_raw if c not in target_order]
             
             df_cum = (1 + df_res.set_index('투자월')[s_cols] / 100).cumprod() * 100
