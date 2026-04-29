@@ -43,7 +43,7 @@ for col in target_cols:
 if '시가총액' in df_master.columns and df_master['시가총액'].max() > 1000000000:
     df_master['시가총액'] = df_master['시가총액'] / 100000000
 
-years_list = sorted(df_master['투자연도'].unique().astype(int))
+years_list = sorted(df_master['투자연연도'].unique().astype(int))
 min_y, max_y = min(years_list), max(years_list)
 
 @st.cache_data(show_spinner=False)
@@ -109,9 +109,8 @@ with tab1:
         
         df_perf_t1['순위'] = range(1, len(df_perf_t1) + 1)
         df_spec_t1['순위'] = range(1, len(df_spec_t1) + 1)
-        cap_col = '시가총액(억)' if '시가총액(억)' in df_korea_t1.columns else '시가총액'
-        if cap_col in df_korea_t1.columns:
-            df_korea_t1 = df_korea_t1.sort_values(cap_col, ascending=False)
+        if '시가총액' in df_korea_t1.columns:
+            df_korea_t1 = df_korea_t1.sort_values('시가총액', ascending=False)
         df_korea_t1['순위'] = range(1, len(df_korea_t1) + 1)
 
         cycle_year = get_cycle_year(int(selected_year))
@@ -131,6 +130,7 @@ with tab1:
         st.markdown("<hr style='margin: 1rem 0;'>", unsafe_allow_html=True)
 
         for df in [df_perf_t1, df_spec_t1, df_korea_t1]:
+            # 💡 텍스트까지 정확히 표시하도록 수정 (KOSPI/KOSDAQ 자동 분기)
             df['통합티커_L'] = df.apply(lambda r: f"https://finance.naver.com/item/main.naver?code={r['종목코드']}#{'KOSDAQ' if '코스닥' in str(r.get('시장', '')) or 'KOSDAQ' in str(r.get('시장', '')).upper() else 'KOSPI'}:{r['종목코드']}", axis=1)
             df['종목명_L'] = df.apply(lambda r: f"https://m.stock.naver.com/fchart/domestic/stock/{r['종목코드']}#{r['종목명']}", axis=1)
 
@@ -202,26 +202,25 @@ with tab2:
         status_d, box_d, text_d = ("🛑 투자 중지", "#FFEBEE", "#C62828") if is_below_ma_d else ("✅ 투자 진행", "#E8F5E9", "#2E7D32")
         reason_desc_d = "4개월선 이탈" if is_below_ma_d else "안전"
         
-        target_year_d = int(b_date_d.split('-')[0]) if '-' in b_date_d else datetime.today().year
+        target_year_d = int(safe_date.split('-')[0])
         cycle_year_d = get_cycle_year(target_year_d)
         bad_m_str_d = ", ".join(f"{m}월" for m in PRESIDENTIAL_DANGEROUS_MONTHS.get(cycle_year_d, [])) or "없음"
 
         col1d, col2d, col3d, col4d, col5d, col6d = st.columns([0.9, 0.9, 1.0, 1.0, 1.4, 1.6])
         with col1d: st.metric("📈 KOSPI 1M", f"{kospi_1m_d}%")
         with col2d: st.metric("📈 KOSPI 3M", f"{kospi_3m_d}%")
-        with col3d: st.metric("📉 1개월 하락", f"{(df_korea_d['1개월(%)'] < 0).sum()}개")
-        with col4d: st.metric("📉 3개월 하락", f"{(df_korea_d['3개월(%)'] < 0).sum()}개")
+        with col3d: st.metric("📉 1개월 하락", f"{neg_1m_d}개")
+        with col4d: st.metric("📉 3개월 하락", f"{neg_3m_d}개")
         with col5d: st.markdown(f'<div style="background-color: #f0f2f6; padding: 10px; border-radius: 10px; text-align: center; border: 1px solid #d1d5db; height: 95px; display: flex; flex-direction: column; justify-content: center;"><div style="font-size: 12px; font-weight: bold; color: #64748b; margin-bottom: 2px;">🇺🇸대통령 <span style="color:#0047AB;">{cycle_year_d}년차</span> ({target_year_d}년)</div><div style="font-size: 16px; color: #D84315; font-weight:900;">🚨 위험달: {bad_m_str_d}</div></div>', unsafe_allow_html=True)
         with col6d: st.markdown(f'<div style="background-color: {box_d}; padding: 10px; border-radius: 10px; text-align: center; border: 1px solid {text_d}; height: 95px; display: flex; flex-direction: column; justify-content: center;"><p style="margin: 0; font-size: 12px; color: {text_d}; font-weight: bold;">오늘의 시장 상태 ({reason_desc_d})</p><div style="margin: 4px 0 0 0; font-size: 1.5rem; font-weight: 900; color: {text_d};">{status_d}</div></div>', unsafe_allow_html=True)
         st.markdown("<hr style='margin: 1rem 0;'>", unsafe_allow_html=True)
 
-        # 💡 [핵심] KOSPI/KOSDAQ 자동 구분 로직을 데일리 탭에도 완벽하게 적용했습니다!
+        # 💡 [핵심] 데일리 탭에도 텍스트 표시 시 KOSPI/KOSDAQ 자동 분기 적용 완료
         for df in [df_perf_d, df_spec_d, df_korea_d]:
             df['통합티커_L'] = df.apply(lambda r: f"https://finance.naver.com/item/main.naver?code={r['종목코드']}#{'KOSDAQ' if '코스닥' in str(r.get('시장', '')) or 'KOSDAQ' in str(r.get('시장', '')).upper() else 'KOSPI'}:{r['종목코드']}", axis=1)
             df['종목명_L'] = df.apply(lambda r: f"https://m.stock.naver.com/fchart/domestic/stock/{r['종목코드']}#{r['종목명']}", axis=1)
 
         c_d1, c_d2 = st.columns(2)
-        
         overlap_d = set(df_perf_d.head(top_n_p)['종목코드']).intersection(set(df_spec_d.head(top_n_s)['종목코드']))
         
         with c_d1:
@@ -302,9 +301,9 @@ with tab3:
 with tab4:
     current_ma_c = st.session_state.get('t4_ma', 4)
     col_title_c, col_check_c = st.columns([1, 4])
-    with col_title_c: st.markdown("<h4 style='margin:0;'>⚙️ 가중치 설정</h4>", unsafe_allow_html=True)
+    with col_title_c: st.markdown("<h4 style='margin-top: 5px;'>⚙️ 가중치 설정</h4>", unsafe_allow_html=True)
     with col_check_c:
-        st.markdown("<div style='margin-top: 12px;'></div>", unsafe_allow_html=True)
+        st.markdown("<div style='margin-top: 8px;'></div>", unsafe_allow_html=True)
         apply_timing_c = st.checkbox("🛑 마켓타이밍 적용 (MA 이탈 시 현금)", value=True, key='t4_chk_main')
     
     with st.form("custom_form", border=False):
