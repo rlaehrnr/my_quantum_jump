@@ -107,11 +107,11 @@ with tab1:
         neg_1m_cnt = (df_korea_t1['1개월(%)'] < 0).sum()
         neg_3m_cnt = (df_korea_t1['3개월(%)'] < 0).sum()
         
-        # 💡 순위 데이터 추가
         df_perf_t1['순위'] = range(1, len(df_perf_t1) + 1)
         df_spec_t1['순위'] = range(1, len(df_spec_t1) + 1)
-        if '시가총액' in df_korea_t1.columns:
-            df_korea_t1 = df_korea_t1.sort_values('시가총액', ascending=False)
+        cap_col = '시가총액(억)' if '시가총액(억)' in df_korea_t1.columns else '시가총액'
+        if cap_col in df_korea_t1.columns:
+            df_korea_t1 = df_korea_t1.sort_values(cap_col, ascending=False)
         df_korea_t1['순위'] = range(1, len(df_korea_t1) + 1)
 
         cycle_year = get_cycle_year(int(selected_year))
@@ -191,11 +191,11 @@ with tab2:
         neg_1m_d = (df_korea_d['1개월(%)'] < 0).sum()
         neg_3m_d = (df_korea_d['3개월(%)'] < 0).sum()
         
-        # 💡 순위 데이터 추가
         df_perf_d['순위'] = range(1, len(df_perf_d) + 1)
         df_spec_d['순위'] = range(1, len(df_spec_d) + 1)
-        if '시가총액' in df_korea_d.columns:
-            df_korea_d = df_korea_d.sort_values('시가총액', ascending=False)
+        cap_col_d = '시가총액(억)' if '시가총액(억)' in df_korea_d.columns else '시가총액'
+        if cap_col_d in df_korea_d.columns:
+            df_korea_d = df_korea_d.sort_values(cap_col_d, ascending=False)
         df_korea_d['순위'] = range(1, len(df_korea_d) + 1)
 
         is_below_ma_d = (kospi_curr_d > 0) and (kospi_curr_d < kospi_mas_d.get(6, 0))
@@ -219,7 +219,6 @@ with tab2:
             df['종목명_L'] = df.apply(lambda r: f"https://m.stock.naver.com/fchart/domestic/stock/{r['종목코드']}#{r['종목명']}", axis=1)
 
         c_d1, c_d2 = st.columns(2)
-        
         overlap_d = set(df_perf_d.head(top_n_p)['종목코드']).intersection(set(df_spec_d.head(top_n_s)['종목코드']))
         
         with c_d1:
@@ -300,7 +299,7 @@ with tab3:
 with tab4:
     current_ma_c = st.session_state.get('t4_ma', 6)
     col_title_c, col_check_c = st.columns([1, 4])
-    with col_title_c: st.markdown("<h4 style='margin-top: 5px;'>⚙️ 가중치 설정</h4>", unsafe_allow_html=True)
+    with col_title_c: st.markdown("<h4 style='margin:0;'>⚙️ 가중치 설정</h4>", unsafe_allow_html=True)
     with col_check_c:
         st.markdown("<div style='margin-top: 12px;'></div>", unsafe_allow_html=True)
         apply_timing_c = st.checkbox("🛑 마켓타이밍 적용 (MA 이탈 시 현금)", value=True, key='t4_chk_main')
