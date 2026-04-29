@@ -54,37 +54,57 @@ def update_all_daily_momentum():
     print("🚀 [최적화 버전] 데일리 수익률 및 VIX 데이터 동기화 시작...")
     today = datetime.today()
     base_date = today.strftime('%Y-%m-%d')
-    
     os.makedirs('data', exist_ok=True)
 
     # ==========================================
-    # 💡 [신규 추가] VIX 지수 자동 다운로드 로직
+    # 💡 [완벽 수정] VIX 지수 2중 다운로드 로직
     # ==========================================
     print("📈 미국 VIX 지수 데이터 업데이트 중...")
+    df_vix = pd.DataFrame()
+    
+    # 1순위: 야후 파이낸스 (가장 안정적)
     try:
-        # VIX 지수를 넉넉하게 과거부터 수집 (VIX 또는 ^VIX)
-        try: df_vix = fdr.DataReader('VIX', '2015-01-01', today)
-        except: df_vix = fdr.DataReader('^VIX', '2015-01-01', today)
-        
-        if not df_vix.empty:
-            df_vix = df_vix.reset_index()
-            # 파일 포맷 맞추기
-            df_vix.rename(columns={'Date': '날짜', 'Close': '종가', 'Open': '시가', 'High': '고가', 'Low': '저가'}, inplace=True)
-            if 'Change' in df_vix.columns:
-                df_vix['변동 %'] = (df_vix['Change'] * 100).round(2).astype(str) + '%'
-            else:
-                df_vix['변동 %'] = df_vix['종가'].pct_change().multiply(100).round(2).astype(str) + '%'
-                
-            df_vix['날짜'] = df_vix['날짜'].dt.strftime('%Y-%m-%d')
-            cols = ['날짜', '종가', '시가', '고가', '저가', '변동 %']
-            df_vix[cols].to_csv('data/vix data.csv', index=False, encoding='utf-8-sig')
-            print("✅ VIX 지수 업데이트 완료!")
+        import yfinance as yf
+        df_vix = yf.download('^VIX', start='2015-01-01', progress=False)
+        # 최신 yfinance는 MultiIndex를 반환하므로 평탄화
+        if isinstance(df_vix.columns, pd.MultiIndex):
+            df_vix.columns = df_vix.columns.get_level_values(0)
+    except ImportError:
+        print("ℹ️ yfinance 라이브러리가 없어 FinanceDataReader로 시도합니다.")
     except Exception as e:
-        print(f"⚠️ VIX 지수 업데이트 실패: {e}")
+        print(f"⚠️ yfinance 수집 실패: {e}")
+
+    # 2순위: FinanceDataReader로 ^VIX 수집 (1순위 실패 시)
+    if df_vix.empty:
+        try:
+            df_vix = fdr.DataReader('^VIX', '2015-01-01', today)
+        except Exception as e:
+            print(f"⚠️ FinanceDataReader 수집 실패: {e}")
+
+    # VIX 데이터 가공 및 저장
+    if not df_vix.empty:
+        df_vix = df_vix.reset_index()
+        col_map = {'Date': '날짜', 'Close': '종가', 'Open': '시가', 'High': '고가', 'Low': '저가'}
+        df_vix = df_vix.rename(columns=col_map)
+        
+        # 변동률 직접 계산
+        if '종가' in df_vix.columns:
+            df_vix['변동 %'] = df_vix['종가'].pct_change().multiply(100).round(2).astype(str) + '%'
+            
+        df_vix['날짜'] = pd.to_datetime(df_vix['날짜']).dt.strftime('%Y-%m-%d')
+        
+        # 필요한 컬럼만 추출하여 저장
+        target_cols = ['날짜', '종가', '시가', '고가', '저가', '변동 %']
+        df_vix = df_vix[[c for c in target_cols if c in df_vix.columns]]
+        df_vix.to_csv('data/vix data.csv', index=False, encoding='utf-8-sig')
+        print("✅ VIX 지수 업데이트 성공! (data/vix data.csv 저장 완료)")
+    else:
+        print("🚨 VIX 데이터를 불러오지 못했습니다. 터미널 창을 확인해주세요.")
 
     # ==========================================
     # 1. 한국 시장 유니버스 세팅
     # ==========================================
+    print("🔄 한국 주식 시장 데이터 로드 중...")
     df_kospi = fdr.StockListing('KOSPI')
     df_kosdaq = fdr.StockListing('KOSDAQ')
     df_kospi['Code'] = df_kospi['Code'].astype(str).str.zfill(6)
@@ -109,7 +129,7 @@ def update_all_daily_momentum():
     # ==========================================
     # 2. 멀티스레딩 데이터 수집
     # ==========================================
-    print(f"📊 총 {len(all_target_df)}개 종목 동시 다운로드 중...")
+    print(f"📊 총 {len(all_target_df)}개 종목 주가 동시 다운로드 중...")
     price_cache = {}
     daily_records_dict = {}
     
@@ -129,12 +149,15 @@ def update_all_daily_momentum():
     
     korea300_records = [daily_records_dict[c] for c in korea300_df['Code'] if c in daily_records_dict]
     pd.DataFrame(korea300_records).to_csv('data/momentum_data_daily_korea.csv', index=False, encoding='utf-8-sig')
-    print("✅ 데일리 종목 파일 저장 완료!")
+    print("✅ 한국 데일리 종목 모멘텀 계산 및 저장 완료!")
 
     # 4. 월간 아카이브 동기화
     def sync_archive_returns(archive_folder):
-        archive_files = sorted(glob.glob(f'{archive_folder}/momentum_*.csv'))
-        if not archive_files: return
+        archive_files = sorted(glob.glob(f'{archive_folder}/momentum_*.csv')) # 파일 패턴은 환경에 맞게 자동 인식
+        if not archive_files:
+            archive_files = sorted(glob.glob(f'{archive_folder}/only_*.csv'))
+            if not archive_files: return
+
         latest_file = archive_files[-1]
         df_latest = pd.read_csv(latest_file, dtype={'종목코드': str})
         
@@ -157,11 +180,11 @@ def update_all_daily_momentum():
                         df_latest.at[idx, '시가총액'] = int(bp * shares_dict.get(code, 0))
             
             df_latest.to_csv(latest_file, index=False, encoding='utf-8-sig')
-            print(f"✅ {archive_folder} 동기화 완료!")
+            print(f"✅ {archive_folder} 월별 아카이브 동기화 완료!")
 
     sync_archive_returns('archive_kospi')
     sync_archive_returns('archive_korea')
-    print("🎉 고속 업데이트 완료!")
+    print("🎉 고속 업데이트 완료! (VIX 포함)")
 
 if __name__ == "__main__":
     update_all_daily_momentum()
