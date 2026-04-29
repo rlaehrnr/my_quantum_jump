@@ -30,18 +30,17 @@ df_master = load_archive_data(archive_path, f_hash)
 f_daily = 'data/momentum_data_daily.csv'
 
 if df_master.empty:
-    st.error("🚨 archive_kospi 폴더에 정상적인 데이터가 없습니다!")
+    st.error("🚨 archive_kospi 폴더에 데이터가 없습니다!")
     st.stop()
 
-# 1. 우선주 날리는 코드 삭제 (주석 처리)
 df_master['종목코드'] = df_master['종목코드'].astype(str).str.zfill(6)
-# df_master = df_master[df_master['종목코드'].str.endswith('0')].copy()
+df_master = df_master[df_master['종목코드'].str.endswith('0')].copy()
 
-# 2. 모든 모멘텀 수익률의 빈칸도 과거처럼 0%로 강제 변환
 target_cols = ['시가총액', '종가', '거래량', '1개월(%)', '3개월(%)', '6개월(%)', '12개월(%)', '다음달수익률(%)', '이번달수익률']
 for col in target_cols:
     if col in df_master.columns:
         df_master[col] = pd.to_numeric(df_master[col], errors='coerce').fillna(0)
+
 if '시가총액' in df_master.columns and df_master['시가총액'].max() > 1000000000:
     df_master['시가총액'] = df_master['시가총액'] / 100000000
 
@@ -163,8 +162,7 @@ main_cfg = {
     "통합티커_L": st.column_config.LinkColumn("티커", display_text=r"#(.+)"), 
     "종목명_L": st.column_config.LinkColumn("종목명", display_text=r"#(.+)"), 
     "시가총액": st.column_config.NumberColumn("시가총액(억)", format="%,.0f"),
-    "종가": st.column_config.NumberColumn("종가", format="%,.0f"),
-    "거래량": st.column_config.NumberColumn("거래량", format="%,.0f"),
+    "종가": st.column_config.NumberColumn("종가(선정일)", format="%,.0f"),
     "1개월(%)": st.column_config.NumberColumn(format="%.1f"), 
     "3개월(%)": st.column_config.NumberColumn(format="%.1f"), 
     "6개월(%)": st.column_config.NumberColumn(format="%.1f"), 
@@ -265,12 +263,10 @@ with tab2:
             if col in df_daily.columns:
                 df_daily[col] = pd.to_numeric(df_daily[col], errors='coerce').fillna(0)
                 
-        # 💡 [해결완료] 시가총액 억 단위 적용!
         if '시가총액' in df_daily.columns and df_daily['시가총액'].max() > 10000000:
             df_daily['시가총액'] = df_daily['시가총액'] / 100000000
         
         st.markdown(f"<div style='margin-bottom: 5px; font-size:0.95rem; font-weight:600;'><b>🕒 실시간 데일리 순위</b> <span style='font-size: 0.85rem; color: #9ca3af; font-weight:normal;'>&nbsp;&nbsp;💡 기준일: {b_date_d}</span></div>", unsafe_allow_html=True)
-        
         kospi_curr_d, kospi_mas_d = get_kospi_ma_all(b_date_d)
         ma_df_d = pd.DataFrame([{'지수_L': "https://m.stock.naver.com/domestic/index/KOSPI/total#KOSPI", '현재가_L': f"https://m.stock.naver.com/fchart/domestic/index/KOSPI#{kospi_curr_d:,.2f}", 'base_price': round(kospi_curr_d, 2), '4개월선': kospi_mas_d.get(4, 0), '5개월선': kospi_mas_d.get(5, 0), '6개월선': kospi_mas_d.get(6, 0), '10개월선': kospi_mas_d.get(10, 0), '12개월선': kospi_mas_d.get(12, 0)}])
         st.dataframe(style_kospi_ma(ma_df_d), use_container_width=True, hide_index=True, column_config=ma_cfg)
@@ -279,7 +275,6 @@ with tab2:
         kospi_1m_d, kospi_3m_d = get_idx_kr(b_date_d)
         neg_1m_d = (df_korea_d['1개월(%)'] < 0).sum()
         neg_3m_d = (df_korea_d['3개월(%)'] < 0).sum()
-        
         is_below_ma_d = (kospi_curr_d > 0) and (kospi_curr_d < kospi_mas_d.get(6, 0))
         status_d, box_d, text_d = ("🛑 투자 중지", "#FFEBEE", "#C62828") if (neg_1m_d >= 100 and neg_3m_d >= 100 or is_below_ma_d) else ("✅ 투자 진행", "#E8F5E9", "#2E7D32")
         
@@ -290,9 +285,9 @@ with tab2:
         col1d, col2d, col3d, col4d, col5d, col6d = st.columns([0.9, 0.9, 1.0, 1.0, 1.4, 1.6])
         with col1d: st.metric("📈 KOSPI 1M", f"{kospi_1m_d}%")
         with col2d: st.metric("📈 KOSPI 3M", f"{kospi_3m_d}%")
-        with col3d: st.metric("📉 1개월 하락", f"{neg_1m_d}개")
-        with col4d: st.metric("📉 3개월 하락", f"{neg_3m_d}개")
-        with col5d: st.markdown(f'<div style="background-color: #f0f2f6; padding: 10px; border-radius: 10px; text-align: center; border: 1px solid #d1d5db; height: 95px; display: flex; flex-direction: column; justify-content: center;"><div style="font-size: 12px; font-weight: bold; color: #64748b; margin-bottom: 2px;">🇺🇸대통령 <span style="color:#0047AB;">{cycle_year_d}년차</span></div><div style="font-size: 16px; color: #D84315; font-weight:900;">위험달: {bad_m_str_d}</div></div>', unsafe_allow_html=True)
+        with col3d: st.metric("📉 1개월 하락", f"{(df_korea_d['1개월(%)'] < 0).sum()}개")
+        with col4d: st.metric("📉 3개월 하락", f"{(df_korea_d['3개월(%)'] < 0).sum()}개")
+        with col5d: st.markdown(f'<div style="background-color: #f0f2f6; padding: 10px; border-radius: 10px; text-align: center; border: 1px solid #d1d5db; height: 95px; display: flex; flex-direction: column; justify-content: center;"><div style="font-size: 12px; font-weight: bold; color: #64748b; margin-bottom: 2px;">🇺🇸대통령 <span style="color:#0047AB;">{cycle_year_d}년차</span> ({target_year_d}년)</div><div style="font-size: 16px; color: #D84315; font-weight:900;">🚨 위험달: {bad_m_str_d}</div></div>', unsafe_allow_html=True)
         with col6d: st.markdown(f'<div style="background-color: {box_d}; padding: 10px; border-radius: 10px; text-align: center; border: 1px solid {text_d}; height: 95px; display: flex; flex-direction: column; justify-content: center;"><p style="margin: 0; font-size: 12px; color: {text_d}; font-weight: bold;">오늘의 시장 상태</p><div style="margin: 4px 0 0 0; font-size: 1.5rem; font-weight: 900; color: {text_d};">{status_d}</div></div>', unsafe_allow_html=True)
         st.markdown("<hr style='margin: 1rem 0;'>", unsafe_allow_html=True)
 
@@ -310,7 +305,6 @@ with tab2:
             st.markdown('<p class="strategy-desc">12M 수익률 상위 30% 이내 & 1M 수익률 상위 10% 이내 (1M 순)</p>', unsafe_allow_html=True)
             st.dataframe(df_spec_d.style.apply(apply_korea_styling, axis=1), use_container_width=True, hide_index=True, column_order=['통합티커_L', '종목명_L', '1개월(%)', '12개월(%)'], column_config=main_cfg)
             
-        # 💡 [해결완료] KOSPI 200 데일리 탭 전체 순위 표 복구!
         st.markdown("---")
         st.markdown(f"### 🏆 전체 시가총액 순위 <span style='font-size: 0.85rem; color: #9ca3af; font-weight:normal;'>&nbsp;&nbsp;💡 기준일: {b_date_d}</span>", unsafe_allow_html=True)
         cols_d = [c for c in ['통합티커_L', '종목명_L', '시가총액', '종가', '거래량', '1개월(%)', '3개월(%)', '6개월(%)', '12개월(%)'] if c in df_korea_d.columns]
@@ -339,12 +333,13 @@ with tab3:
         if not df_res.empty:
             s_cols_raw = [c for c in df_res.columns if c not in ['투자월', 'invested']]
             
-            # 💡 [순서 고정 로직] 요청하신 순서대로 정확하게 이름표를 맞췄습니다.
+            # 💡 [순서 완벽 고정] 앙상블 이름을 수정하고 요청하신 순서대로 나열합니다.
             target_order = [
                 f'🔥 퍼펙트 상승 ({rank_p_s}~{rank_p_e}위)', 
                 f'🐎 달리는 말 ({rank_s_s}~{rank_s_e}위)', 
-                '앙상블 (전략 50:50)', 
-                '통합 전략 (순위 합)'
+                '앙상블 (50:50 전략)', 
+                '통합 전략 (중복 제외 1/N)',
+                '통합 전략 (중복 인정 1/N)'
             ]
             s_cols = [c for c in target_order if c in s_cols_raw] + [c for c in s_cols_raw if c not in target_order]
             
@@ -383,7 +378,7 @@ with tab4:
     with col_title_c: st.markdown("<h4 style='margin-top: 5px;'>⚙️ 가중치 설정</h4>", unsafe_allow_html=True)
     with col_check_c:
         st.markdown("<div style='margin-top: 12px;'></div>", unsafe_allow_html=True)
-        apply_timing_c = st.checkbox("🛑 마켓타이밍 적용 (1&3M 하락 100개↑ & MA 이탈 시 현금)", value=True, key='t4_chk_main')
+        apply_timing_c = st.checkbox("🛑 마켓타이밍 적용 (MA 이탈 시 현금)", value=True, key='t4_chk_main')
     
     with st.form("custom_form", border=False):
         c1, c2, c3, c4, c5 = st.columns([1, 1, 1, 1, 0.8])
@@ -423,7 +418,6 @@ with tab4:
                 stats_c = [{"전략명": "커스텀 스코어", "CAGR (연평균)": f"{cagr_c:.1f}%", "총 누적수익률": f"{final_val_c-100:,.1f}%", "MDD (최대낙폭)": f"{mdd_c:.1f}%", "투자월 비율": f"{(df_res_c['invested'].sum()/len(df_res_c))*100:.1f}%", "월별 승률": f"{(df_res_c.loc[df_res_c['invested'], '커스텀 전략']>0).mean()*100:.1f}%" if df_res_c['invested'].any() else "0.0%", "평균 수익률": f"{df_res_c.loc[df_res_c['invested'], '커스텀 전략'].mean():.2f}%" if df_res_c['invested'].any() else "0.00%"}]
                 st.dataframe(get_styled_stats(pd.DataFrame(stats_c)), use_container_width=True, hide_index=True)
                 
-                st.markdown("#### 🗓️ 상세 분석 (월별 수익률 히트맵 & MDD)")
                 col_hm_c, col_mdd_c = st.columns([6, 4])
                 with col_hm_c: st.dataframe(get_monthly_heatmap(df_res_c, '커스텀 전략'), use_container_width=True)
                 with col_mdd_c: st.dataframe(get_mdd_history(df_cum_c['커스텀 전략']), use_container_width=True, hide_index=True)
