@@ -5,7 +5,7 @@ from datetime import datetime, timedelta
 import os
 import FinanceDataReader as fdr
 
-st.set_page_config(page_title="KOREA 통합 모멘텀 터미널", layout="wide")
+st.set_page_config(page_title="KOREA 모멘텀 터미널", layout="wide")
 
 from utils.data_loader import load_archive_data, get_folder_hash
 from utils.calculator import get_cycle_year, PRESIDENTIAL_DANGEROUS_MONTHS, get_kospi_ma_all, get_strategy_stocks_korea, run_backtest_korea, get_kospi_timing_for_backtest, get_idx_kr
@@ -25,7 +25,7 @@ st.markdown('''
     </div>
 ''', unsafe_allow_html=True)
 
-# 💡 [핵심] KOREA 데이터 폴더 및 데일리 파일 경로 설정
+# 데이터 로드 (경로 KOREA용으로 변경)
 archive_path = "archive_korea"
 f_hash = get_folder_hash(archive_path) 
 df_master = load_archive_data(archive_path, f_hash) 
@@ -33,7 +33,7 @@ df_master = load_archive_data(archive_path, f_hash)
 f_daily = 'data/momentum_data_daily_korea.csv'
 
 if df_master.empty:
-    st.error("🚨 archive_korea 폴더에 정상적인 데이터가 없습니다! (월간 봇을 다시 실행해 주세요)")
+    st.error("🚨 archive_korea 폴더에 정상적인 데이터가 없습니다! (월간 봇을 실행해 파일을 생성해 주세요)")
     st.stop()
 
 # 공통 전처리
