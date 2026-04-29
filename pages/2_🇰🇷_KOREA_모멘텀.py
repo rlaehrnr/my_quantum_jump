@@ -320,7 +320,7 @@ with tab3:
     st.markdown("<h4 style='margin:0;'>⚙️ 시뮬레이션 설정</h4>", unsafe_allow_html=True)
     c1, c_ma, c_chk = st.columns([1, 1, 1.5])
     with c1: start_year, end_year = st.slider("📅 테스트 기간", min_y, max_y, (min_y, max_y), key='t3_yr')
-    # 💡 [핵심 복원 3] 마켓타이밍 기본값을 4개월선으로 복원
+    # 💡 KOREA 페이지의 과거 감성 4개월선 기본값 세팅
     with c_ma: ma_months_t3 = st.slider("📉 마켓타이밍 (개월선)", 1, 12, 4, key='t3_ma')
     with c_chk:
         st.markdown("<div style='margin-top: 35px;'></div>", unsafe_allow_html=True)
@@ -329,17 +329,24 @@ with tab3:
     st.markdown("<hr style='margin: 10px 0px;'>", unsafe_allow_html=True)
     c2, c3, c4, c5 = st.columns([1, 1, 1, 1])
     with c2: perf_pct_t3 = st.slider("🔥 퍼펙트 상위 %", 5, 50, 30, step=5)
-    # 💡 [핵심 복원 4] 퍼펙트 순위 기본값을 5~10위로 복원
+    # 💡 KOREA 페이지의 과거 감성 5~10위 기본값 세팅
     with c3: rank_p_s, rank_p_e = st.slider("🔥 퍼펙트 순위", 1, 30, (5, 10))
     with c4: spec_12m_pct_t3 = st.slider("🐎 달리는말 상위 %", 5, 50, 30, step=5)
-    # 💡 [핵심 복원 5] 달리는 말 순위 기본값을 10~13위로 복원
+    # 💡 KOREA 페이지의 과거 감성 10~13위 기본값 세팅
     with c5: rank_s_s, rank_s_e = st.slider("🐎 달리는말 순위", 1, 30, (10, 13))
 
     with st.spinner("엔진 구동 중..."):
         df_res, df_trades = cached_run_backtest_korea(df_master, start_year, end_year, ma_months_t3, apply_timing, (rank_p_s, rank_p_e), (rank_s_s, rank_s_e), perf_pct_t3, spec_12m_pct_t3)
         if not df_res.empty:
             s_cols_raw = [c for c in df_res.columns if c not in ['투자월', 'invested']]
-            target_order = ['앙상블 (전체 10~20종목)', '통합 전략 (순위 합)', f'🔥 퍼펙트 상승 ({rank_p_s}~{rank_p_e}위)', f'🐎 달리는 말 ({rank_s_s}~{rank_s_e}위)']
+            
+            # 💡 [순서 고정 로직] KOREA 통합 페이지도 요청하신 순서대로 못 박았습니다.
+            target_order = [
+                f'🔥 퍼펙트 상승 ({rank_p_s}~{rank_p_e}위)', 
+                f'🐎 달리는 말 ({rank_s_s}~{rank_s_e}위)', 
+                '앙상블 (전략 50:50)', 
+                '통합 전략 (순위 합)'
+            ]
             s_cols = [c for c in target_order if c in s_cols_raw] + [c for c in s_cols_raw if c not in target_order]
             
             df_cum = (1 + df_res.set_index('투자월')[s_cols] / 100).cumprod() * 100
