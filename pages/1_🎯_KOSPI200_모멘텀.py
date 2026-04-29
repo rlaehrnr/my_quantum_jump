@@ -4,7 +4,6 @@ import plotly.express as px
 from datetime import datetime, timedelta
 import os
 import FinanceDataReader as fdr
-import glob
 
 st.set_page_config(page_title="KOSPI 200 모멘텀 터미널", layout="wide")
 
@@ -26,40 +25,14 @@ st.markdown('''
     </div>
 ''', unsafe_allow_html=True)
 
-# 데이터 로드 (안전하게 해시값 포함)
+# 데이터 로드 (과거 데이터 자동 호환 적용됨)
 archive_path = "archive_kospi"
 f_hash = get_folder_hash(archive_path) 
 df_master = load_archive_data(archive_path, f_hash) 
 f_daily = 'data/momentum_data_daily.csv'
 
-# 🛠️ [신규 추가] 원인 파악을 위한 자가 진단 시스템
 if df_master.empty:
-    st.error("🚨 `archive_kospi` 폴더에서 정상적인 데이터를 가져오지 못했습니다.")
-    st.warning("🛠️ **자가 진단 시스템 가동 중... 아래 결과를 확인해 주세요!**")
-    
-    files = glob.glob(f"{archive_path}/*.csv")
-    if not files:
-        st.error(f"❌ **원인 1:** `{archive_path}` 폴더 안에 CSV 파일이 **단 하나도 없습니다!**")
-        st.info("👉 해결책: 터미널에서 `python update_monthly.py`를 실행하여 새 파일을 생성해 주세요.")
-    else:
-        st.success(f"✅ 폴더 내 파일 **{len(files)}개** 발견됨: {files}")
-        for f in files:
-            try:
-                # 인코딩 문제 확인
-                try:
-                    temp_df = pd.read_csv(f, nrows=2, encoding='utf-8-sig')
-                    enc = 'utf-8-sig'
-                except:
-                    temp_df = pd.read_csv(f, nrows=2, encoding='cp949')
-                    enc = 'cp949'
-                
-                st.info(f"📄 파일명: `{f}` (적용된 인코딩: {enc})")
-                st.write(f"- 실제 들어있는 컬럼 목록: `{temp_df.columns.tolist()}`")
-                
-                if '투자연도' not in temp_df.columns:
-                    st.error("👉 **원인 2:** 이 파일은 '투자연도' 컬럼이 없어서 로드에서 제외되었습니다. (파일이 훼손되었거나 엉뚱한 파일입니다)")
-            except Exception as e:
-                st.error(f"❌ **원인 3:** `{f}` 파일을 파이썬이 아예 읽을 수 없습니다. (에러: {e})")
+    st.error("🚨 archive_kospi 폴더에 데이터가 없습니다!")
     st.stop()
 
 # 공통 전처리
@@ -175,6 +148,7 @@ def get_monthly_heatmap(df_res, strategy_col):
     except AttributeError: styled = pivot.style.format("{:+.1f}", na_rep="").applymap(color_cells)
     return styled
 
+# --- [컬럼 설정] ---
 ma_cfg = {
     "지수_L": st.column_config.LinkColumn("지수", display_text=r"#(.+)"),
     "현재가_L": st.column_config.LinkColumn("현재가", display_text=r"#(.+)"),
