@@ -2,6 +2,7 @@ import streamlit as st
 import pandas as pd
 import os
 import glob
+import re
 
 def get_folder_hash(folder_path):
     """폴더 내 'only_'로 시작하는 정상 월간 파일들만 검사합니다."""
@@ -17,21 +18,28 @@ def load_archive_data(folder_path, folder_hash=None):
     
     for filename in all_files:
         try:
-            # 💡 [핵심 수정] encoding='utf-8-sig' 추가하여 눈에 안보이는 특수문자 제거
-            df = pd.read_csv(filename, index_col=None, header=0, dtype={'종목코드': str}, encoding='utf-8-sig')
-            
-            if '투자연도' in df.columns:
-                li.append(df)
-            else:
-                print(f"⚠️ 경고: {filename} 파일에 '투자연도' 컬럼이 없습니다. (현재 컬럼: {df.columns})")
-        except Exception as e:
-            # 💡 간혹 cp949(한국어 윈도우 기본)로 저장된 파일이 섞여있을 경우를 대비한 2차 안전장치
             try:
+                df = pd.read_csv(filename, index_col=None, header=0, dtype={'종목코드': str}, encoding='utf-8-sig')
+            except:
                 df = pd.read_csv(filename, index_col=None, header=0, dtype={'종목코드': str}, encoding='cp949')
-                if '투자연도' in df.columns:
-                    li.append(df)
-            except Exception as e2:
-                print(f"Error loading {filename}: {e2}")
+            
+            # 💡 [핵심 패치] 과거 파일에 '투자연도'가 없으면 파일명에서 빼옵니다!
+            if '투자연도' not in df.columns or '투자월' not in df.columns:
+                basename = os.path.basename(filename) # 예: only_kospi_2023_11.csv
+                match = re.search(r'_(\d{4})_(\d{2})\.csv', basename)
+                
+                if match:
+                    year = match.group(1)
+                    month = match.group(2)
+                    df['투자연도'] = int(year)
+                    df['투자월'] = f"{year}-{month}"
+                else:
+                    print(f"⚠️ 파일명 규칙이 맞지 않아 건너뜁니다: {filename}")
+                    continue
+            
+            li.append(df)
+        except Exception as e:
+            print(f"Error loading {filename}: {e}")
             
     if not li:
         return pd.DataFrame()
