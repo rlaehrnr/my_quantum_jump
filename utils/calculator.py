@@ -3,7 +3,6 @@ import FinanceDataReader as fdr
 from datetime import datetime, timedelta
 import streamlit as st
 
-# 미국 대통령 선거 주기별 위험달 정의
 PRESIDENTIAL_DANGEROUS_MONTHS = {
     1: [2, 9], 2: [2, 4, 6, 9, 12], 3: [8, 9], 4: [3],
     5: [], 6: [7], 7: [6, 8, 11, 12], 8: [1, 6, 9, 10, 11]
@@ -52,9 +51,9 @@ def get_kospi_timing_for_backtest(ma_months):
     ks11['MA'] = ks11['Close'].rolling(ma_days).mean()
     timing_df = ks11.resample('ME').last()
     timing_df['is_below_ma'] = timing_df['Close'] < timing_df['MA']
-    # 💡 [핵심 해결] 인덱스를 '2023-11' 같은 '글자'로 바꿔서 1:1 매칭이 되게 합니다.
     timing_df.index = timing_df.index.strftime('%Y-%m')
-    return timing_df['is_below_ma']
+    # 💡 ValueError를 완벽히 막기 위해 단일 값을 찾는 딕셔너리로 변환
+    return timing_df['is_below_ma'].to_dict()
 
 def get_strategy_stocks_korea(df):
     q30 = {c: df[c].quantile(0.7) for c in ['1개월(%)', '3개월(%)', '6개월(%)', '12개월(%)']}
@@ -75,16 +74,17 @@ def run_backtest_korea(df, start_year, end_year, ma_months, apply_timing, rank_p
     return _base_backtest_engine(df, start_year, end_year, ma_months, apply_timing, rank_p, rank_s, perf_pct, spec_12m_pct, market_threshold=None)
 
 def _base_backtest_engine(df, start_year, end_year, ma_months, apply_timing, rank_p, rank_s, perf_pct, spec_12m_pct, market_threshold):
-    timing_df = get_kospi_timing_for_backtest(ma_months)
+    timing_dict = get_kospi_timing_for_backtest(ma_months)
     months = [m for m in sorted(df['투자월'].dropna().unique()) if start_year <= int(m.split('-')[0]) <= end_year]
     records, trade_logs = [], []
+    
     for m in months:
         m_data = df[df['투자월'] == m].copy()
         if m_data.empty: continue
-        base_ym = pd.to_datetime(m_data['종목선정일'].iloc[0]).strftime('%Y-%m')
         
-        # 💡 이제 timing_df의 인덱스가 글자이므로 .get()이 정확히 값 하나만 가져옵니다.
-        is_below_ma = bool(timing_df.get(base_ym, False))
+        base_ym = pd.to_datetime(m_data['종목선정일'].iloc[0]).strftime('%Y-%m')
+        # 💡 딕셔너리에서 안전하게 가져옴
+        is_below_ma = timing_dict.get(base_ym, False)
         
         is_bad_market = False
         if market_threshold is not None:
