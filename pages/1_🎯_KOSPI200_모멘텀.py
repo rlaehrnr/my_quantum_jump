@@ -5,15 +5,9 @@ from datetime import datetime, timedelta
 import os
 import FinanceDataReader as fdr
 
-st.set_page_config(page_title="KOSPI 200 모멘텀", layout="wide")
+st.set_page_config(page_title="KOSPI 200 모멘텀 터미널", layout="wide")
 
-from utils.data_loader import load_archive_data, get_folder_hash # get_folder_hash 추가 임포트
-
-archive_path = "archive_kospi"
-f_hash = get_folder_hash(archive_path) # 💡 폴더 안의 파일들이 바뀌었는지 체크
-
-# 💡 [수정됨] f_hash를 인자로 넣어서 파일이 바뀌면 자동으로 다시 읽게 함
-df_master = load_archive_data(archive_path, f_hash)
+from utils.data_loader import load_archive_data, get_folder_hash
 from utils.calculator import get_cycle_year, PRESIDENTIAL_DANGEROUS_MONTHS, get_kospi_ma_all, get_strategy_stocks_korea, run_backtest_korea, get_kospi_timing_for_backtest, get_idx_kr
 from utils.ui_components import inject_custom_css, apply_korea_styling, style_kospi_ma
 
@@ -31,7 +25,11 @@ st.markdown('''
     </div>
 ''', unsafe_allow_html=True)
 
-df_master = load_archive_data("archive_kospi")
+# 💡 [여기서부터 수정!] 데이터 로드 부분을 하나로 깔끔하게 합쳤습니다.
+archive_path = "archive_kospi"
+f_hash = get_folder_hash(archive_path) 
+df_master = load_archive_data(archive_path, f_hash) 
+
 f_daily = 'data/momentum_data_daily.csv'
 
 if df_master.empty:
