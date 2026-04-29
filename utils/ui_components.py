@@ -1,6 +1,53 @@
 import pandas as pd
 import streamlit as st
 
+def inject_custom_css():
+    st.markdown("""
+        <style>
+        .block-container { padding-top: 2.8rem !important; padding-bottom: 1rem !important; }
+        h1 { font-size: 2.2rem !important; font-weight: 800; margin-bottom: 10px; }
+        .strategy-desc { font-size: 0.85rem; color: #9ca3af; margin-bottom: 10px; line-height: 1.2; }
+        div[role="radiogroup"] { gap: 12px !important; flex-wrap: wrap; }
+        @media (max-width: 768px) {
+            div[data-testid="stHorizontalBlock"] { flex-wrap: wrap !important; }
+            div[data-testid="stHorizontalBlock"] > div[data-testid="column"] {
+                min-width: 45% !important; flex: 1 1 45% !important; margin-bottom: 5px !important;
+            }
+        }
+        .settings-box { background-color: #f8fafc; padding: 20px; border-radius: 12px; border: 1px solid #e2e8f0; margin-bottom: 20px; }
+        .title-link:hover { opacity: 0.7; transition: 0.2s; }
+        th[data-testid="stTableColumnHeader"] div { white-space: pre-wrap !important; text-align: center !important; }
+        </style>
+    """, unsafe_allow_html=True)
+
+def apply_korea_styling(row, highlight_codes=None, overlap_codes=None):
+    styles = [''] * len(row)
+    ret_col = '이번달수익률' if '이번달수익률' in row.index else ('다음달수익률(%)' if '다음달수익률(%)' in row.index else None)
+    if ret_col:
+        col_idx = row.index.get_loc(ret_col)
+        val = row[ret_col]
+        if pd.notna(val) and val > 0: styles[col_idx] = 'color: #D32F2F; font-weight: bold;'
+        elif pd.notna(val) and val < 0: styles[col_idx] = 'color: #1976D2; font-weight: bold;'
+        
+    code = row.get('종목코드')
+    if code and '종목명_L' in row.index:
+        name_idx = row.index.get_loc('종목명_L')
+        if overlap_codes and code in overlap_codes: styles[name_idx] = 'background-color: #FFF59D; color: #D84315; font-weight: bold;'
+        elif highlight_codes and code in highlight_codes: styles[name_idx] = 'background-color: #E8F5E9; color: #2E7D32; font-weight: bold;'
+    return styles
+
+def style_kospi_ma(df):
+    def apply_color(row):
+        price = row['base_price']
+        styles = [''] * len(row)
+        for i, col in enumerate(row.index):
+            if '개월선' in col:
+                val = row[col]
+                if pd.notna(val) and price > val: styles[i] = 'color: #EF4444; font-weight: bold;' 
+                elif pd.notna(val) and price < val: styles[i] = 'color: #3B82F6; font-weight: bold;' 
+        return styles
+    return df.style.apply(apply_color, axis=1)
+
 def style_stats(x):
     if isinstance(x, str) and '%' in x:
         if '-' in x: return 'color: #1976D2; font-weight:bold;'
@@ -82,7 +129,7 @@ ma_cfg = {
 }
 
 main_cfg = {
-    "순위": st.column_config.NumberColumn("순위", format="%d"),
+    "순위": st.column_config.NumberColumn("순위", format="%d위"),
     "통합티커_L": st.column_config.LinkColumn("티커", display_text=r"#(.+)"), 
     "종목명_L": st.column_config.LinkColumn("종목명", display_text=r"#(.+)"), 
     "시가총액": st.column_config.NumberColumn("시가총액(억)", format="%,.0f"),
