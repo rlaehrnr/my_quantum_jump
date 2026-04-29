@@ -52,7 +52,7 @@ def get_kospi_timing_for_backtest(ma_months):
     timing_df = ks11.resample('ME').last()
     timing_df['is_below_ma'] = timing_df['Close'] < timing_df['MA']
     timing_df.index = timing_df.index.strftime('%Y-%m')
-    # 💡 ValueError를 완벽히 막기 위해 단일 값을 찾는 딕셔너리로 변환
+    # 💡 ValueError 완벽 차단: 인덱스를 '2023-11' 글자로 만든 뒤 안전한 딕셔너리로 반환!
     return timing_df['is_below_ma'].to_dict()
 
 def get_strategy_stocks_korea(df):
@@ -62,6 +62,7 @@ def get_strategy_stocks_korea(df):
                 (df['6개월(%)'] >= q30['6개월(%)']) & (df['6개월(%)'] > 0) & \
                 (df['12개월(%)'] >= q30['12개월(%)']) & (df['12개월(%)'] > 0)
     df_perf = df[perf_mask].sort_values('3개월(%)', ascending=False).copy()
+    
     spec_mask = (df['12개월(%)'] >= q30['12개월(%)']) & \
                 (df['1개월(%)'] >= df['1개월(%)'].quantile(0.9))
     df_spec = df[spec_mask].sort_values('1개월(%)', ascending=False).copy()
@@ -83,7 +84,8 @@ def _base_backtest_engine(df, start_year, end_year, ma_months, apply_timing, ran
         if m_data.empty: continue
         
         base_ym = pd.to_datetime(m_data['종목선정일'].iloc[0]).strftime('%Y-%m')
-        # 💡 딕셔너리에서 안전하게 가져옴
+        
+        # 💡 에러 없이 단일 참/거짓 값 획득
         is_below_ma = timing_dict.get(base_ym, False)
         
         is_bad_market = False
@@ -108,11 +110,16 @@ def _base_backtest_engine(df, start_year, end_year, ma_months, apply_timing, ran
         combined_codes = list(set(target_p['종목코드'].tolist() + target_s['종목코드'].tolist()))
         ret_total = (m_data[m_data['종목코드'].isin(combined_codes)]['이번달수익률'].mean() * mult) if combined_codes else 0.0
         
-        records.append({'투자월': m, 'invested': mult > 0, f'🔥 퍼펙트 상승': ret_p, f'🐎 달리는 말': ret_s, '앙상블 (전략 50:50)': (ret_p+ret_s)/2, '통합 전략': ret_total})
+        records.append({
+            '투자월': m, 'invested': mult > 0, 
+            f'🔥 퍼펙트 상승 ({rank_p[0]}~{rank_p[1]}위)': ret_p, 
+            f'🐎 달리는 말 ({rank_s[0]}~{rank_s[1]}위)': ret_s, 
+            '앙상블 (전체 10~20종목)': (ret_p+ret_s)/2, 
+            '통합 전략 (순위 합)': ret_total
+        })
+        
         if mult > 0:
             for i, (_, r) in enumerate(target_p.iterrows()): trade_logs.append({'투자월': m, '전략': '퍼펙트', '순위': f"{i+rank_p[0]}위", '종목명': r['종목명'], '수익률(%)': r['이번달수익률']})
             for i, (_, r) in enumerate(target_s.iterrows()): trade_logs.append({'투자월': m, '전략': '달리는말', '순위': f"{i+rank_s[0]}위", '종목명': r['종목명'], '수익률(%)': r['이번달수익률']})
-        else:
-            trade_logs.append({'투자월': m, '전략': '현금보유', '순위': '-', '종목명': 'CASH', '수익률(%)': 0.0})
-            
+    
     return pd.DataFrame(records), pd.DataFrame(trade_logs)
