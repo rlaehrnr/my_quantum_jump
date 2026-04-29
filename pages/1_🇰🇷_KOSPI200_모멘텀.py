@@ -3,13 +3,13 @@ import pandas as pd
 import plotly.express as px
 from datetime import datetime, timedelta
 import os
-import FinanceDataReader as fdr
 
 st.set_page_config(page_title="KOSPI 200 모멘텀 터미널", layout="wide")
 
 from utils.data_loader import load_archive_data, get_folder_hash
 from utils.calculator import get_cycle_year, PRESIDENTIAL_DANGEROUS_MONTHS, get_kospi_ma_all, get_strategy_stocks_korea, run_backtest_k200, get_kospi_timing_for_backtest, get_idx_kr
-from utils.ui_components import inject_custom_css, apply_korea_styling, style_kospi_ma
+# 💡 핵심: UI 컴포넌트들을 한 줄로 간편하게 가져옵니다!
+from utils.ui_components import inject_custom_css, apply_korea_styling, style_kospi_ma, get_styled_stats, get_mdd_history, get_monthly_heatmap, ma_cfg, main_cfg
 
 inject_custom_css()
 
@@ -78,98 +78,6 @@ def cached_run_custom_backtest(df, start_year_c, end_year_c, ma_months_t4, apply
         for i, (_, r) in enumerate(target.iterrows()): trade_logs_c.append({'투자월': m_str, '전략': '커스텀', '순위': f"{i+rank_c_s}위", '종목명': r['종목명'], '수익률(%)': r['이번달수익률']})
     return pd.DataFrame(records_c), pd.DataFrame(trade_logs_c)
 
-def style_stats(x):
-    if isinstance(x, str) and '%' in x:
-        if '-' in x: return 'color: #1976D2; font-weight:bold;'
-        elif x != '0.0%': return 'color: #D32F2F; font-weight:bold;'
-    return ''
-
-def get_styled_stats(df_stats):
-    try: return df_stats.style.map(style_stats, subset=['CAGR (연평균)', '총 누적수익률', 'MDD (최대낙폭)'])
-    except AttributeError: return df_stats.style.applymap(style_stats, subset=['CAGR (연평균)', '총 누적수익률', 'MDD (최대낙폭)'])
-
-def get_mdd_history(equity_series):
-    df = equity_series.to_frame(name='equity')
-    records = []
-    peak_date, peak_val = df.index[0], df['equity'].iloc[0]
-    trough_date, trough_val = peak_date, peak_val
-    in_dd = False
-    for date, row in df.iterrows():
-        val = row['equity']
-        if val >= peak_val:
-            if in_dd:
-                dd_pct = (trough_val / peak_val - 1) * 100
-                if dd_pct < -0.01: records.append({'MDD': dd_pct, '시작일': peak_date, '최저일': trough_date, '회복일': date})
-                in_dd = False
-            peak_val, peak_date, trough_val, trough_date = val, date, val, date
-        else:
-            in_dd = True
-            if val < trough_val: trough_val, trough_date = val, date
-    if in_dd:
-        dd_pct = (trough_val / peak_val - 1) * 100
-        if dd_pct < -0.01: records.append({'MDD': dd_pct, '시작일': peak_date, '최저일': trough_date, '회복일': '진행중'})
-    res_df = pd.DataFrame(records)
-    if res_df.empty: return pd.DataFrame(columns=['MDD', '기간', '회복기간'])
-    res_df = res_df.sort_values('MDD').head(10).reset_index(drop=True)
-    def calc_months(s, e):
-        if e == '진행중': return '진행중'
-        sd, ed = pd.to_datetime(s), pd.to_datetime(e)
-        return f"{(ed.year - sd.year) * 12 + (ed.month - sd.month)}개월"
-    res_df['기간'] = res_df.apply(lambda r: f"{r['시작일']} ~ {r['최저일']}", axis=1)
-    res_df['회복기간'] = res_df.apply(lambda r: calc_months(r['시작일'], r['회복일']), axis=1)
-    res_df['MDD'] = res_df['MDD'].apply(lambda x: f"{x:.2f}%")
-    return res_df[['MDD', '기간', '회복기간']]
-
-def get_monthly_heatmap(df_res, strategy_col):
-    temp = df_res[['투자월', strategy_col]].copy()
-    temp['Year'] = temp['투자월'].apply(lambda x: str(x.split('-')[0]))
-    temp['Month'] = temp['투자월'].apply(lambda x: int(x.split('-')[1]))
-    pivot = temp.pivot(index='Year', columns='Month', values=strategy_col)
-    for m in range(1, 13):
-        if m not in pivot.columns: pivot[m] = float('nan')
-    pivot = pivot[list(range(1, 13))]
-    pivot.columns = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
-    pivot.loc['평균'] = pivot.mean()
-    def color_cells(val):
-        if pd.isna(val): return 'background-color: #1e1e26; color: transparent;'
-        if val > 0:
-            alpha = min(val / 12.0, 1.0) * 0.9 + 0.1
-            color = f'rgba(34, 197, 94, {alpha})' 
-            text_white = 'white' if alpha > 0.4 else '#e2e8f0'
-            return f'background-color: {color}; color: {text_white}; text-align: center; font-weight: bold;'
-        elif val < 0:
-            alpha = min(abs(val) / 12.0, 1.0) * 0.9 + 0.1
-            color = f'rgba(239, 68, 68, {alpha})' 
-            text_white = 'white' if alpha > 0.4 else '#e2e8f0'
-            return f'background-color: {color}; color: {text_white}; text-align: center; font-weight: bold;'
-        return 'text-align: center; color: #94a3b8; background-color: #1e1e26;'
-    try: styled = pivot.style.format("{:+.1f}", na_rep="").map(color_cells)
-    except AttributeError: styled = pivot.style.format("{:+.1f}", na_rep="").applymap(color_cells)
-    return styled
-
-ma_cfg = {
-    "지수_L": st.column_config.LinkColumn("지수", display_text=r"#(.+)"),
-    "현재가_L": st.column_config.LinkColumn("현재가", display_text=r"#(.+)"),
-    "4개월선": st.column_config.NumberColumn("4개월선", format="%.2f"),
-    "5개월선": st.column_config.NumberColumn("5개월선", format="%.2f"),
-    "6개월선": st.column_config.NumberColumn("6개월선", format="%.2f"),
-    "10개월선": st.column_config.NumberColumn("10개월선", format="%.2f"),
-    "12개월선": st.column_config.NumberColumn("12개월선", format="%.2f"),
-    "base_price": None 
-}
-
-main_cfg = {
-    "통합티커_L": st.column_config.LinkColumn("티커", display_text=r"#(.+)"), 
-    "종목명_L": st.column_config.LinkColumn("종목명", display_text=r"#(.+)"), 
-    "시가총액": st.column_config.NumberColumn("시가총액(억)", format="%,.0f"),
-    "종가": st.column_config.NumberColumn("종가(선정일)", format="%,.0f"),
-    "1개월(%)": st.column_config.NumberColumn(format="%.1f"), 
-    "3개월(%)": st.column_config.NumberColumn(format="%.1f"), 
-    "6개월(%)": st.column_config.NumberColumn(format="%.1f"), 
-    "12개월(%)": st.column_config.NumberColumn(format="%.1f"),
-    "이번달수익률": st.column_config.NumberColumn("이번달 수익률(%)", format="%.2f") 
-}
-
 tab1, tab2, tab3, tab4 = st.tabs(["📅 월별 상세 분석", "🕒 실시간 데일리 순위", "📈 전략 조합 백테스트", "🏅 스코어 커스텀 백테스트"])
 
 with tab1:
@@ -207,6 +115,7 @@ with tab1:
         is_below_ma = (kospi_curr > 0) and (kospi_curr < kospi_mas.get(6, 0))
         status, box_c, text_c = ("🛑 투자 중지", "#FFEBEE", "#C62828") if (is_bad_market or is_below_ma) else ("✅ 투자 진행", "#E8F5E9", "#2E7D32")
         reason_desc = ("하락장" if is_bad_market else "") + (" + " if is_bad_market and is_below_ma else "") + ("6개월선 이탈" if is_below_ma else "")
+        if not is_bad_market and not is_below_ma: reason_desc = "안전"
 
         col1, col2, col3, col4, col5, col6 = st.columns([0.9, 0.9, 1.0, 1.0, 1.4, 1.6])
         with col1: st.metric("📈 KOSPI 1M", f"{kospi_1m}%")
@@ -214,7 +123,7 @@ with tab1:
         with col3: st.metric("📉 1개월 하락", f"{neg_1m_cnt}개")
         with col4: st.metric("📉 3개월 하락", f"{neg_3m_cnt}개")
         with col5: st.markdown(f'<div style="background-color: #f0f2f6; padding: 10px; border-radius: 10px; text-align: center; border: 1px solid #d1d5db; height: 95px; display: flex; flex-direction: column; justify-content: center;"><div style="font-size: 12px; font-weight: bold; color: #64748b; margin-bottom: 2px;">🇺🇸대통령 <span style="color:#0047AB;">{cycle_year}년차</span></div><div style="font-size: 16px; color: #D84315; font-weight:900;">위험달: {bad_m_str}</div></div>', unsafe_allow_html=True)
-        with col6: st.markdown(f'<div style="background-color: {box_c}; padding: 10px; border-radius: 10px; text-align: center; border: 1px solid {text_c}; height: 95px; display: flex; flex-direction: column; justify-content: center;"><p style="margin: 0; font-size: 12px; color: {text_c}; font-weight: bold;">최종 판단 ({reason_desc or "안전"})</p><div style="margin: 4px 0 0 0; font-size: 1.5rem; font-weight: 900; color: {text_c};">{status}</div></div>', unsafe_allow_html=True)
+        with col6: st.markdown(f'<div style="background-color: {box_c}; padding: 10px; border-radius: 10px; text-align: center; border: 1px solid {text_c}; height: 95px; display: flex; flex-direction: column; justify-content: center;"><p style="margin: 0; font-size: 12px; color: {text_c}; font-weight: bold;">최종 판단 ({reason_desc})</p><div style="margin: 4px 0 0 0; font-size: 1.5rem; font-weight: 900; color: {text_c};">{status}</div></div>', unsafe_allow_html=True)
         st.markdown("<hr style='margin: 1rem 0;'>", unsafe_allow_html=True)
 
         for df in [df_perf_t1, df_spec_t1, df_korea_t1]:
@@ -302,7 +211,6 @@ with tab2:
 
         c_d1, c_d2 = st.columns(2)
         
-        # 💡 [핵심] 탭 1에서 고른 갯수(top_n_p, top_n_s)로 색칠 및 중복 노란색 연동!
         overlap_d = set(df_perf_d.head(top_n_p)['종목코드']).intersection(set(df_spec_d.head(top_n_s)['종목코드']))
         
         with c_d1:
@@ -342,7 +250,6 @@ with tab3:
         if not df_res.empty:
             s_cols_raw = [c for c in df_res.columns if c not in ['투자월', 'invested']]
             
-            # 💡 [순서 완벽 고정] 앙상블 이름을 수정하고 요청하신 순서대로 나열합니다.
             target_order = [
                 f'🔥 퍼펙트 상승 ({rank_p_s}~{rank_p_e}위)', 
                 f'🐎 달리는 말 ({rank_s_s}~{rank_s_e}위)', 
