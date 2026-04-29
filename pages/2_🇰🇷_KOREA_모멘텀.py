@@ -34,11 +34,16 @@ if df_master.empty:
     st.stop()
 
 df_master['종목코드'] = df_master['종목코드'].astype(str).str.zfill(6)
-df_master = df_master[df_master['종목코드'].str.endswith('0')].copy()
 
-for col in ['시가총액', '종가', '거래량']:
+# 💡 [핵심 복원 1] KOREA 통합 페이지에서는 우선주 필터링을 주석 처리하여 우선주를 모두 포함합니다.
+# df_master = df_master[df_master['종목코드'].str.endswith('0')].copy()
+
+# 💡 [핵심 복원 2] 모든 수익률 데이터의 빈칸(NaN)을 0으로 강제 변환하여 과거 사이트와 일치시킵니다.
+target_cols = ['시가총액', '종가', '거래량', '1개월(%)', '3개월(%)', '6개월(%)', '12개월(%)', '다음달수익률(%)', '이번달수익률']
+for col in target_cols:
     if col in df_master.columns:
         df_master[col] = pd.to_numeric(df_master[col], errors='coerce').fillna(0)
+
 if '시가총액' in df_master.columns and df_master['시가총액'].max() > 1000000000:
     df_master['시가총액'] = df_master['시가총액'] / 100000000
 
@@ -62,7 +67,7 @@ def cached_run_custom_backtest(df, start_year_c, end_year_c, ma_months_t4, apply
         base_ym_c = pd.to_datetime(df_calc['종목선정일'].iloc[0]).strftime('%Y-%m')
         is_below_ma = timing_dict.get(base_ym_c, False)
         
-        # 💡 KOREA 통합 페이지이므로 MA(이동평균선)만 체크하여 현금화!
+        # KOREA 통합은 하락 종목 수 체크 없이 이동평균선(MA)만으로 방어
         mult_c = 0.0 if (apply_timing_c and is_below_ma) else 1.0
         
         df_calc['스코어'] = (df_calc['1개월(%)']*w1) + (df_calc['3개월(%)']*w3) + (df_calc['6개월(%)']*w6) + (df_calc['12개월(%)']*w12)
@@ -163,7 +168,8 @@ main_cfg = {
     "통합티커_L": st.column_config.LinkColumn("티커", display_text=r"#(.+)"), 
     "종목명_L": st.column_config.LinkColumn("종목명", display_text=r"#(.+)"), 
     "시가총액": st.column_config.NumberColumn("시가총액(억)", format="%,.0f"),
-    "종가": st.column_config.NumberColumn("종가(선정일)", format="%,.0f"),
+    "종가": st.column_config.NumberColumn("종가", format="%,.0f"),
+    "거래량": st.column_config.NumberColumn("거래량", format="%,.0f"),
     "1개월(%)": st.column_config.NumberColumn(format="%.1f"), 
     "3개월(%)": st.column_config.NumberColumn(format="%.1f"), 
     "6개월(%)": st.column_config.NumberColumn(format="%.1f"), 
@@ -263,7 +269,6 @@ with tab2:
             if col in df_daily.columns:
                 df_daily[col] = pd.to_numeric(df_daily[col], errors='coerce').fillna(0)
                 
-        # 💡 [핵심] 시가총액 억 단위로 나누기!
         if '시가총액' in df_daily.columns and df_daily['시가총액'].max() > 10000000:
             df_daily['시가총액'] = df_daily['시가총액'] / 100000000
         
@@ -274,8 +279,6 @@ with tab2:
         
         df_korea_d, df_perf_d, df_spec_d = get_strategy_stocks_korea(df_daily)
         kospi_1m_d, kospi_3m_d = get_idx_kr(b_date_d)
-        neg_1m_d = (df_korea_d['1개월(%)'] < 0).sum()
-        neg_3m_d = (df_korea_d['3개월(%)'] < 0).sum()
         is_below_ma_d = (kospi_curr_d > 0) and (kospi_curr_d < kospi_mas_d.get(6, 0))
         status_d, box_d, text_d = ("🛑 투자 중지", "#FFEBEE", "#C62828") if is_below_ma_d else ("✅ 투자 진행", "#E8F5E9", "#2E7D32")
         
@@ -286,8 +289,8 @@ with tab2:
         col1d, col2d, col3d, col4d, col5d, col6d = st.columns([0.9, 0.9, 1.0, 1.0, 1.4, 1.6])
         with col1d: st.metric("📈 KOSPI 1M", f"{kospi_1m_d}%")
         with col2d: st.metric("📈 KOSPI 3M", f"{kospi_3m_d}%")
-        with col3d: st.metric("📉 1개월 하락", f"{neg_1m_d}개")
-        with col4d: st.metric("📉 3개월 하락", f"{neg_3m_d}개")
+        with col3d: st.metric("📉 1개월 하락", f"{(df_korea_d['1개월(%)'] < 0).sum()}개")
+        with col4d: st.metric("📉 3개월 하락", f"{(df_korea_d['3개월(%)'] < 0).sum()}개")
         with col5d: st.markdown(f'<div style="background-color: #f0f2f6; padding: 10px; border-radius: 10px; text-align: center; border: 1px solid #d1d5db; height: 95px; display: flex; flex-direction: column; justify-content: center;"><div style="font-size: 12px; font-weight: bold; color: #64748b; margin-bottom: 2px;">🇺🇸대통령 <span style="color:#0047AB;">{cycle_year_d}년차</span> ({target_year_d}년)</div><div style="font-size: 16px; color: #D84315; font-weight:900;">🚨 위험달: {bad_m_str_d}</div></div>', unsafe_allow_html=True)
         with col6d: st.markdown(f'<div style="background-color: {box_d}; padding: 10px; border-radius: 10px; text-align: center; border: 1px solid {text_d}; height: 95px; display: flex; flex-direction: column; justify-content: center;"><p style="margin: 0; font-size: 12px; color: {text_d}; font-weight: bold;">오늘의 시장 상태</p><div style="margin: 4px 0 0 0; font-size: 1.5rem; font-weight: 900; color: {text_d};">{status_d}</div></div>', unsafe_allow_html=True)
         st.markdown("<hr style='margin: 1rem 0;'>", unsafe_allow_html=True)
@@ -306,7 +309,6 @@ with tab2:
             st.markdown('<p class="strategy-desc">12M 수익률 상위 30% 이내 & 1M 수익률 상위 10% 이내 (1M 순)</p>', unsafe_allow_html=True)
             st.dataframe(df_spec_d.style.apply(apply_korea_styling, axis=1), use_container_width=True, hide_index=True, column_order=['통합티커_L', '종목명_L', '1개월(%)', '12개월(%)'], column_config=main_cfg)
             
-        # 💡 [핵심] KOREA 통합 데일리 탭 전체 순위 표 완벽 복구!
         st.markdown("---")
         st.markdown(f"### 🏆 전체 시가총액 순위 <span style='font-size: 0.85rem; color: #9ca3af; font-weight:normal;'>&nbsp;&nbsp;💡 기준일: {b_date_d}</span>", unsafe_allow_html=True)
         cols_d = [c for c in ['통합티커_L', '종목명_L', '시가총액', '종가', '거래량', '1개월(%)', '3개월(%)', '6개월(%)', '12개월(%)'] if c in df_korea_d.columns]
@@ -318,7 +320,8 @@ with tab3:
     st.markdown("<h4 style='margin:0;'>⚙️ 시뮬레이션 설정</h4>", unsafe_allow_html=True)
     c1, c_ma, c_chk = st.columns([1, 1, 1.5])
     with c1: start_year, end_year = st.slider("📅 테스트 기간", min_y, max_y, (min_y, max_y), key='t3_yr')
-    with c_ma: ma_months_t3 = st.slider("📉 마켓타이밍 (개월선)", 1, 12, 6, key='t3_ma')
+    # 💡 [핵심 복원 3] 마켓타이밍 기본값을 4개월선으로 복원
+    with c_ma: ma_months_t3 = st.slider("📉 마켓타이밍 (개월선)", 1, 12, 4, key='t3_ma')
     with c_chk:
         st.markdown("<div style='margin-top: 35px;'></div>", unsafe_allow_html=True)
         apply_timing = st.checkbox("🛑 마켓타이밍 적용 (MA 이탈 시 현금)", value=True, key='t3_chk')
@@ -326,9 +329,11 @@ with tab3:
     st.markdown("<hr style='margin: 10px 0px;'>", unsafe_allow_html=True)
     c2, c3, c4, c5 = st.columns([1, 1, 1, 1])
     with c2: perf_pct_t3 = st.slider("🔥 퍼펙트 상위 %", 5, 50, 30, step=5)
-    with c3: rank_p_s, rank_p_e = st.slider("🔥 퍼펙트 순위", 1, 30, (1, 6))
+    # 💡 [핵심 복원 4] 퍼펙트 순위 기본값을 5~10위로 복원
+    with c3: rank_p_s, rank_p_e = st.slider("🔥 퍼펙트 순위", 1, 30, (5, 10))
     with c4: spec_12m_pct_t3 = st.slider("🐎 달리는말 상위 %", 5, 50, 30, step=5)
-    with c5: rank_s_s, rank_s_e = st.slider("🐎 달리는말 순위", 1, 30, (1, 2))
+    # 💡 [핵심 복원 5] 달리는 말 순위 기본값을 10~13위로 복원
+    with c5: rank_s_s, rank_s_e = st.slider("🐎 달리는말 순위", 1, 30, (10, 13))
 
     with st.spinner("엔진 구동 중..."):
         df_res, df_trades = cached_run_backtest_korea(df_master, start_year, end_year, ma_months_t3, apply_timing, (rank_p_s, rank_p_e), (rank_s_s, rank_s_e), perf_pct_t3, spec_12m_pct_t3)
@@ -367,7 +372,7 @@ with tab3:
             with st.expander("📝 월별 전체 상세 기록 보기"): st.dataframe(df_res.drop(columns=['invested']).set_index('투자월').style.format("{:.2f}%"), use_container_width=True)
 
 with tab4:
-    current_ma_c = st.session_state.get('t4_ma', 6)
+    current_ma_c = st.session_state.get('t4_ma', 4)
     col_title_c, col_check_c = st.columns([1, 4])
     with col_title_c: st.markdown("<h4 style='margin-top: 5px;'>⚙️ 가중치 설정</h4>", unsafe_allow_html=True)
     with col_check_c:
@@ -387,7 +392,7 @@ with tab4:
     st.markdown("<hr style='margin: 15px 0px;'>", unsafe_allow_html=True)
     c6, c_ma_c, c7, c8 = st.columns([1, 0.8, 1, 1])
     with c6: start_year_c, end_year_c = st.slider("📅 테스트 기간", min_y, max_y, (min_y, max_y), key='t4_yr')
-    with c_ma_c: ma_months_t4 = st.slider("📉 마켓타이밍", 1, 12, 6, key='t4_ma')
+    with c_ma_c: ma_months_t4 = st.slider("📉 마켓타이밍", 1, 12, 4, key='t4_ma')
     with c7: custom_pct = st.slider("🏅 상위 %", 5, 50, 30, step=5)
     with c8: rank_c_s, rank_c_e = st.slider("🏅 매수 순위", 1, 30, (1, 10), key='t4_rnk')
 
