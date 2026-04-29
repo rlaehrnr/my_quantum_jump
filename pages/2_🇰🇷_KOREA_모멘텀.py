@@ -106,8 +106,6 @@ with tab1:
         
         df_korea_t1, df_perf_t1, df_spec_t1 = get_strategy_stocks_korea(df_monthly)
         kospi_1m, kospi_3m = get_idx_kr(base_date)
-        neg_1m_cnt = (df_korea_t1['1개월(%)'] < 0).sum()
-        neg_3m_cnt = (df_korea_t1['3개월(%)'] < 0).sum()
         
         df_perf_t1['순위'] = range(1, len(df_perf_t1) + 1)
         df_spec_t1['순위'] = range(1, len(df_spec_t1) + 1)
@@ -126,13 +124,12 @@ with tab1:
         col1, col2, col3, col4, col5, col6 = st.columns([0.9, 0.9, 1.0, 1.0, 1.4, 1.6])
         with col1: st.metric("📈 KOSPI 1M", f"{kospi_1m}%")
         with col2: st.metric("📈 KOSPI 3M", f"{kospi_3m}%")
-        with col3: st.metric("📉 1개월 하락", f"{neg_1m_cnt}개")
-        with col4: st.metric("📉 3개월 하락", f"{neg_3m_cnt}개")
+        with col3: st.metric("📉 1개월 하락", f"{(df_monthly['1개월(%)'] < 0).sum()}개")
+        with col4: st.metric("📉 3개월 하락", f"{(df_monthly['3개월(%)'] < 0).sum()}개")
         with col5: st.markdown(f'<div style="background-color: #f0f2f6; padding: 10px; border-radius: 10px; text-align: center; border: 1px solid #d1d5db; height: 95px; display: flex; flex-direction: column; justify-content: center;"><div style="font-size: 12px; font-weight: bold; color: #64748b; margin-bottom: 2px;">🇺🇸대통령 <span style="color:#0047AB;">{cycle_year}년차</span> ({selected_year}년)</div><div style="font-size: 16px; color: #D84315; font-weight:900;">🚨 위험달: {bad_m_str}</div></div>', unsafe_allow_html=True)
         with col6: st.markdown(f'<div style="background-color: {box_c}; padding: 10px; border-radius: 10px; text-align: center; border: 1px solid {text_c}; height: 95px; display: flex; flex-direction: column; justify-content: center;"><p style="margin: 0; font-size: 12px; color: {text_c}; font-weight: bold;">최종 판단 ({reason_desc})</p><div style="margin: 4px 0 0 0; font-size: 1.5rem; font-weight: 900; color: {text_c};">{status}</div></div>', unsafe_allow_html=True)
         st.markdown("<hr style='margin: 1rem 0;'>", unsafe_allow_html=True)
 
-        # 💡 [KOSPI/KOSDAQ 자동 구분 로직 적용 완료]
         for df in [df_perf_t1, df_spec_t1, df_korea_t1]:
             df['통합티커_L'] = df.apply(lambda r: f"https://finance.naver.com/item/main.naver?code={r['종목코드']}#{'KOSDAQ' if '코스닥' in str(r.get('시장', '')) or 'KOSDAQ' in str(r.get('시장', '')).upper() else 'KOSPI'}:{r['종목코드']}", axis=1)
             df['종목명_L'] = df.apply(lambda r: f"https://m.stock.naver.com/fchart/domestic/stock/{r['종목코드']}#{r['종목명']}", axis=1)
@@ -218,7 +215,7 @@ with tab2:
         with col6d: st.markdown(f'<div style="background-color: {box_d}; padding: 10px; border-radius: 10px; text-align: center; border: 1px solid {text_d}; height: 95px; display: flex; flex-direction: column; justify-content: center;"><p style="margin: 0; font-size: 12px; color: {text_d}; font-weight: bold;">오늘의 시장 상태 ({reason_desc_d})</p><div style="margin: 4px 0 0 0; font-size: 1.5rem; font-weight: 900; color: {text_d};">{status_d}</div></div>', unsafe_allow_html=True)
         st.markdown("<hr style='margin: 1rem 0;'>", unsafe_allow_html=True)
 
-        # 💡 [KOSPI/KOSDAQ 자동 구분 로직 적용 완료]
+        # 💡 [핵심] KOSPI/KOSDAQ 자동 구분 로직을 데일리 탭에도 완벽하게 적용했습니다!
         for df in [df_perf_d, df_spec_d, df_korea_d]:
             df['통합티커_L'] = df.apply(lambda r: f"https://finance.naver.com/item/main.naver?code={r['종목코드']}#{'KOSDAQ' if '코스닥' in str(r.get('시장', '')) or 'KOSDAQ' in str(r.get('시장', '')).upper() else 'KOSPI'}:{r['종목코드']}", axis=1)
             df['종목명_L'] = df.apply(lambda r: f"https://m.stock.naver.com/fchart/domestic/stock/{r['종목코드']}#{r['종목명']}", axis=1)
@@ -305,7 +302,7 @@ with tab3:
 with tab4:
     current_ma_c = st.session_state.get('t4_ma', 4)
     col_title_c, col_check_c = st.columns([1, 4])
-    with col_title_c: st.markdown("<h4 style='margin-top: 5px;'>⚙️ 가중치 설정</h4>", unsafe_allow_html=True)
+    with col_title_c: st.markdown("<h4 style='margin:0;'>⚙️ 가중치 설정</h4>", unsafe_allow_html=True)
     with col_check_c:
         st.markdown("<div style='margin-top: 12px;'></div>", unsafe_allow_html=True)
         apply_timing_c = st.checkbox("🛑 마켓타이밍 적용 (MA 이탈 시 현금)", value=True, key='t4_chk_main')
