@@ -33,10 +33,13 @@ if df_master.empty:
     st.error("🚨 archive_kospi 폴더에 정상적인 데이터가 없습니다!")
     st.stop()
 
+# 1. 우선주 날리는 코드 삭제 (주석 처리)
 df_master['종목코드'] = df_master['종목코드'].astype(str).str.zfill(6)
-df_master = df_master[df_master['종목코드'].str.endswith('0')].copy()
+# df_master = df_master[df_master['종목코드'].str.endswith('0')].copy()
 
-for col in ['시가총액', '종가', '거래량']:
+# 2. 모든 모멘텀 수익률의 빈칸도 과거처럼 0%로 강제 변환
+target_cols = ['시가총액', '종가', '거래량', '1개월(%)', '3개월(%)', '6개월(%)', '12개월(%)', '다음달수익률(%)', '이번달수익률']
+for col in target_cols:
     if col in df_master.columns:
         df_master[col] = pd.to_numeric(df_master[col], errors='coerce').fillna(0)
 if '시가총액' in df_master.columns and df_master['시가총액'].max() > 1000000000:
