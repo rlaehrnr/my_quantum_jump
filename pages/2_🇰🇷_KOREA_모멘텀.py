@@ -9,7 +9,6 @@ st.set_page_config(page_title="KOREA 모멘텀 터미널", layout="wide")
 
 from utils.data_loader import load_archive_data, get_folder_hash
 from utils.calculator import get_cycle_year, PRESIDENTIAL_DANGEROUS_MONTHS, get_kospi_ma_all, get_strategy_stocks_korea, run_backtest_korea, get_kospi_timing_for_backtest, get_idx_kr
-# 💡 최적화: UI 컴포넌트들을 한 줄로 가져옵니다!
 from utils.ui_components import inject_custom_css, apply_korea_styling, style_kospi_ma, get_styled_stats, get_mdd_history, get_monthly_heatmap, ma_cfg, main_cfg
 
 inject_custom_css()
@@ -36,10 +35,6 @@ if df_master.empty:
 
 df_master['종목코드'] = df_master['종목코드'].astype(str).str.zfill(6)
 
-# 💡 과거 사이트 복원을 위해 우선주 필터링을 주석 처리하여 우선주 포함!
-# df_master = df_master[df_master['종목코드'].str.endswith('0')].copy()
-
-# 💡 모든 수익률 빈칸(NaN)을 0으로 강제 치환!
 target_cols = ['시가총액', '종가', '거래량', '1개월(%)', '3개월(%)', '6개월(%)', '12개월(%)', '다음달수익률(%)', '이번달수익률']
 for col in target_cols:
     if col in df_master.columns:
@@ -84,7 +79,6 @@ def cached_run_custom_backtest(df, start_year_c, end_year_c, ma_months_t4, apply
             trade_logs_c.append({'투자월': m_str, '전략': '마켓타이밍', '순위': '-', '종목명': '현금보유(CASH)', '수익률(%)': 0.0})
     return pd.DataFrame(records_c), pd.DataFrame(trade_logs_c)
 
-# 💡 이 부분이 빠져서 에러가 났었습니다!
 tab1, tab2, tab3, tab4 = st.tabs(["📅 월별 상세 분석", "🕒 실시간 데일리 순위", "📈 전략 조합 백테스트", "🏅 스코어 커스텀 백테스트"])
 
 with tab1:
@@ -112,21 +106,26 @@ with tab1:
         
         df_korea_t1, df_perf_t1, df_spec_t1 = get_strategy_stocks_korea(df_monthly)
         kospi_1m, kospi_3m = get_idx_kr(base_date)
-        neg_1m_cnt = (df_korea_t1['1개월(%)'] < 0).sum()
-        neg_3m_cnt = (df_korea_t1['3개월(%)'] < 0).sum()
         
+        # 💡 순위 데이터 추가
+        df_perf_t1['순위'] = range(1, len(df_perf_t1) + 1)
+        df_spec_t1['순위'] = range(1, len(df_spec_t1) + 1)
+        if '시가총액' in df_korea_t1.columns:
+            df_korea_t1 = df_korea_t1.sort_values('시가총액', ascending=False)
+        df_korea_t1['순위'] = range(1, len(df_korea_t1) + 1)
+
         cycle_year = get_cycle_year(int(selected_year))
         bad_m_str = ", ".join(f"{m}월" for m in PRESIDENTIAL_DANGEROUS_MONTHS.get(cycle_year, [])) or "없음"
         
-        is_below_ma = (kospi_curr > 0) and (kospi_curr < kospi_mas.get(6, 0))
+        is_below_ma = (kospi_curr > 0) and (kospi_curr < kospi_mas.get(4, 0))
         status, box_c, text_c = ("🛑 투자 중지", "#FFEBEE", "#C62828") if is_below_ma else ("✅ 투자 진행", "#E8F5E9", "#2E7D32")
-        reason_desc = "6개월선 이탈" if is_below_ma else "안전"
+        reason_desc = "4개월선 이탈" if is_below_ma else "안전"
 
         col1, col2, col3, col4, col5, col6 = st.columns([0.9, 0.9, 1.0, 1.0, 1.4, 1.6])
         with col1: st.metric("📈 KOSPI 1M", f"{kospi_1m}%")
         with col2: st.metric("📈 KOSPI 3M", f"{kospi_3m}%")
-        with col3: st.metric("📉 1개월 하락", f"{neg_1m_cnt}개")
-        with col4: st.metric("📉 3개월 하락", f"{neg_3m_cnt}개")
+        with col3: st.metric("📉 1개월 하락", f"{(df_monthly['1개월(%)'] < 0).sum()}개")
+        with col4: st.metric("📉 3개월 하락", f"{(df_monthly['3개월(%)'] < 0).sum()}개")
         with col5: st.markdown(f'<div style="background-color: #f0f2f6; padding: 10px; border-radius: 10px; text-align: center; border: 1px solid #d1d5db; height: 95px; display: flex; flex-direction: column; justify-content: center;"><div style="font-size: 12px; font-weight: bold; color: #64748b; margin-bottom: 2px;">🇺🇸대통령 <span style="color:#0047AB;">{cycle_year}년차</span> ({selected_year}년)</div><div style="font-size: 16px; color: #D84315; font-weight:900;">🚨 위험달: {bad_m_str}</div></div>', unsafe_allow_html=True)
         with col6: st.markdown(f'<div style="background-color: {box_c}; padding: 10px; border-radius: 10px; text-align: center; border: 1px solid {text_c}; height: 95px; display: flex; flex-direction: column; justify-content: center;"><p style="margin: 0; font-size: 12px; color: {text_c}; font-weight: bold;">최종 판단 ({reason_desc})</p><div style="margin: 4px 0 0 0; font-size: 1.5rem; font-weight: 900; color: {text_c};">{status}</div></div>', unsafe_allow_html=True)
         st.markdown("<hr style='margin: 1rem 0;'>", unsafe_allow_html=True)
@@ -158,13 +157,13 @@ with tab1:
         overlap_codes = set(df_perf_t1.head(top_n_p)['종목코드']).intersection(set(df_spec_t1.head(top_n_s)['종목코드']))
         
         with c_l:
-            st.dataframe(df_perf_t1.style.apply(apply_korea_styling, highlight_codes=df_perf_t1.head(top_n_p)['종목코드'].tolist(), overlap_codes=overlap_codes, axis=1), use_container_width=True, hide_index=True, column_order=['통합티커_L', '종목명_L', '1개월(%)', '3개월(%)', '6개월(%)', '12개월(%)', '이번달수익률'], column_config=main_cfg)
+            st.dataframe(df_perf_t1.style.apply(apply_korea_styling, highlight_codes=df_perf_t1.head(top_n_p)['종목코드'].tolist(), overlap_codes=overlap_codes, axis=1), use_container_width=True, hide_index=True, column_order=['순위', '통합티커_L', '종목명_L', '1개월(%)', '3개월(%)', '6개월(%)', '12개월(%)', '이번달수익률'], column_config=main_cfg)
         with c_r:
-            st.dataframe(df_spec_t1.style.apply(apply_korea_styling, highlight_codes=df_spec_t1.head(top_n_s)['종목코드'].tolist(), overlap_codes=overlap_codes, axis=1), use_container_width=True, hide_index=True, column_order=['통합티커_L', '종목명_L', '1개월(%)', '12개월(%)', '이번달수익률'], column_config=main_cfg)
+            st.dataframe(df_spec_t1.style.apply(apply_korea_styling, highlight_codes=df_spec_t1.head(top_n_s)['종목코드'].tolist(), overlap_codes=overlap_codes, axis=1), use_container_width=True, hide_index=True, column_order=['순위', '통합티커_L', '종목명_L', '1개월(%)', '12개월(%)', '이번달수익률'], column_config=main_cfg)
 
         st.markdown("---")
         st.markdown(f"### 🏆 전체 시가총액 순위 <span style='font-size: 0.85rem; color: #9ca3af; font-weight:normal;'>&nbsp;&nbsp;💡 선정일: {base_date}</span>", unsafe_allow_html=True)
-        cols_m = [c for c in ['통합티커_L', '종목명_L', '시가총액', '종가', '1개월(%)', '3개월(%)', '6개월(%)', '12개월(%)', '이번달수익률'] if c in df_korea_t1.columns]
+        cols_m = ['순위'] + [c for c in ['통합티커_L', '종목명_L', '시가총액', '종가', '1개월(%)', '3개월(%)', '6개월(%)', '12개월(%)', '이번달수익률'] if c in df_korea_t1.columns]
         st.dataframe(df_korea_t1.style.apply(apply_korea_styling, axis=1), use_container_width=True, height=600, hide_index=True, column_order=cols_m, column_config=main_cfg)
 
 with tab2:
@@ -187,12 +186,17 @@ with tab2:
         
         df_korea_d, df_perf_d, df_spec_d = get_strategy_stocks_korea(df_daily)
         kospi_1m_d, kospi_3m_d = get_idx_kr(b_date_d)
-        neg_1m_d = (df_korea_d['1개월(%)'] < 0).sum()
-        neg_3m_d = (df_korea_d['3개월(%)'] < 0).sum()
         
-        is_below_ma_d = (kospi_curr_d > 0) and (kospi_curr_d < kospi_mas_d.get(6, 0))
+        # 💡 순위 데이터 추가
+        df_perf_d['순위'] = range(1, len(df_perf_d) + 1)
+        df_spec_d['순위'] = range(1, len(df_spec_d) + 1)
+        if '시가총액' in df_korea_d.columns:
+            df_korea_d = df_korea_d.sort_values('시가총액', ascending=False)
+        df_korea_d['순위'] = range(1, len(df_korea_d) + 1)
+
+        is_below_ma_d = (kospi_curr_d > 0) and (kospi_curr_d < kospi_mas_d.get(4, 0))
         status_d, box_d, text_d = ("🛑 투자 중지", "#FFEBEE", "#C62828") if is_below_ma_d else ("✅ 투자 진행", "#E8F5E9", "#2E7D32")
-        reason_desc_d = "6개월선 이탈" if is_below_ma_d else "안전"
+        reason_desc_d = "4개월선 이탈" if is_below_ma_d else "안전"
         
         target_year_d = int(b_date_d.split('-')[0])
         cycle_year_d = get_cycle_year(target_year_d)
@@ -201,8 +205,8 @@ with tab2:
         col1d, col2d, col3d, col4d, col5d, col6d = st.columns([0.9, 0.9, 1.0, 1.0, 1.4, 1.6])
         with col1d: st.metric("📈 KOSPI 1M", f"{kospi_1m_d}%")
         with col2d: st.metric("📈 KOSPI 3M", f"{kospi_3m_d}%")
-        with col3d: st.metric("📉 1개월 하락", f"{neg_1m_d}개")
-        with col4d: st.metric("📉 3개월 하락", f"{neg_3m_d}개")
+        with col3d: st.metric("📉 1개월 하락", f"{(df_korea_d['1개월(%)'] < 0).sum()}개")
+        with col4d: st.metric("📉 3개월 하락", f"{(df_korea_d['3개월(%)'] < 0).sum()}개")
         with col5d: st.markdown(f'<div style="background-color: #f0f2f6; padding: 10px; border-radius: 10px; text-align: center; border: 1px solid #d1d5db; height: 95px; display: flex; flex-direction: column; justify-content: center;"><div style="font-size: 12px; font-weight: bold; color: #64748b; margin-bottom: 2px;">🇺🇸대통령 <span style="color:#0047AB;">{cycle_year_d}년차</span> ({target_year_d}년)</div><div style="font-size: 16px; color: #D84315; font-weight:900;">🚨 위험달: {bad_m_str_d}</div></div>', unsafe_allow_html=True)
         with col6d: st.markdown(f'<div style="background-color: {box_d}; padding: 10px; border-radius: 10px; text-align: center; border: 1px solid {text_d}; height: 95px; display: flex; flex-direction: column; justify-content: center;"><p style="margin: 0; font-size: 12px; color: {text_d}; font-weight: bold;">오늘의 시장 상태 ({reason_desc_d})</p><div style="margin: 4px 0 0 0; font-size: 1.5rem; font-weight: 900; color: {text_d};">{status_d}</div></div>', unsafe_allow_html=True)
         st.markdown("<hr style='margin: 1rem 0;'>", unsafe_allow_html=True)
@@ -218,15 +222,15 @@ with tab2:
         with c_d1:
             st.markdown(f"<h4 style='margin:0;'>🔥 퍼펙트 상승 <span style='font-size:13px; color:gray;'>({len(df_perf_d)}개)</span></h4>", unsafe_allow_html=True)
             st.markdown('<p class="strategy-desc">1,3,6,12M 수익률 모두 상위 30% 이내 & 0보다 큰 종목 (3M 순)</p>', unsafe_allow_html=True)
-            st.dataframe(df_perf_d.style.apply(apply_korea_styling, highlight_codes=df_perf_d.head(top_n_p)['종목코드'].tolist(), overlap_codes=overlap_d, axis=1), use_container_width=True, hide_index=True, column_order=['통합티커_L', '종목명_L', '1개월(%)', '3개월(%)', '6개월(%)', '12개월(%)'], column_config=main_cfg)
+            st.dataframe(df_perf_d.style.apply(apply_korea_styling, highlight_codes=df_perf_d.head(top_n_p)['종목코드'].tolist(), overlap_codes=overlap_d, axis=1), use_container_width=True, hide_index=True, column_order=['순위', '통합티커_L', '종목명_L', '1개월(%)', '3개월(%)', '6개월(%)', '12개월(%)'], column_config=main_cfg)
         with c_d2:
             st.markdown(f"<h4 style='margin:0;'>🐎 달리는 말 <span style='font-size:13px; color:gray;'>({len(df_spec_d)}개)</span></h4>", unsafe_allow_html=True)
             st.markdown('<p class="strategy-desc">12M 수익률 상위 30% 이내 & 1M 수익률 상위 10% 이내 (1M 순)</p>', unsafe_allow_html=True)
-            st.dataframe(df_spec_d.style.apply(apply_korea_styling, highlight_codes=df_spec_d.head(top_n_s)['종목코드'].tolist(), overlap_codes=overlap_d, axis=1), use_container_width=True, hide_index=True, column_order=['통합티커_L', '종목명_L', '1개월(%)', '12개월(%)'], column_config=main_cfg)
+            st.dataframe(df_spec_d.style.apply(apply_korea_styling, highlight_codes=df_spec_d.head(top_n_s)['종목코드'].tolist(), overlap_codes=overlap_d, axis=1), use_container_width=True, hide_index=True, column_order=['순위', '통합티커_L', '종목명_L', '1개월(%)', '12개월(%)'], column_config=main_cfg)
             
         st.markdown("---")
         st.markdown(f"### 🏆 전체 시가총액 순위 <span style='font-size: 0.85rem; color: #9ca3af; font-weight:normal;'>&nbsp;&nbsp;💡 기준일: {b_date_d}</span>", unsafe_allow_html=True)
-        cols_d = [c for c in ['통합티커_L', '종목명_L', '시가총액', '종가', '거래량', '1개월(%)', '3개월(%)', '6개월(%)', '12개월(%)'] if c in df_korea_d.columns]
+        cols_d = ['순위'] + [c for c in ['통합티커_L', '종목명_L', '시가총액', '종가', '거래량', '1개월(%)', '3개월(%)', '6개월(%)', '12개월(%)'] if c in df_korea_d.columns]
         st.dataframe(df_korea_d.style.apply(apply_korea_styling, axis=1), use_container_width=True, height=600, hide_index=True, column_order=cols_d, column_config=main_cfg)
     else:
         st.info("데일리 데이터 파일이 아직 생성되지 않았습니다.")
