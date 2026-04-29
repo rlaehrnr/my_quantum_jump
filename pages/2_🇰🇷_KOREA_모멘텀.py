@@ -110,8 +110,9 @@ with tab1:
         # 💡 순위 데이터 추가
         df_perf_t1['순위'] = range(1, len(df_perf_t1) + 1)
         df_spec_t1['순위'] = range(1, len(df_spec_t1) + 1)
-        if '시가총액' in df_korea_t1.columns:
-            df_korea_t1 = df_korea_t1.sort_values('시가총액', ascending=False)
+        cap_col = '시가총액(억)' if '시가총액(억)' in df_korea_t1.columns else '시가총액'
+        if cap_col in df_korea_t1.columns:
+            df_korea_t1 = df_korea_t1.sort_values(cap_col, ascending=False)
         df_korea_t1['순위'] = range(1, len(df_korea_t1) + 1)
 
         cycle_year = get_cycle_year(int(selected_year))
@@ -190,8 +191,9 @@ with tab2:
         # 💡 순위 데이터 추가
         df_perf_d['순위'] = range(1, len(df_perf_d) + 1)
         df_spec_d['순위'] = range(1, len(df_spec_d) + 1)
-        if '시가총액' in df_korea_d.columns:
-            df_korea_d = df_korea_d.sort_values('시가총액', ascending=False)
+        cap_col_d = '시가총액(억)' if '시가총액(억)' in df_korea_d.columns else '시가총액'
+        if cap_col_d in df_korea_d.columns:
+            df_korea_d = df_korea_d.sort_values(cap_col_d, ascending=False)
         df_korea_d['순위'] = range(1, len(df_korea_d) + 1)
 
         is_below_ma_d = (kospi_curr_d > 0) and (kospi_curr_d < kospi_mas_d.get(4, 0))
