@@ -5,7 +5,6 @@ import os
 import glob
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
-# --- [기존 헬퍼 함수 유지] ---
 def get_end_of_month(dt, months_ago):
     first_of_current = dt.replace(day=1)
     target_month = first_of_current - pd.DateOffset(months=months_ago - 1)
@@ -21,11 +20,7 @@ def calculate_return_unified(df_hist, target_date, current_price):
     except:
         return 0.0
 
-# --- [개별 종목 처리 워커 함수] ---
 def process_ticker(row, start_date, today, dates):
-    """
-    한 종목의 데이터를 다운로드하고 수익률을 계산하는 단일 작업 단위
-    """
     code = row['Code']
     name = row['Name']
     market = row['시장']
@@ -56,10 +51,40 @@ def process_ticker(row, start_date, today, dates):
         return None
 
 def update_all_daily_momentum():
-    print("🚀 [최적화 버전] 데일리 수익률 동기화 시작 (멀티스레딩 적용)...")
+    print("🚀 [최적화 버전] 데일리 수익률 및 VIX 데이터 동기화 시작...")
     today = datetime.today()
+    base_date = today.strftime('%Y-%m-%d')
     
-    # 1. 유니버스 세팅
+    os.makedirs('data', exist_ok=True)
+
+    # ==========================================
+    # 💡 [신규 추가] VIX 지수 자동 다운로드 로직
+    # ==========================================
+    print("📈 미국 VIX 지수 데이터 업데이트 중...")
+    try:
+        # VIX 지수를 넉넉하게 과거부터 수집 (VIX 또는 ^VIX)
+        try: df_vix = fdr.DataReader('VIX', '2015-01-01', today)
+        except: df_vix = fdr.DataReader('^VIX', '2015-01-01', today)
+        
+        if not df_vix.empty:
+            df_vix = df_vix.reset_index()
+            # 파일 포맷 맞추기
+            df_vix.rename(columns={'Date': '날짜', 'Close': '종가', 'Open': '시가', 'High': '고가', 'Low': '저가'}, inplace=True)
+            if 'Change' in df_vix.columns:
+                df_vix['변동 %'] = (df_vix['Change'] * 100).round(2).astype(str) + '%'
+            else:
+                df_vix['변동 %'] = df_vix['종가'].pct_change().multiply(100).round(2).astype(str) + '%'
+                
+            df_vix['날짜'] = df_vix['날짜'].dt.strftime('%Y-%m-%d')
+            cols = ['날짜', '종가', '시가', '고가', '저가', '변동 %']
+            df_vix[cols].to_csv('data/vix data.csv', index=False, encoding='utf-8-sig')
+            print("✅ VIX 지수 업데이트 완료!")
+    except Exception as e:
+        print(f"⚠️ VIX 지수 업데이트 실패: {e}")
+
+    # ==========================================
+    # 1. 한국 시장 유니버스 세팅
+    # ==========================================
     df_kospi = fdr.StockListing('KOSPI')
     df_kosdaq = fdr.StockListing('KOSDAQ')
     df_kospi['Code'] = df_kospi['Code'].astype(str).str.zfill(6)
@@ -82,13 +107,12 @@ def update_all_daily_momentum():
     start_date = dates['12개월'] - timedelta(days=15)
     
     # ==========================================
-    # 2. 멀티스레딩으로 주가 데이터 고속 수집
+    # 2. 멀티스레딩 데이터 수집
     # ==========================================
-    print(f"📊 총 {len(all_target_df)}개 종목 동시 다운로드 중 (최대 15개 병렬)...")
+    print(f"📊 총 {len(all_target_df)}개 종목 동시 다운로드 중...")
     price_cache = {}
     daily_records_dict = {}
     
-    # max_workers는 인터넷 속도에 따라 10~20 사이가 적당합니다.
     with ThreadPoolExecutor(max_workers=15) as executor:
         futures = [executor.submit(process_ticker, row, start_date, today, dates) for _, row in all_target_df.iterrows()]
         
@@ -99,15 +123,15 @@ def update_all_daily_momentum():
                 daily_records_dict[code] = record
                 price_cache[code] = df_hist
 
-    # 3. 파일 분리 저장
-    os.makedirs('data', exist_ok=True)
+    # 3. 데일리 파일 저장
     k200_records = [daily_records_dict[c] for c in k200_df['Code'] if c in daily_records_dict]
     pd.DataFrame(k200_records).to_csv('data/momentum_data_daily.csv', index=False, encoding='utf-8-sig')
     
     korea300_records = [daily_records_dict[c] for c in korea300_df['Code'] if c in daily_records_dict]
     pd.DataFrame(korea300_records).to_csv('data/momentum_data_daily_korea.csv', index=False, encoding='utf-8-sig')
+    print("✅ 데일리 종목 파일 저장 완료!")
 
-    # 4. 아카이브 동기화
+    # 4. 월간 아카이브 동기화
     def sync_archive_returns(archive_folder):
         archive_files = sorted(glob.glob(f'{archive_folder}/momentum_*.csv'))
         if not archive_files: return
@@ -116,8 +140,6 @@ def update_all_daily_momentum():
         
         if '종목선정일' in df_latest.columns:
             csv_base_date = df_latest['종목선정일'].iloc[0]
-            # 아카이브 동기화도 데이터가 많다면 멀티스레딩이 좋지만, 
-            # 일단 주 수집 단계가 빨라졌으니 여기는 안정성을 위해 유지합니다.
             for idx, row in df_latest.iterrows():
                 code = row['종목코드'].zfill(6)
                 df_h = price_cache.get(code, pd.DataFrame())
