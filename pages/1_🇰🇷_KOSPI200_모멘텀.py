@@ -63,13 +63,25 @@ def cached_run_custom_backtest(df, start_year_c, end_year_c, ma_months_t4, apply
         if not (start_year_c <= m_yr <= end_year_c): continue
         df_calc = df[df['투자월'] == m_str].copy()
         if df_calc.empty: continue
+        
         base_ym_c = pd.to_datetime(df_calc['종목선정일'].iloc[0]).strftime('%Y-%m')
         is_below_ma = timing_df_t4.loc[base_ym_c, 'is_below_ma'] if base_ym_c in timing_df_t4.index else False
-        mult_c = 0.0 if (apply_timing_c and ((df_calc['1개월(%)'] < 0).sum() >= 100 or is_below_ma)) else 1.0
+        
+        # 💡 [검증 완료] 1개월 하락 AND 3개월 하락이 모두 100개 이상이거나 MA 이탈 시 회피
+        neg_1m_c = (df_calc['1개월(%)'] < 0).sum()
+        neg_3m_c = (df_calc['3개월(%)'] < 0).sum()
+        is_bad_market_c = (neg_1m_c >= 100 and neg_3m_c >= 100)
+        
+        mult_c = 0.0 if (apply_timing_c and (is_bad_market_c or is_below_ma)) else 1.0
+        
+        # 스코어 계산 및 타겟 추출 (이하 동일)
         df_calc['스코어'] = (df_calc['1개월(%)']*w1) + (df_calc['3개월(%)']*w3) + (df_calc['6개월(%)']*w6) + (df_calc['12개월(%)']*w12)
-        target = df_calc[df_calc['스코어']>=df_calc['스코어'].quantile(1-(custom_pct/100.0))].sort_values('스코어', ascending=False).iloc[rank_c_s-1:rank_c_e]
+        q_val = df_calc['스코어'].quantile(1-(custom_pct/100.0))
+        target = df_calc[df_calc['스코어'] >= q_val].sort_values('스코어', ascending=False).iloc[rank_c_s-1:rank_c_e]
+        
         records_c.append({'투자월': m_str, 'invested': mult_c > 0, '커스텀 전략': (target['이번달수익률'].mean() * mult_c) if not target.empty else 0})
-        for i, (_, r) in enumerate(target.iterrows()): trade_logs_c.append({'투자월': m_str, '전략': '커스텀', '순위': f"{i+rank_c_s}위", '종목명': r['종목명'], '수익률(%)': r['이번달수익률']})
+        if mult_c > 0:
+            for i, (_, r) in enumerate(target.iterrows()): trade_logs_c.append({'투자월': m_str, '전략': '커스텀', '순위': f"{i+rank_c_s}위", '종목명': r['종목명'], '수익률(%)': r['이번달수익률']})
     return pd.DataFrame(records_c), pd.DataFrame(trade_logs_c)
 
 def style_stats(x):
