@@ -35,10 +35,6 @@ if df_master.empty:
 
 df_master['종목코드'] = df_master['종목코드'].astype(str).str.zfill(6)
 
-# 💡 [핵심 복원 1] KOREA 통합 페이지에서는 우선주 필터링을 주석 처리하여 우선주를 모두 포함합니다.
-# df_master = df_master[df_master['종목코드'].str.endswith('0')].copy()
-
-# 💡 [핵심 복원 2] 모든 수익률 데이터의 빈칸(NaN)을 0으로 강제 변환하여 과거 사이트와 일치시킵니다.
 target_cols = ['시가총액', '종가', '거래량', '1개월(%)', '3개월(%)', '6개월(%)', '12개월(%)', '다음달수익률(%)', '이번달수익률']
 for col in target_cols:
     if col in df_master.columns:
@@ -67,7 +63,6 @@ def cached_run_custom_backtest(df, start_year_c, end_year_c, ma_months_t4, apply
         base_ym_c = pd.to_datetime(df_calc['종목선정일'].iloc[0]).strftime('%Y-%m')
         is_below_ma = timing_dict.get(base_ym_c, False)
         
-        # KOREA 통합은 하락 종목 수 체크 없이 이동평균선(MA)만으로 방어
         mult_c = 0.0 if (apply_timing_c and is_below_ma) else 1.0
         
         df_calc['스코어'] = (df_calc['1개월(%)']*w1) + (df_calc['3개월(%)']*w3) + (df_calc['6개월(%)']*w6) + (df_calc['12개월(%)']*w12)
@@ -168,8 +163,7 @@ main_cfg = {
     "통합티커_L": st.column_config.LinkColumn("티커", display_text=r"#(.+)"), 
     "종목명_L": st.column_config.LinkColumn("종목명", display_text=r"#(.+)"), 
     "시가총액": st.column_config.NumberColumn("시가총액(억)", format="%,.0f"),
-    "종가": st.column_config.NumberColumn("종가", format="%,.0f"),
-    "거래량": st.column_config.NumberColumn("거래량", format="%,.0f"),
+    "종가": st.column_config.NumberColumn("종가(선정일)", format="%,.0f"),
     "1개월(%)": st.column_config.NumberColumn(format="%.1f"), 
     "3개월(%)": st.column_config.NumberColumn(format="%.1f"), 
     "6개월(%)": st.column_config.NumberColumn(format="%.1f"), 
@@ -219,7 +213,7 @@ with tab1:
         with col2: st.metric("📈 KOSPI 3M", f"{kospi_3m}%")
         with col3: st.metric("📉 1개월 하락", f"{neg_1m_cnt}개")
         with col4: st.metric("📉 3개월 하락", f"{neg_3m_cnt}개")
-        with col5: st.markdown(f'<div style="background-color: #f0f2f6; padding: 10px; border-radius: 10px; text-align: center; border: 1px solid #d1d5db; height: 95px; display: flex; flex-direction: column; justify-content: center;"><div style="font-size: 12px; font-weight: bold; color: #64748b; margin-bottom: 2px;">🇺🇸대통령 <span style="color:#0047AB;">{cycle_year}년차</span></div><div style="font-size: 16px; color: #D84315; font-weight:900;">위험달: {bad_m_str}</div></div>', unsafe_allow_html=True)
+        with col5: st.markdown(f'<div style="background-color: #f0f2f6; padding: 10px; border-radius: 10px; text-align: center; border: 1px solid #d1d5db; height: 95px; display: flex; flex-direction: column; justify-content: center;"><div style="font-size: 12px; font-weight: bold; color: #64748b; margin-bottom: 2px;">🇺🇸대통령 <span style="color:#0047AB;">{cycle_year}년차</span> ({selected_year}년)</div><div style="font-size: 16px; color: #D84315; font-weight:900;">🚨 위험달: {bad_m_str}</div></div>', unsafe_allow_html=True)
         with col6: st.markdown(f'<div style="background-color: {box_c}; padding: 10px; border-radius: 10px; text-align: center; border: 1px solid {text_c}; height: 95px; display: flex; flex-direction: column; justify-content: center;"><p style="margin: 0; font-size: 12px; color: {text_c}; font-weight: bold;">최종 판단 ({reason_desc})</p><div style="margin: 4px 0 0 0; font-size: 1.5rem; font-weight: 900; color: {text_c};">{status}</div></div>', unsafe_allow_html=True)
         st.markdown("<hr style='margin: 1rem 0;'>", unsafe_allow_html=True)
 
@@ -320,7 +314,6 @@ with tab3:
     st.markdown("<h4 style='margin:0;'>⚙️ 시뮬레이션 설정</h4>", unsafe_allow_html=True)
     c1, c_ma, c_chk = st.columns([1, 1, 1.5])
     with c1: start_year, end_year = st.slider("📅 테스트 기간", min_y, max_y, (min_y, max_y), key='t3_yr')
-    # 💡 KOREA 페이지의 과거 감성 4개월선 기본값 세팅
     with c_ma: ma_months_t3 = st.slider("📉 마켓타이밍 (개월선)", 1, 12, 4, key='t3_ma')
     with c_chk:
         st.markdown("<div style='margin-top: 35px;'></div>", unsafe_allow_html=True)
@@ -329,10 +322,8 @@ with tab3:
     st.markdown("<hr style='margin: 10px 0px;'>", unsafe_allow_html=True)
     c2, c3, c4, c5 = st.columns([1, 1, 1, 1])
     with c2: perf_pct_t3 = st.slider("🔥 퍼펙트 상위 %", 5, 50, 30, step=5)
-    # 💡 KOREA 페이지의 과거 감성 5~10위 기본값 세팅
     with c3: rank_p_s, rank_p_e = st.slider("🔥 퍼펙트 순위", 1, 30, (5, 10))
     with c4: spec_12m_pct_t3 = st.slider("🐎 달리는말 상위 %", 5, 50, 30, step=5)
-    # 💡 KOREA 페이지의 과거 감성 10~13위 기본값 세팅
     with c5: rank_s_s, rank_s_e = st.slider("🐎 달리는말 순위", 1, 30, (10, 13))
 
     with st.spinner("엔진 구동 중..."):
@@ -340,12 +331,13 @@ with tab3:
         if not df_res.empty:
             s_cols_raw = [c for c in df_res.columns if c not in ['투자월', 'invested']]
             
-            # 💡 [순서 고정 로직] KOREA 통합 페이지도 요청하신 순서대로 못 박았습니다.
+            # 💡 [순서 완벽 고정] 앙상블 이름을 수정하고 요청하신 순서대로 나열합니다.
             target_order = [
                 f'🔥 퍼펙트 상승 ({rank_p_s}~{rank_p_e}위)', 
                 f'🐎 달리는 말 ({rank_s_s}~{rank_s_e}위)', 
-                '앙상블 (전략 50:50)', 
-                '통합 전략 (순위 합)'
+                '앙상블 (50:50 전략)', 
+                '통합 전략 (중복 제외 1/N)',
+                '통합 전략 (중복 인정 1/N)'
             ]
             s_cols = [c for c in target_order if c in s_cols_raw] + [c for c in s_cols_raw if c not in target_order]
             
