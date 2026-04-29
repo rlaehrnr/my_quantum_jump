@@ -51,24 +51,35 @@ def cached_run_backtest_korea(df, start_year, end_year, ma_months, apply_timing,
 
 @st.cache_data(show_spinner=False)
 def cached_run_custom_backtest(df, start_year_c, end_year_c, ma_months_t4, apply_timing_c, w1, w3, w6, w12, custom_pct, rank_c_s, rank_c_e):
-    timing_df_t4 = get_kospi_timing_for_backtest(ma_months_t4)
+    timing_dict = get_kospi_timing_for_backtest(ma_months_t4)
     records_c, trade_logs_c = [], []
     for m_str in sorted(df['투자월'].dropna().unique()):
         m_yr = int(m_str.split('-')[0])
         if not (start_year_c <= m_yr <= end_year_c): continue
         df_calc = df[df['투자월'] == m_str].copy()
         if df_calc.empty: continue
+        
         base_ym_c = pd.to_datetime(df_calc['종목선정일'].iloc[0]).strftime('%Y-%m')
-        is_below_ma = timing_df_t4.loc[base_ym_c, 'is_below_ma'] if base_ym_c in timing_df_t4.index else False
+        is_below_ma = timing_dict.get(base_ym_c, False)
+        
         neg_1m_c = (df_calc['1개월(%)'] < 0).sum()
         neg_3m_c = (df_calc['3개월(%)'] < 0).sum()
         is_bad_market_c = (neg_1m_c >= 100 and neg_3m_c >= 100)
+        
         mult_c = 0.0 if (apply_timing_c and (is_bad_market_c or is_below_ma)) else 1.0
+        
         df_calc['스코어'] = (df_calc['1개월(%)']*w1) + (df_calc['3개월(%)']*w3) + (df_calc['6개월(%)']*w6) + (df_calc['12개월(%)']*w12)
-        target = df_calc[df_calc['스코어']>=df_calc['스코어'].quantile(1-(custom_pct/100.0))].sort_values('스코어', ascending=False).iloc[rank_c_s-1:rank_c_e]
-        records_c.append({'투자월': m_str, 'invested': mult_c > 0, '커스텀 전략': (target['이번달수익률'].mean() * mult_c) if not target.empty else 0})
+        q_limit = df_calc['스코어'].quantile(1 - (custom_pct / 100.0))
+        target = df_calc[df_calc['스코어'] >= q_limit].sort_values('스코어', ascending=False).iloc[rank_c_s-1:rank_c_e]
+        
+        avg_ret = target['이번달수익률'].mean() if not target.empty else 0
+        records_c.append({'투자월': m_str, 'invested': mult_c > 0, '커스텀 전략': avg_ret * mult_c})
+        
         if mult_c > 0:
-            for i, (_, r) in enumerate(target.iterrows()): trade_logs_c.append({'투자월': m_str, '전략': '커스텀', '순위': f"{i+rank_c_s}위", '종목명': r['종목명'], '수익률(%)': r['이번달수익률']})
+            for i, (_, r) in enumerate(target.iterrows()):
+                trade_logs_c.append({'투자월': m_str, '전략': '커스텀', '순위': f"{i+rank_c_s}위", '종목명': r['종목명'], '수익률(%)': r['이번달수익률']})
+        else:
+            trade_logs_c.append({'투자월': m_str, '전략': '마켓타이밍', '순위': '-', '종목명': '현금보유(CASH)', '수익률(%)': 0.0})
     return pd.DataFrame(records_c), pd.DataFrame(trade_logs_c)
 
 def style_stats(x):
@@ -207,6 +218,24 @@ with tab1:
         with c_r:
             top_n_s = st.number_input("s_n", 1, max(1, len(df_spec_t1)), 2, key="calc_s")
             st.dataframe(df_spec_t1.style.apply(apply_korea_styling, highlight_codes=df_spec_t1.head(top_n_s)['종목코드'].tolist(), axis=1), use_container_width=True, hide_index=True, column_order=['통합티커_L', '종목명_L', '1개월(%)', '12개월(%)', '이번달수익률'], column_config=main_cfg)
+
+with tab2:
+    if os.path.exists(f_daily):
+        df_daily = pd.read_csv(f_daily, dtype={'종목코드': str})
+        df_daily['종목코드'] = df_daily['종목코드'].astype(str).str.zfill(6)
+        b_date_d = df_daily['기준일'].iloc[0] if '기준일' in df_daily.columns else "오늘"
+        for col in ['시가총액', '종가']:
+            if col in df_daily.columns: df_daily[col] = pd.to_numeric(df_daily[col], errors='coerce').fillna(0)
+        st.markdown(f"### 🕒 데일리 실시간 순위 (기준: {b_date_d})")
+        df_k, df_p_d, df_s_d = get_strategy_stocks_korea(df_daily)
+        for df in [df_p_d, df_s_d, df_k]:
+            df['통합티커_L'] = df.apply(lambda r: f"https://finance.naver.com/item/main.naver?code={r['종목코드']}#KOSPI:{r['종목코드']}", axis=1)
+            df['종목명_L'] = df.apply(lambda r: f"https://m.stock.naver.com/fchart/domestic/stock/{r['종목코드']}#{r['종목명']}", axis=1)
+        c_d1, c_d2 = st.columns(2)
+        with c_d1: st.dataframe(df_p_d.style.apply(apply_korea_styling, axis=1), use_container_width=True, hide_index=True, column_order=['통합티커_L', '종목명_L', '1개월(%)', '3개월(%)', '6개월(%)', '12개월(%)'], column_config=main_cfg)
+        with c_d2: st.dataframe(df_s_d.style.apply(apply_korea_styling, axis=1), use_container_width=True, hide_index=True, column_order=['통합티커_L', '종목명_L', '1개월(%)', '12개월(%)'], column_config=main_cfg)
+    else:
+        st.info("데일리 데이터 파일이 아직 생성되지 않았습니다.")
 
 with tab3:
     st.markdown("<h4 style='margin:0;'>⚙️ 시뮬레이션 설정</h4>", unsafe_allow_html=True)
