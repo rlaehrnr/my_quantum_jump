@@ -43,7 +43,7 @@ for col in target_cols:
 if '시가총액' in df_master.columns and df_master['시가총액'].max() > 1000000000:
     df_master['시가총액'] = df_master['시가총액'] / 100000000
 
-years_list = sorted(df_master['투자연연도'].unique().astype(int))
+years_list = sorted(df_master['투자연도'].unique().astype(int))
 min_y, max_y = min(years_list), max(years_list)
 
 @st.cache_data(show_spinner=False)
