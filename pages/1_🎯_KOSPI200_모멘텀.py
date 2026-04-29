@@ -1,52 +1,13 @@
 import streamlit as st
 import pandas as pd
-import os
-import glob
-
-def get_folder_hash(folder_path):
-    """폴더 내 'only_'로 시작하는 정상 월간 파일들만 검사합니다."""
-    files = glob.glob(os.path.join(folder_path, "only_*.csv"))
-    if not files:
-        return 0
-    return sum(os.path.getmtime(f) for f in files)
-
-@st.cache_data(ttl="1h")
-def load_archive_data(folder_path, folder_hash=None):
-    # 💡 데일리 파일 등 엉뚱한 파일이 섞이는 것을 방지하기 위해 'only_*.csv'만 불러옵니다.
-    all_files = glob.glob(os.path.join(folder_path, "only_*.csv"))
-    li = []
-    
-    for filename in all_files:
-        try:
-            df = pd.read_csv(filename, index_col=None, header=0, dtype={'종목코드': str})
-            
-            # 💡 치명적 에러 방지: 필수 컬럼인 '투자연도'가 존재하는 정상 파일만 합칩니다.
-            if '투자연도' in df.columns:
-                li.append(df)
-            else:
-                print(f"⚠️ 경고: {filename} 파일에 '투자연도' 컬럼이 없어 제외했습니다.")
-        except Exception as e:
-            print(f"Error loading {filename}: {e}")
-            
-    if not li:
-        return pd.DataFrame()
-        
-    frame = pd.concat(li, axis=0, ignore_index=True)
-    return frame
-🧹 2. pages/1_🎯_KOSPI200_모멘텀.py 상단 임포트 정리
-보내주신 코드를 보니 파이썬의 import 구문들이 중간중간 섞여 있었습니다. 파이썬은 중간에 임포트를 섞어 쓰면 스파게티 코드가 되어 예상치 못한 에러가 날 수 있습니다. 상단 부분을 아래와 같이 깔끔하게 정리해 주세요. (기존 파일의 상단만 아래 코드로 교체하시면 됩니다!)
-
-Python
-import streamlit as st
-import pandas as pd
 import plotly.express as px
 from datetime import datetime, timedelta
 import os
 import FinanceDataReader as fdr
 
+# 페이지 설정은 무조건 최상단에 있어야 합니다.
 st.set_page_config(page_title="KOSPI 200 모멘텀 터미널", layout="wide")
 
-# 💡 임포트 모듈은 무조건 최상단에 모아두어야 안전합니다!
 from utils.data_loader import load_archive_data, get_folder_hash
 from utils.calculator import get_cycle_year, PRESIDENTIAL_DANGEROUS_MONTHS, get_kospi_ma_all, get_strategy_stocks_korea, run_backtest_korea, get_kospi_timing_for_backtest, get_idx_kr
 from utils.ui_components import inject_custom_css, apply_korea_styling, style_kospi_ma
@@ -90,7 +51,7 @@ if '시가총액' in df_master.columns and df_master['시가총액'].max() > 100
 years_list = sorted(df_master['투자연도'].unique().astype(int))
 min_y, max_y = min(years_list), max(years_list)
 
-# ⚡ [변경] 캐싱 함수 이름 변경
+# --- [캐싱 및 헬퍼 함수] ---
 @st.cache_data(show_spinner=False)
 def cached_run_backtest_korea(df, start_year, end_year, ma_months, apply_timing, rank_p, rank_s, perf_pct, spec_12m):
     return run_backtest_korea(df, start_year, end_year, ma_months, apply_timing, rank_p, rank_s, perf_pct=perf_pct, spec_12m=spec_12m)
@@ -189,6 +150,7 @@ def get_monthly_heatmap(df_res, strategy_col):
     except AttributeError: styled = pivot.style.format("{:+.1f}", na_rep="").applymap(color_cells)
     return styled
 
+# --- [컬럼 설정] ---
 ma_cfg = {
     "지수_L": st.column_config.LinkColumn("지수", display_text=r"#(.+)"),
     "현재가_L": st.column_config.LinkColumn("현재가", display_text=r"#(.+)"),
@@ -243,7 +205,6 @@ with tab1:
         ma_df = pd.DataFrame([{'지수_L': "https://m.stock.naver.com/domestic/index/KOSPI/total#KOSPI", '현재가_L': f"https://m.stock.naver.com/fchart/domestic/index/KOSPI#{kospi_curr:,.2f}", 'base_price': round(kospi_curr, 2), '4개월선': kospi_mas.get(4, 0), '5개월선': kospi_mas.get(5, 0), '6개월선': kospi_mas.get(6, 0), '10개월선': kospi_mas.get(10, 0), '12개월선': kospi_mas.get(12, 0)}])
         st.dataframe(style_kospi_ma(ma_df), use_container_width=True, hide_index=True, column_config=ma_cfg)
         
-        # 💡 [변경] 변수명 통일
         df_korea_t1, df_perf_t1, df_spec_t1 = get_strategy_stocks_korea(df_monthly)
         kospi_1m, kospi_3m = get_idx_kr(base_date)
         neg_1m_cnt = (df_korea_t1['1개월(%)'] < 0).sum()
