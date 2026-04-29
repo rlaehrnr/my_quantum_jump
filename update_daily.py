@@ -3,17 +3,14 @@ import FinanceDataReader as fdr
 from datetime import datetime, timedelta
 import os
 import glob
-import time
 
 def get_end_of_month(dt, months_ago):
     first_of_current = dt.replace(day=1)
     target_month = first_of_current - pd.DateOffset(months=months_ago - 1)
     return target_month - timedelta(days=1)
 
-# 💡 [핵심 수정] 수익률 계산 로직을 하나로 통일 (가장 가까운 과거 종가 기준)
 def calculate_return_unified(df_hist, target_date, current_price):
     try:
-        # target_date(예: 3월 31일) 혹은 그 직전의 가장 가까운 종가를 찾습니다.
         past_df = df_hist[df_hist.index <= pd.to_datetime(target_date)]
         if past_df.empty: return 0.0
         base_price = past_df['Close'].iloc[-1]
@@ -22,22 +19,34 @@ def calculate_return_unified(df_hist, target_date, current_price):
     except:
         return 0.0
 
-def update_daily_momentum():
-    print("🚀 수익률 동기화 봇 가동 시작...")
+def update_all_daily_momentum():
+    print("🚀 [통합] 데일리 수익률 동기화 봇 가동 시작...")
     today = datetime.today()
     base_date = today.strftime('%Y-%m-%d')
     
-    # 1. 기초 데이터 로드
-    df_krx = fdr.StockListing('KOSPI')
-    df_krx['Code'] = df_krx['Code'].astype(str).str.zfill(6)
-    df_krx = df_krx[df_krx['Code'].str.endswith('0')].copy()
+    # ==========================================
+    # 1. 전체 유니버스 정의 및 중복 없는 티커 수집
+    # ==========================================
+    df_kospi = fdr.StockListing('KOSPI')
+    df_kosdaq = fdr.StockListing('KOSDAQ')
+    df_kospi['Code'] = df_kospi['Code'].astype(str).str.zfill(6)
+    df_kosdaq['Code'] = df_kosdaq['Code'].astype(str).str.zfill(6)
     
-    shares_dict = {row['Code']: row['Marcap']/row['Close'] for _, row in df_krx.iterrows() if row['Close'] > 0}
-    df_k200 = df_krx.sort_values('Marcap', ascending=False).head(200).copy()
+    # 순수 주식(보통주) 필터링
+    df_kospi = df_kospi[df_kospi['Code'].str.endswith('0')].copy()
+    df_kosdaq = df_kosdaq[df_kosdaq['Code'].str.endswith('0')].copy()
     
-    # 기준일 설정 (이번 달 수익률의 기준인 전월 말일)
-    last_month_end = get_end_of_month(today, 1) # 3월 31일
+    # 타겟 그룹 세팅
+    k200_df = df_kospi.sort_values('Marcap', ascending=False).head(200).copy()
+    k150_df = df_kospi.sort_values('Marcap', ascending=False).head(150).copy()
+    d150_df = df_kosdaq.sort_values('Marcap', ascending=False).head(150).copy()
+    korea300_df = pd.concat([k150_df, d150_df]).copy()
     
+    # 전체 수집 대상 (중복 제거)
+    all_target_df = pd.concat([k200_df, korea300_df]).drop_duplicates(subset=['Code']).copy()
+    shares_dict = {row['Code']: row['Marcap']/row['Close'] for _, row in all_target_df.iterrows() if row['Close'] > 0}
+    
+    last_month_end = get_end_of_month(today, 1)
     dates = {
         '1개월': last_month_end,
         '3개월': get_end_of_month(today, 3),
@@ -46,12 +55,14 @@ def update_daily_momentum():
     }
     start_date = dates['12개월'] - timedelta(days=15) 
     
-    records, price_cache = [], {}
+    # ==========================================
+    # 2. 단 1회! 통합 가격 데이터 수집 (캐싱)
+    # ==========================================
+    print(f"📊 총 {len(all_target_df)}개 종목 주가 다운로드 중...")
+    price_cache = {}
+    daily_records_dict = {}
     
-    # ==========================================
-    # [A] 데일리 데이터 수집
-    # ==========================================
-    for idx, row in df_k200.iterrows():
+    for idx, row in all_target_df.iterrows():
         code = row['Code']
         try:
             df_hist = fdr.DataReader(code, start_date, today)
@@ -60,48 +71,54 @@ def update_daily_momentum():
             curr_price = df_hist['Close'].iloc[-1]
             curr_vol = df_hist['Volume'].iloc[-1] if 'Volume' in df_hist.columns else 0
             
-            records.append({
+            daily_records_dict[code] = {
                 '종목코드': code, '종목명': row['Name'], '기준일': base_date,
                 '시가총액': row['Marcap'], '종가': curr_price, '거래량': curr_vol,
                 '1개월(%)': calculate_return_unified(df_hist, dates['1개월'], curr_price),
                 '3개월(%)': calculate_return_unified(df_hist, dates['3개월'], curr_price),
                 '6개월(%)': calculate_return_unified(df_hist, dates['6개월'], curr_price),
                 '12개월(%)': calculate_return_unified(df_hist, dates['12개월'], curr_price)
-            })
+            }
         except: continue
-            
-    df_final = pd.DataFrame(records)
-    os.makedirs('data', exist_ok=True)
-    df_final.to_csv('data/momentum_data_daily.csv', index=False, encoding='utf-8-sig')
 
     # ==========================================
-    # [B] 월간 파일 '이번달수익률' 동기화 (데일리와 동일 로직 적용)
+    # 3. KOSPI 200 & KOREA 300 데일리 파일 분리 저장
     # ==========================================
-    archive_files = sorted(glob.glob('archive_kospi/only_kospi_*.csv'))
-    if archive_files:
+    os.makedirs('data', exist_ok=True)
+    
+    # KOSPI 200 저장
+    k200_records = [daily_records_dict[c] for c in k200_df['Code'] if c in daily_records_dict]
+    pd.DataFrame(k200_records).to_csv('data/momentum_data_daily.csv', index=False, encoding='utf-8-sig')
+    
+    # KOREA 300 저장
+    korea300_records = [daily_records_dict[c] for c in korea300_df['Code'] if c in daily_records_dict]
+    pd.DataFrame(korea300_records).to_csv('data/momentum_data_daily_korea.csv', index=False, encoding='utf-8-sig')
+    print("✅ 데일리 파일 분리 저장 완료!")
+
+    # ==========================================
+    # 4. 월간 아카이브 이번달 수익률 동기화 함수
+    # ==========================================
+    def sync_archive_returns(archive_folder):
+        archive_files = sorted(glob.glob(f'{archive_folder}/only_*.csv'))
+        if not archive_files: return
         latest_file = archive_files[-1]
         df_latest = pd.read_csv(latest_file, dtype={'종목코드': str})
-        df_latest['종목코드'] = df_latest['종목코드'].astype(str).str.zfill(6)
         
         if '종목선정일' in df_latest.columns:
-            # CSV 파일에 적힌 실제 선정일 (예: 2026-03-31)
             csv_base_date = df_latest['종목선정일'].iloc[0]
-            print(f"📌 {latest_file} 파일을 선정일 {csv_base_date} 기준으로 동기화합니다.")
-            
             for idx, row in df_latest.iterrows():
-                code = row['종목코드']
+                code = row['종목코드'].zfill(6)
                 df_h = price_cache.get(code, pd.DataFrame())
+                
+                # 데일리 수집에 없었던 과거 종목일 경우에만 예외적으로 단독 수집
                 if df_h.empty:
                     try: df_h = fdr.DataReader(code, csv_base_date, today)
                     except: pass
                 
                 if not df_h.empty:
                     curr_p = df_h['Close'].iloc[-1]
-                    # 💡 데일리 탭과 100% 동일한 함수를 사용하여 '이번달수익률' 갱신
-                    sync_ret = calculate_return_unified(df_h, csv_base_date, curr_p)
-                    df_latest.at[idx, '이번달수익률'] = sync_ret
+                    df_latest.at[idx, '이번달수익률'] = calculate_return_unified(df_h, csv_base_date, curr_p)
                     
-                    # 시총/종가도 선정일 당시의 데이터로 보정
                     past_df = df_h[df_h.index <= pd.to_datetime(csv_base_date)]
                     if not past_df.empty:
                         bp = past_df['Close'].iloc[-1]
@@ -109,7 +126,12 @@ def update_daily_momentum():
                         df_latest.at[idx, '시가총액'] = int(bp * shares_dict.get(code, 0))
             
             df_latest.to_csv(latest_file, index=False, encoding='utf-8-sig')
-            print(f"🎉 동기화 완료: 대우건설 수익률이 이제 일치할 것입니다.")
+            print(f"✅ {archive_folder} 월간 파일 동기화 완료!")
+
+    # 함수 실행하여 두 폴더 모두 동기화
+    sync_archive_returns('archive_kospi')
+    sync_archive_returns('archive_korea')
+    print("🎉 모든 데일리 업데이트 및 동기화 완벽 종료!")
 
 if __name__ == "__main__":
-    update_daily_momentum()
+    update_all_daily_momentum()
