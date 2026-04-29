@@ -57,49 +57,41 @@ def update_all_daily_momentum():
     os.makedirs('data', exist_ok=True)
 
     # ==========================================
-    # 💡 [완벽 수정] VIX 지수 2중 다운로드 로직
+    # 💡 [핵심] VIX 지수 가장 확실한 방식으로 다운로드
     # ==========================================
     print("📈 미국 VIX 지수 데이터 업데이트 중...")
-    df_vix = pd.DataFrame()
-    
-    # 1순위: 야후 파이낸스 (가장 안정적)
     try:
         import yfinance as yf
-        df_vix = yf.download('^VIX', start='2015-01-01', progress=False)
-        # 최신 yfinance는 MultiIndex를 반환하므로 평탄화
-        if isinstance(df_vix.columns, pd.MultiIndex):
-            df_vix.columns = df_vix.columns.get_level_values(0)
-    except ImportError:
-        print("ℹ️ yfinance 라이브러리가 없어 FinanceDataReader로 시도합니다.")
-    except Exception as e:
-        print(f"⚠️ yfinance 수집 실패: {e}")
-
-    # 2순위: FinanceDataReader로 ^VIX 수집 (1순위 실패 시)
-    if df_vix.empty:
-        try:
-            df_vix = fdr.DataReader('^VIX', '2015-01-01', today)
-        except Exception as e:
-            print(f"⚠️ FinanceDataReader 수집 실패: {e}")
-
-    # VIX 데이터 가공 및 저장
-    if not df_vix.empty:
-        df_vix = df_vix.reset_index()
-        col_map = {'Date': '날짜', 'Close': '종가', 'Open': '시가', 'High': '고가', 'Low': '저가'}
-        df_vix = df_vix.rename(columns=col_map)
+        # 기존 오류를 피하기 위해 yf.download 대신 Ticker.history 사용
+        vix_ticker = yf.Ticker('^VIX')
+        df_vix = vix_ticker.history(start='2015-01-01')
         
-        # 변동률 직접 계산
-        if '종가' in df_vix.columns:
-            df_vix['변동 %'] = df_vix['종가'].pct_change().multiply(100).round(2).astype(str) + '%'
+        if not df_vix.empty:
+            df_vix = df_vix.reset_index()
             
-        df_vix['날짜'] = pd.to_datetime(df_vix['날짜']).dt.strftime('%Y-%m-%d')
-        
-        # 필요한 컬럼만 추출하여 저장
-        target_cols = ['날짜', '종가', '시가', '고가', '저가', '변동 %']
-        df_vix = df_vix[[c for c in target_cols if c in df_vix.columns]]
-        df_vix.to_csv('data/vix data.csv', index=False, encoding='utf-8-sig')
-        print("✅ VIX 지수 업데이트 성공! (data/vix data.csv 저장 완료)")
-    else:
-        print("🚨 VIX 데이터를 불러오지 못했습니다. 터미널 창을 확인해주세요.")
+            # 날짜에 섞인 타임존(미국시간) 제거
+            if df_vix['Date'].dt.tz is not None:
+                df_vix['Date'] = df_vix['Date'].dt.tz_localize(None)
+                
+            col_map = {'Date': '날짜', 'Close': '종가', 'Open': '시가', 'High': '고가', 'Low': '저가'}
+            df_vix = df_vix.rename(columns=col_map)
+            
+            # 변동률 직접 계산
+            df_vix['변동 %'] = df_vix['종가'].pct_change().multiply(100).round(2).astype(str) + '%'
+            df_vix['날짜'] = pd.to_datetime(df_vix['날짜']).dt.strftime('%Y-%m-%d')
+            
+            target_cols = ['날짜', '종가', '시가', '고가', '저가', '변동 %']
+            df_vix = df_vix[[c for c in target_cols if c in df_vix.columns]]
+            
+            # 파일 덮어쓰기
+            df_vix.to_csv('data/vix data.csv', index=False, encoding='utf-8-sig')
+            print("✅ VIX 지수 업데이트 성공! (data/vix data.csv 저장 완료)")
+        else:
+            print("🚨 VIX 데이터를 불러오지 못했습니다.")
+    except ImportError:
+        print("🚨 [오류] yfinance 라이브러리가 설치되지 않았습니다! 터미널에서 'pip install yfinance'를 실행하세요.")
+    except Exception as e:
+        print(f"⚠️ VIX 다운로드 실패: {e}")
 
     # ==========================================
     # 1. 한국 시장 유니버스 세팅
@@ -153,7 +145,7 @@ def update_all_daily_momentum():
 
     # 4. 월간 아카이브 동기화
     def sync_archive_returns(archive_folder):
-        archive_files = sorted(glob.glob(f'{archive_folder}/momentum_*.csv')) # 파일 패턴은 환경에 맞게 자동 인식
+        archive_files = sorted(glob.glob(f'{archive_folder}/momentum_*.csv'))
         if not archive_files:
             archive_files = sorted(glob.glob(f'{archive_folder}/only_*.csv'))
             if not archive_files: return
