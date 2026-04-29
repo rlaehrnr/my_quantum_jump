@@ -182,12 +182,15 @@ with tab2:
             df_daily['시가총액'] = df_daily['시가총액'] / 100000000
         
         st.markdown(f"<div style='margin-bottom: 5px; font-size:0.95rem; font-weight:600;'><b>🕒 실시간 데일리 순위</b> <span style='font-size: 0.85rem; color: #9ca3af; font-weight:normal;'>&nbsp;&nbsp;💡 기준일: {b_date_d}</span></div>", unsafe_allow_html=True)
-        kospi_curr_d, kospi_mas_d = get_kospi_ma_all(b_date_d)
+        
+        # 날짜 포맷팅 안전장치 추가
+        safe_date = b_date_d if b_date_d != "오늘" else datetime.today().strftime('%Y-%m-%d')
+        kospi_curr_d, kospi_mas_d = get_kospi_ma_all(safe_date)
         ma_df_d = pd.DataFrame([{'지수_L': "https://m.stock.naver.com/domestic/index/KOSPI/total#KOSPI", '현재가_L': f"https://m.stock.naver.com/fchart/domestic/index/KOSPI#{kospi_curr_d:,.2f}", 'base_price': round(kospi_curr_d, 2), '4개월선': kospi_mas_d.get(4, 0), '5개월선': kospi_mas_d.get(5, 0), '6개월선': kospi_mas_d.get(6, 0), '10개월선': kospi_mas_d.get(10, 0), '12개월선': kospi_mas_d.get(12, 0)}])
         st.dataframe(style_kospi_ma(ma_df_d), use_container_width=True, hide_index=True, column_config=ma_cfg)
         
         df_korea_d, df_perf_d, df_spec_d = get_strategy_stocks_korea(df_daily)
-        kospi_1m_d, kospi_3m_d = get_idx_kr(b_date_d)
+        kospi_1m_d, kospi_3m_d = get_idx_kr(safe_date)
         neg_1m_d = (df_korea_d['1개월(%)'] < 0).sum()
         neg_3m_d = (df_korea_d['3개월(%)'] < 0).sum()
         
@@ -204,6 +207,11 @@ with tab2:
         status_d, box_d, text_d = ("🛑 투자 중지", "#FFEBEE", "#C62828") if (is_bad_market_d or is_below_ma_d) else ("✅ 투자 진행", "#E8F5E9", "#2E7D32")
         reason_desc_d = ("하락장" if is_bad_market_d else "") + (" + " if is_bad_market_d and is_below_ma_d else "") + ("6개월선 이탈" if is_below_ma_d else "")
         if not is_bad_market_d and not is_below_ma_d: reason_desc_d = "안전"
+        
+        # 💡 [핵심] 빠져있던 변수들을 완벽하게 선언했습니다!
+        target_year_d = int(b_date_d.split('-')[0]) if '-' in b_date_d else datetime.today().year
+        cycle_year_d = get_cycle_year(target_year_d)
+        bad_m_str_d = ", ".join(f"{m}월" for m in PRESIDENTIAL_DANGEROUS_MONTHS.get(cycle_year_d, [])) or "없음"
 
         col1d, col2d, col3d, col4d, col5d, col6d = st.columns([0.9, 0.9, 1.0, 1.0, 1.4, 1.6])
         with col1d: st.metric("📈 KOSPI 1M", f"{kospi_1m_d}%")
@@ -219,6 +227,7 @@ with tab2:
             df['종목명_L'] = df.apply(lambda r: f"https://m.stock.naver.com/fchart/domestic/stock/{r['종목코드']}#{r['종목명']}", axis=1)
 
         c_d1, c_d2 = st.columns(2)
+        
         overlap_d = set(df_perf_d.head(top_n_p)['종목코드']).intersection(set(df_spec_d.head(top_n_s)['종목코드']))
         
         with c_d1:
@@ -299,7 +308,7 @@ with tab3:
 with tab4:
     current_ma_c = st.session_state.get('t4_ma', 6)
     col_title_c, col_check_c = st.columns([1, 4])
-    with col_title_c: st.markdown("<h4 style='margin:0;'>⚙️ 가중치 설정</h4>", unsafe_allow_html=True)
+    with col_title_c: st.markdown("<h4 style='margin-top: 5px;'>⚙️ 가중치 설정</h4>", unsafe_allow_html=True)
     with col_check_c:
         st.markdown("<div style='margin-top: 12px;'></div>", unsafe_allow_html=True)
         apply_timing_c = st.checkbox("🛑 마켓타이밍 적용 (MA 이탈 시 현금)", value=True, key='t4_chk_main')
