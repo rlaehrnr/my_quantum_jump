@@ -1,5 +1,44 @@
 import streamlit as st
 import pandas as pd
+import os
+import glob
+
+def get_folder_hash(folder_path):
+    """폴더 내 'only_'로 시작하는 정상 월간 파일들만 검사합니다."""
+    files = glob.glob(os.path.join(folder_path, "only_*.csv"))
+    if not files:
+        return 0
+    return sum(os.path.getmtime(f) for f in files)
+
+@st.cache_data(ttl="1h")
+def load_archive_data(folder_path, folder_hash=None):
+    # 💡 데일리 파일 등 엉뚱한 파일이 섞이는 것을 방지하기 위해 'only_*.csv'만 불러옵니다.
+    all_files = glob.glob(os.path.join(folder_path, "only_*.csv"))
+    li = []
+    
+    for filename in all_files:
+        try:
+            df = pd.read_csv(filename, index_col=None, header=0, dtype={'종목코드': str})
+            
+            # 💡 치명적 에러 방지: 필수 컬럼인 '투자연도'가 존재하는 정상 파일만 합칩니다.
+            if '투자연도' in df.columns:
+                li.append(df)
+            else:
+                print(f"⚠️ 경고: {filename} 파일에 '투자연도' 컬럼이 없어 제외했습니다.")
+        except Exception as e:
+            print(f"Error loading {filename}: {e}")
+            
+    if not li:
+        return pd.DataFrame()
+        
+    frame = pd.concat(li, axis=0, ignore_index=True)
+    return frame
+🧹 2. pages/1_🎯_KOSPI200_모멘텀.py 상단 임포트 정리
+보내주신 코드를 보니 파이썬의 import 구문들이 중간중간 섞여 있었습니다. 파이썬은 중간에 임포트를 섞어 쓰면 스파게티 코드가 되어 예상치 못한 에러가 날 수 있습니다. 상단 부분을 아래와 같이 깔끔하게 정리해 주세요. (기존 파일의 상단만 아래 코드로 교체하시면 됩니다!)
+
+Python
+import streamlit as st
+import pandas as pd
 import plotly.express as px
 from datetime import datetime, timedelta
 import os
@@ -7,6 +46,7 @@ import FinanceDataReader as fdr
 
 st.set_page_config(page_title="KOSPI 200 모멘텀 터미널", layout="wide")
 
+# 💡 임포트 모듈은 무조건 최상단에 모아두어야 안전합니다!
 from utils.data_loader import load_archive_data, get_folder_hash
 from utils.calculator import get_cycle_year, PRESIDENTIAL_DANGEROUS_MONTHS, get_kospi_ma_all, get_strategy_stocks_korea, run_backtest_korea, get_kospi_timing_for_backtest, get_idx_kr
 from utils.ui_components import inject_custom_css, apply_korea_styling, style_kospi_ma
@@ -25,7 +65,7 @@ st.markdown('''
     </div>
 ''', unsafe_allow_html=True)
 
-# 💡 [여기서부터 수정!] 데이터 로드 부분을 하나로 깔끔하게 합쳤습니다.
+# 데이터 로드 (안전하게 해시값 포함)
 archive_path = "archive_kospi"
 f_hash = get_folder_hash(archive_path) 
 df_master = load_archive_data(archive_path, f_hash) 
@@ -33,7 +73,7 @@ df_master = load_archive_data(archive_path, f_hash)
 f_daily = 'data/momentum_data_daily.csv'
 
 if df_master.empty:
-    st.error("🚨 archive_kospi 폴더에 데이터가 없습니다!")
+    st.error("🚨 archive_kospi 폴더에 정상적인 데이터가 없습니다! (월간 봇을 다시 실행해 주세요)")
     st.stop()
 
 # 공통 전처리
