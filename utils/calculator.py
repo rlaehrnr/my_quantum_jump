@@ -53,7 +53,8 @@ def get_kospi_timing_for_backtest(ma_months):
     ks11['YearMonth'] = ks11.index.to_period('M').astype(str)
     timing_df = ks11.resample('ME').last()
     timing_df['is_below_ma'] = timing_df['Close'] < timing_df['MA']
-    return timing_df[['is_below_ma']]
+    # 💡 [중요] 반드시 Series 형태로 반환하여 Lookup 에러 방지
+    return timing_df['is_below_ma']
 
 def get_strategy_stocks_korea(df):
     q30 = {c: df[c].quantile(0.7) for c in ['1개월(%)', '3개월(%)', '6개월(%)', '12개월(%)']}
@@ -77,30 +78,44 @@ def _base_backtest_engine(df, start_year, end_year, ma_months, apply_timing, ran
     timing_df = get_kospi_timing_for_backtest(ma_months)
     months = [m for m in sorted(df['투자월'].dropna().unique()) if start_year <= int(m.split('-')[0]) <= end_year]
     records, trade_logs = [], []
+    
     for m in months:
         m_data = df[df['투자월'] == m].copy()
         if m_data.empty: continue
+        
         base_ym = pd.to_datetime(m_data['종목선정일'].iloc[0]).strftime('%Y-%m')
-        is_below_ma = timing_df.loc[base_ym, 'is_below_ma'] if base_ym in timing_df.index else False
+        
+        # 💡 [에러 해결 핵심] .get()과 bool()을 사용하여 단일 True/False 값만 추출
+        is_below_ma = bool(timing_df.get(base_ym, False))
+        
         is_bad_market = False
         if market_threshold is not None:
             neg_1m = (m_data['1개월(%)'] < 0).sum()
             neg_3m = (m_data['3개월(%)'] < 0).sum()
             is_bad_market = (neg_1m >= market_threshold) and (neg_3m >= market_threshold)
+        
+        # 이제 is_below_ma와 is_bad_market은 확실히 단일 Boolean입니다.
         mult = 0.0 if (apply_timing and (is_below_ma or is_bad_market)) else 1.0
+        
         q_p, q_s = 1.0 - (perf_pct / 100.0), 1.0 - (spec_12m_pct / 100.0)
         cond_p = (m_data['1개월(%)']>=m_data['1개월(%)'].quantile(q_p)) & (m_data['3개월(%)']>=m_data['3개월(%)'].quantile(q_p)) & \
                  (m_data['6개월(%)']>=m_data['6개월(%)'].quantile(q_p)) & (m_data['12개월(%)']>=m_data['12개월(%)'].quantile(q_p)) & \
                  (m_data['1개월(%)']>0) & (m_data['3개월(%)']>0) & (m_data['6개월(%)']>0) & (m_data['12개월(%)']>0)
         cond_s = (m_data['12개월(%)']>=m_data['12개월(%)'].quantile(q_s)) & (m_data['1개월(%)']>=m_data['1개월(%)'].quantile(0.9))
+        
         target_p = m_data[cond_p].sort_values('3개월(%)', ascending=False).iloc[rank_p[0]-1 : rank_p[1]]
         target_s = m_data[cond_s].sort_values('1개월(%)', ascending=False).iloc[rank_s[0]-1 : rank_s[1]]
+        
         ret_p = (target_p['이번달수익률'].mean() * mult) if not target_p.empty else 0.0
         ret_s = (target_s['이번달수익률'].mean() * mult) if not target_s.empty else 0.0
         combined_codes = list(set(target_p['종목코드'].tolist() + target_s['종목코드'].tolist()))
         ret_total = (m_data[m_data['종목코드'].isin(combined_codes)]['이번달수익률'].mean() * mult) if combined_codes else 0.0
-        records.append({'투자월': m, 'invested': mult > 0, '🔥 퍼펙트 상승': ret_p, '🐎 달리는 말': ret_s, '앙상블 (전략 50:50)': (ret_p+ret_s)/2, '통합 전략': ret_total})
+        
+        records.append({'투자월': m, 'invested': mult > 0, f'🔥 퍼펙트 상승': ret_p, f'🐎 달리는 말': ret_s, '앙상블 (전략 50:50)': (ret_p+ret_s)/2, '통합 전략': ret_total})
         if mult > 0:
             for i, (_, r) in enumerate(target_p.iterrows()): trade_logs.append({'투자월': m, '전략': '퍼펙트', '순위': f"{i+rank_p[0]}위", '종목명': r['종목명'], '수익률(%)': r['이번달수익률']})
             for i, (_, r) in enumerate(target_s.iterrows()): trade_logs.append({'투자월': m, '전략': '달리는말', '순위': f"{i+rank_s[0]}위", '종목명': r['종목명'], '수익률(%)': r['이번달수익률']})
+        else:
+            trade_logs.append({'투자월': m, '전략': '현금보유', '순위': '-', '종목명': 'CASH', '수익률(%)': 0.0})
+            
     return pd.DataFrame(records), pd.DataFrame(trade_logs)
