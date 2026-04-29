@@ -57,20 +57,60 @@ def cached_run_backtest_korea(df, start_year, end_year, ma_months, apply_timing,
 
 @st.cache_data(show_spinner=False)
 def cached_run_custom_backtest(df, start_year_c, end_year_c, ma_months_t4, apply_timing_c, w1, w3, w6, w12, custom_pct, rank_c_s, rank_c_e):
+    # 1. 전 기간 마켓타이밍 데이터 가져오기
     timing_df_t4 = get_kospi_timing_for_backtest(ma_months_t4)
     records_c, trade_logs_c = [], []
+    
+    # 2. 월별 루프 실행
     for m_str in sorted(df['투자월'].dropna().unique()):
         m_yr = int(m_str.split('-')[0])
+        
+        # 설정한 테스트 기간 외에는 스킵
         if not (start_year_c <= m_yr <= end_year_c): continue
+        
         df_calc = df[df['투자월'] == m_str].copy()
         if df_calc.empty: continue
+        
+        # 선정일 기준 이동평균선 이탈 여부 확인
         base_ym_c = pd.to_datetime(df_calc['종목선정일'].iloc[0]).strftime('%Y-%m')
         is_below_ma = timing_df_t4.loc[base_ym_c, 'is_below_ma'] if base_ym_c in timing_df_t4.index else False
-        mult_c = 0.0 if (apply_timing_c and ((df_calc['1개월(%)'] < 0).sum() >= 100 or is_below_ma)) else 1.0
-        df_calc['스코어'] = (df_calc['1개월(%)']*w1) + (df_calc['3개월(%)']*w3) + (df_calc['6개월(%)']*w6) + (df_calc['12개월(%)']*w12)
-        target = df_calc[df_calc['스코어']>=df_calc['스코어'].quantile(1-(custom_pct/100.0))].sort_values('스코어', ascending=False).iloc[rank_c_s-1:rank_c_e]
-        records_c.append({'투자월': m_str, 'invested': mult_c > 0, '커스텀 전략': (target['이번달수익률'].mean() * mult_c) if not target.empty else 0})
-        for i, (_, r) in enumerate(target.iterrows()): trade_logs_c.append({'투자월': m_str, '전략': '커스텀', '순위': f"{i+rank_c_s}위", '종목명': r['종목명'], '수익률(%)': r['이번달수익률']})
+        
+        # 💡 [수정 핵심] KOREA 통합은 하락 종목 수 체크 없이 '이동평균선'만 봅니다.
+        mult_c = 0.0 if (apply_timing_c and is_below_ma) else 1.0
+        
+        # 3. 커스텀 스코어 계산 (가중치 적용)
+        df_calc['스코어'] = (df_calc['1개월(%)']*w1) + \
+                          (df_calc['3개월(%)']*w3) + \
+                          (df_calc['6개월(%)']*w6) + \
+                          (df_calc['12개월(%)']*w12)
+        
+        # 4. 상위 % 필터 및 순위 슬라이싱
+        q_limit = df_calc['스코어'].quantile(1 - (custom_pct / 100.0))
+        target = df_calc[df_calc['스코어'] >= q_limit].sort_values('스코어', ascending=False).iloc[rank_c_s-1 : rank_c_e]
+        
+        # 5. 결과 기록
+        avg_ret = target['이번달수익률'].mean() if not target.empty else 0
+        records_c.append({
+            '투자월': m_str, 
+            'invested': mult_c > 0, 
+            '커스텀 전략': avg_ret * mult_c
+        })
+        
+        # 상세 매수 로그 (투자가 진행된 경우만)
+        if mult_c > 0:
+            for i, (_, r) in enumerate(target.iterrows()):
+                trade_logs_c.append({
+                    '투자월': m_str, 
+                    '전략': '커스텀', 
+                    '순위': f"{i+rank_c_s}위", 
+                    '종목명': r['종목명'], 
+                    '수익률(%)': r['이번달수익률']
+                })
+        else:
+            trade_logs_c.append({
+                '투자월': m_str, '전략': '마켓타이밍', '순위': '-', '종목명': '현금보유(CASH)', '수익률(%)': 0.0
+            })
+            
     return pd.DataFrame(records_c), pd.DataFrame(trade_logs_c)
 
 def style_stats(x):
