@@ -57,14 +57,12 @@ def get_kospi_timing_for_backtest(ma_months):
 def get_strategy_stocks_korea(df):
     q30 = {c: df[c].quantile(0.7) for c in ['1개월(%)', '3개월(%)', '6개월(%)', '12개월(%)']}
     
-    # 💡 퍼펙트는 0% 이상 조건 유지
     perf_mask = (df['1개월(%)'] >= q30['1개월(%)']) & (df['1개월(%)'] > 0) & \
                 (df['3개월(%)'] >= q30['3개월(%)']) & (df['3개월(%)'] > 0) & \
                 (df['6개월(%)'] >= q30['6개월(%)']) & (df['6개월(%)'] > 0) & \
                 (df['12개월(%)'] >= q30['12개월(%)']) & (df['12개월(%)'] > 0)
     df_perf = df[perf_mask].sort_values('3개월(%)', ascending=False).copy()
     
-    # 💡 달리는 말: 0% 이상 조건 완전 삭제 (과거 로직 복원)
     spec_mask = (df['12개월(%)'] >= q30['12개월(%)']) & \
                 (df['1개월(%)'] >= df['1개월(%)'].quantile(0.9))
     df_spec = df[spec_mask].sort_values('1개월(%)', ascending=False).copy()
@@ -86,13 +84,11 @@ def _base_backtest_engine(df, start_year, end_year, ma_months, apply_timing, ran
         m_data = df[df['투자월'] == m].copy()
         if m_data.empty: continue
         
-        # 💡 [핵심 복원] KOSPI 200만 시총 200위 자르기 적용
         if market_threshold == 100:
             cap_col = '시가총액(억)' if '시가총액(억)' in m_data.columns else '시가총액'
             if cap_col in m_data.columns:
                 m_data = m_data.sort_values(by=cap_col, ascending=False).head(200)
 
-        # 💡 과거 데이터의 '다음달수익률(%)' 우선 적용
         ret_col = '다음달수익률(%)' if '다음달수익률(%)' in m_data.columns else '이번달수익률'
         
         base_ym = pd.to_datetime(m_data['종목선정일'].iloc[0]).strftime('%Y-%m')
@@ -108,12 +104,10 @@ def _base_backtest_engine(df, start_year, end_year, ma_months, apply_timing, ran
         
         q_p, q_s = 1.0 - (perf_pct / 100.0), 1.0 - (spec_12m_pct / 100.0)
         
-        # 💡 퍼펙트 조건 (0 이상)
         cond_p = (m_data['1개월(%)']>=m_data['1개월(%)'].quantile(q_p)) & (m_data['3개월(%)']>=m_data['3개월(%)'].quantile(q_p)) & \
                  (m_data['6개월(%)']>=m_data['6개월(%)'].quantile(q_p)) & (m_data['12개월(%)']>=m_data['12개월(%)'].quantile(q_p)) & \
                  (m_data['1개월(%)']>0) & (m_data['3개월(%)']>0) & (m_data['6개월(%)']>0) & (m_data['12개월(%)']>0)
                  
-        # 💡 달리는 말 조건 (0 이상 필터 완전 배제)
         cond_s = (m_data['12개월(%)']>=m_data['12개월(%)'].quantile(q_s)) & (m_data['1개월(%)']>=m_data['1개월(%)'].quantile(0.9))
         
         target_p = m_data[cond_p].sort_values('3개월(%)', ascending=False).iloc[rank_p[0]-1 : rank_p[1]]
@@ -122,16 +116,21 @@ def _base_backtest_engine(df, start_year, end_year, ma_months, apply_timing, ran
         ret_p = (target_p[ret_col].mean() * mult) if not target_p.empty else 0.0
         ret_s = (target_s[ret_col].mean() * mult) if not target_s.empty else 0.0
         
-        # 💡 [가장 중요한 복원] 중복 종목 제거 후 남은 종목들로 단순 평균(N분의 1) 내기
-        combined_series = pd.concat([target_p[ret_col], target_s[ret_col]])
-        ret_total = (combined_series.mean() * mult) if not combined_series.empty else 0.0
+        # 💡 [핵심] 1. 중복 제외 통합 전략 (교집합 제거 후 1/N)
+        combined_codes_unique = list(set(target_p['종목코드'].tolist() + target_s['종목코드'].tolist()))
+        ret_total_unique = (m_data[m_data['종목코드'].isin(combined_codes_unique)][ret_col].mean() * mult) if combined_codes_unique else 0.0
+        
+        # 💡 [핵심] 2. 중복 인정 통합 전략 (그냥 이어 붙여서 중복 종목은 2배 가중치)
+        combined_series_dup = pd.concat([target_p[ret_col], target_s[ret_col]])
+        ret_total_dup = (combined_series_dup.mean() * mult) if not combined_series_dup.empty else 0.0
         
         records.append({
             '투자월': m, 'invested': mult > 0, 
             f'🔥 퍼펙트 상승 ({rank_p[0]}~{rank_p[1]}위)': ret_p, 
             f'🐎 달리는 말 ({rank_s[0]}~{rank_s[1]}위)': ret_s, 
-            '앙상블 (전략 50:50)': (ret_p+ret_s)/2, 
-            '통합 전략 (순위 합)': ret_total
+            '앙상블 (50:50 전략)': (ret_p+ret_s)/2, 
+            '통합 전략 (중복 제외 1/N)': ret_total_unique,
+            '통합 전략 (중복 인정 1/N)': ret_total_dup
         })
         
         if mult > 0:
