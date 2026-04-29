@@ -3,6 +3,7 @@ import pandas as pd
 import plotly.express as px
 from datetime import datetime, timedelta
 import os
+import FinanceDataReader as fdr
 
 st.set_page_config(page_title="KOSPI 200 모멘텀 터미널", layout="wide")
 
@@ -11,6 +12,25 @@ from utils.calculator import get_cycle_year, PRESIDENTIAL_DANGEROUS_MONTHS, get_
 from utils.ui_components import inject_custom_css, apply_korea_styling, style_kospi_ma, get_styled_stats, get_mdd_history, get_monthly_heatmap, ma_cfg, main_cfg
 
 inject_custom_css()
+
+# 💡 [추가] 코스닥 지수 이동평균선을 계산하는 헬퍼 함수
+@st.cache_data(ttl=3600)
+def get_kosdaq_ma_all(target_date_str):
+    target_date = pd.to_datetime(target_date_str)
+    start_date = target_date - timedelta(days=450)
+    try:
+        df = fdr.DataReader('KQ11', start_date, target_date)
+        if df.empty: return 0, {}
+        curr_p = df['Close'].iloc[-1]
+        mas = {
+            4: round(df['Close'].rolling(80).mean().iloc[-1], 2),
+            5: round(df['Close'].rolling(100).mean().iloc[-1], 2),
+            6: round(df['Close'].rolling(120).mean().iloc[-1], 2),
+            10: round(df['Close'].rolling(200).mean().iloc[-1], 2),
+            12: round(df['Close'].rolling(240).mean().iloc[-1], 2)
+        }
+        return curr_p, mas
+    except: return 0, {}
 
 st.markdown('''
     <div style="margin-bottom: 20px;">
@@ -98,8 +118,14 @@ with tab1:
         base_date = df_monthly['종목선정일'].iloc[0]
         month_label.markdown(f"<div style='margin-bottom: 5px; font-size:0.95rem; font-weight:600;'><b>🌙 투자 월</b> <span style='font-size: 0.85rem; color: #9ca3af; font-weight:normal;'>&nbsp;&nbsp;💡 선정일: {base_date}</span></div>", unsafe_allow_html=True)
 
+        # 💡 [수정] 코스피와 코스닥 지수 2줄 출력
         kospi_curr, kospi_mas = get_kospi_ma_all(base_date)
-        ma_df = pd.DataFrame([{'지수_L': "https://m.stock.naver.com/domestic/index/KOSPI/total#KOSPI", '현재가_L': f"https://m.stock.naver.com/fchart/domestic/index/KOSPI#{kospi_curr:,.2f}", 'base_price': round(kospi_curr, 2), '4개월선': kospi_mas.get(4, 0), '5개월선': kospi_mas.get(5, 0), '6개월선': kospi_mas.get(6, 0), '10개월선': kospi_mas.get(10, 0), '12개월선': kospi_mas.get(12, 0)}])
+        kosdaq_curr, kosdaq_mas = get_kosdaq_ma_all(base_date)
+        
+        ma_df = pd.DataFrame([
+            {'지수_L': "https://m.stock.naver.com/domestic/index/KOSPI/total#KOSPI", '현재가_L': f"https://m.stock.naver.com/fchart/domestic/index/KOSPI#{kospi_curr:,.2f}", 'base_price': round(kospi_curr, 2), '4개월선': kospi_mas.get(4, 0), '5개월선': kospi_mas.get(5, 0), '6개월선': kospi_mas.get(6, 0), '10개월선': kospi_mas.get(10, 0), '12개월선': kospi_mas.get(12, 0)},
+            {'지수_L': "https://m.stock.naver.com/domestic/index/KOSDAQ/total#KOSDAQ", '현재가_L': f"https://m.stock.naver.com/fchart/domestic/index/KOSDAQ#{kosdaq_curr:,.2f}", 'base_price': round(kosdaq_curr, 2), '4개월선': kosdaq_mas.get(4, 0), '5개월선': kosdaq_mas.get(5, 0), '6개월선': kosdaq_mas.get(6, 0), '10개월선': kosdaq_mas.get(10, 0), '12개월선': kosdaq_mas.get(12, 0)}
+        ])
         st.dataframe(style_kospi_ma(ma_df), use_container_width=True, hide_index=True, column_config=ma_cfg)
         
         df_korea_t1, df_perf_t1, df_spec_t1 = get_strategy_stocks_korea(df_monthly)
@@ -173,6 +199,7 @@ with tab2:
         df_daily = pd.read_csv(f_daily, dtype={'종목코드': str})
         df_daily['종목코드'] = df_daily['종목코드'].astype(str).str.zfill(6)
         b_date_d = df_daily['기준일'].iloc[0] if '기준일' in df_daily.columns else "오늘"
+        safe_date = b_date_d if b_date_d != "오늘" else datetime.today().strftime('%Y-%m-%d')
         
         for col in ['시가총액', '종가', '거래량']:
             if col in df_daily.columns:
@@ -183,10 +210,13 @@ with tab2:
         
         st.markdown(f"<div style='margin-bottom: 5px; font-size:0.95rem; font-weight:600;'><b>🕒 실시간 데일리 순위</b> <span style='font-size: 0.85rem; color: #9ca3af; font-weight:normal;'>&nbsp;&nbsp;💡 기준일: {b_date_d}</span></div>", unsafe_allow_html=True)
         
-        # 날짜 포맷팅 안전장치 추가
-        safe_date = b_date_d if b_date_d != "오늘" else datetime.today().strftime('%Y-%m-%d')
+        # 💡 [수정] 코스피와 코스닥 지수 2줄 출력
         kospi_curr_d, kospi_mas_d = get_kospi_ma_all(safe_date)
-        ma_df_d = pd.DataFrame([{'지수_L': "https://m.stock.naver.com/domestic/index/KOSPI/total#KOSPI", '현재가_L': f"https://m.stock.naver.com/fchart/domestic/index/KOSPI#{kospi_curr_d:,.2f}", 'base_price': round(kospi_curr_d, 2), '4개월선': kospi_mas_d.get(4, 0), '5개월선': kospi_mas_d.get(5, 0), '6개월선': kospi_mas_d.get(6, 0), '10개월선': kospi_mas_d.get(10, 0), '12개월선': kospi_mas_d.get(12, 0)}])
+        kosdaq_curr_d, kosdaq_mas_d = get_kosdaq_ma_all(safe_date)
+        ma_df_d = pd.DataFrame([
+            {'지수_L': "https://m.stock.naver.com/domestic/index/KOSPI/total#KOSPI", '현재가_L': f"https://m.stock.naver.com/fchart/domestic/index/KOSPI#{kospi_curr_d:,.2f}", 'base_price': round(kospi_curr_d, 2), '4개월선': kospi_mas_d.get(4, 0), '5개월선': kospi_mas_d.get(5, 0), '6개월선': kospi_mas_d.get(6, 0), '10개월선': kospi_mas_d.get(10, 0), '12개월선': kospi_mas_d.get(12, 0)},
+            {'지수_L': "https://m.stock.naver.com/domestic/index/KOSDAQ/total#KOSDAQ", '현재가_L': f"https://m.stock.naver.com/fchart/domestic/index/KOSDAQ#{kosdaq_curr_d:,.2f}", 'base_price': round(kosdaq_curr_d, 2), '4개월선': kosdaq_mas_d.get(4, 0), '5개월선': kosdaq_mas_d.get(5, 0), '6개월선': kosdaq_mas_d.get(6, 0), '10개월선': kosdaq_mas_d.get(10, 0), '12개월선': kosdaq_mas_d.get(12, 0)}
+        ])
         st.dataframe(style_kospi_ma(ma_df_d), use_container_width=True, hide_index=True, column_config=ma_cfg)
         
         df_korea_d, df_perf_d, df_spec_d = get_strategy_stocks_korea(df_daily)
@@ -208,17 +238,47 @@ with tab2:
         reason_desc_d = ("하락장" if is_bad_market_d else "") + (" + " if is_bad_market_d and is_below_ma_d else "") + ("6개월선 이탈" if is_below_ma_d else "")
         if not is_bad_market_d and not is_below_ma_d: reason_desc_d = "안전"
         
-        # 💡 [핵심] 빠져있던 변수들을 완벽하게 선언했습니다!
-        target_year_d = int(b_date_d.split('-')[0]) if '-' in b_date_d else datetime.today().year
-        cycle_year_d = get_cycle_year(target_year_d)
-        bad_m_str_d = ", ".join(f"{m}월" for m in PRESIDENTIAL_DANGEROUS_MONTHS.get(cycle_year_d, [])) or "없음"
+        # 💡 [VIX 로직 추가]
+        vix_file = 'data/vix data.csv'
+        vix_latest_close = "데이터없음"
+        vix_35_date = "-"
+        vix_35_high = "-"
+        is_vix_warning = False
+
+        if os.path.exists(vix_file):
+            try:
+                vix_df = pd.read_csv(vix_file)
+                vix_df['날짜'] = pd.to_datetime(vix_df['날짜'])
+                vix_df = vix_df.sort_values('날짜')
+                if not vix_df.empty:
+                    vix_latest_close = f"{vix_df['종가'].iloc[-1]:.2f}"
+                    high_35_df = vix_df[vix_df['고가'] >= 35.0]
+                    if not high_35_df.empty:
+                        last_35_row = high_35_df.iloc[-1]
+                        vix_35_date = last_35_row['날짜'].strftime('%Y-%m-%d')
+                        vix_35_high = f"{last_35_row['고가']:.2f}"
+                        
+                        days_diff = (pd.to_datetime(safe_date) - last_35_row['날짜']).days
+                        if 0 <= days_diff <= 20:
+                            is_vix_warning = True
+            except: pass
 
         col1d, col2d, col3d, col4d, col5d, col6d = st.columns([0.9, 0.9, 1.0, 1.0, 1.4, 1.6])
         with col1d: st.metric("📈 KOSPI 1M", f"{kospi_1m_d}%")
         with col2d: st.metric("📈 KOSPI 3M", f"{kospi_3m_d}%")
         with col3d: st.metric("📉 1개월 하락", f"{neg_1m_d}개")
         with col4d: st.metric("📉 3개월 하락", f"{neg_3m_d}개")
-        with col5d: st.markdown(f'<div style="background-color: #f0f2f6; padding: 10px; border-radius: 10px; text-align: center; border: 1px solid #d1d5db; height: 95px; display: flex; flex-direction: column; justify-content: center;"><div style="font-size: 12px; font-weight: bold; color: #64748b; margin-bottom: 2px;">🇺🇸대통령 <span style="color:#0047AB;">{cycle_year_d}년차</span> ({target_year_d}년)</div><div style="font-size: 16px; color: #D84315; font-weight:900;">🚨 위험달: {bad_m_str_d}</div></div>', unsafe_allow_html=True)
+        
+        # 💡 [VIX UI 렌더링]
+        vix_bg = "#FFF0F0" if is_vix_warning else "#FFFFFF"
+        vix_border = "#FFCDD2" if is_vix_warning else "#d1d5db"
+        vix_title_color = "#C62828" if is_vix_warning else "#64748b"
+        vix_val_color = "#D84315" if is_vix_warning else "#333333"
+        vix_icon = "🚨" if is_vix_warning else "📊"
+        vix_html = f'''<div style="background-color: {vix_bg}; padding: 10px; border-radius: 10px; text-align: center; border: 1px solid {vix_border}; height: 95px; display: flex; flex-direction: column; justify-content: center;"><div style="font-size: 11px; font-weight: bold; color: {vix_title_color}; margin-bottom: 2px;">{vix_icon} VIX 35 돌파: {vix_35_date} (고가 {vix_35_high})</div><div style="font-size: 16px; color: {vix_val_color}; font-weight:900;">VIX 전일 종가: {vix_latest_close}</div></div>'''
+        
+        with col5d: st.markdown(vix_html, unsafe_allow_html=True)
+        
         with col6d: st.markdown(f'<div style="background-color: {box_d}; padding: 10px; border-radius: 10px; text-align: center; border: 1px solid {text_d}; height: 95px; display: flex; flex-direction: column; justify-content: center;"><p style="margin: 0; font-size: 12px; color: {text_d}; font-weight: bold;">오늘의 시장 상태 ({reason_desc_d})</p><div style="margin: 4px 0 0 0; font-size: 1.5rem; font-weight: 900; color: {text_d};">{status_d}</div></div>', unsafe_allow_html=True)
         st.markdown("<hr style='margin: 1rem 0;'>", unsafe_allow_html=True)
 
@@ -280,7 +340,8 @@ with tab3:
             df_cum.loc[(pd.to_datetime(df_res['투자월'].iloc[0]) - pd.DateOffset(months=1)).strftime('%Y-%m')] = 100
             df_cum = df_cum.sort_index()
 
-            col_t, col_b = st.columns([8.5, 1.5])
+            # 💡 [수정] 다운로드 버튼 컬럼 비율 넓힘 (7.5 : 2.5)
+            col_t, col_b = st.columns([7.5, 2.5])
             with col_t: st.markdown("#### 📊 전략 핵심 통계 (초기 자본 100 기준)")
             with col_b: st.download_button("📥 상세내역 다운로드", df_trades.to_csv(index=False).encode('utf-8-sig'), "조합_백테스트.csv", "text/csv", use_container_width=True)
 
@@ -308,7 +369,7 @@ with tab3:
 with tab4:
     current_ma_c = st.session_state.get('t4_ma', 6)
     col_title_c, col_check_c = st.columns([1, 4])
-    with col_title_c: st.markdown("<h4 style='margin-top: 5px;'>⚙️ 가중치 설정</h4>", unsafe_allow_html=True)
+    with col_title_c: st.markdown("<h4 style='margin:0;'>⚙️ 가중치 설정</h4>", unsafe_allow_html=True)
     with col_check_c:
         st.markdown("<div style='margin-top: 12px;'></div>", unsafe_allow_html=True)
         apply_timing_c = st.checkbox("🛑 마켓타이밍 적용 (MA 이탈 시 현금)", value=True, key='t4_chk_main')
@@ -340,7 +401,8 @@ with tab4:
                 df_cum_c.loc[(pd.to_datetime(df_res_c['투자월'].iloc[0]) - pd.DateOffset(months=1)).strftime('%Y-%m')] = 100
                 df_cum_c = df_cum_c.sort_index()
 
-                col_tc, col_bc = st.columns([8.5, 1.5])
+                # 💡 [수정] 다운로드 버튼 컬럼 비율 넓힘 (7.5 : 2.5)
+                col_tc, col_bc = st.columns([7.5, 2.5])
                 with col_tc: st.markdown("#### 📊 전략 핵심 통계")
                 with col_bc: st.download_button("📥 상세내역 다운로드", df_trades_c.to_csv(index=False).encode('utf-8-sig'), "커스텀_백테스트.csv", "text/csv", use_container_width=True)
 
