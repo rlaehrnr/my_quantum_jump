@@ -8,7 +8,6 @@ st.set_page_config(page_title="KOSPI 200 모멘텀 터미널", layout="wide")
 
 from utils.data_loader import load_archive_data, get_folder_hash
 from utils.calculator import get_cycle_year, PRESIDENTIAL_DANGEROUS_MONTHS, get_kospi_ma_all, get_strategy_stocks_korea, run_backtest_k200, get_kospi_timing_for_backtest, get_idx_kr
-# 💡 핵심: UI 컴포넌트들을 한 줄로 간편하게 가져옵니다!
 from utils.ui_components import inject_custom_css, apply_korea_styling, style_kospi_ma, get_styled_stats, get_mdd_history, get_monthly_heatmap, ma_cfg, main_cfg
 
 inject_custom_css()
@@ -108,6 +107,13 @@ with tab1:
         neg_1m_cnt = (df_korea_t1['1개월(%)'] < 0).sum()
         neg_3m_cnt = (df_korea_t1['3개월(%)'] < 0).sum()
         
+        # 💡 순위 데이터 추가
+        df_perf_t1['순위'] = range(1, len(df_perf_t1) + 1)
+        df_spec_t1['순위'] = range(1, len(df_spec_t1) + 1)
+        if '시가총액' in df_korea_t1.columns:
+            df_korea_t1 = df_korea_t1.sort_values('시가총액', ascending=False)
+        df_korea_t1['순위'] = range(1, len(df_korea_t1) + 1)
+
         cycle_year = get_cycle_year(int(selected_year))
         bad_m_str = ", ".join(f"{m}월" for m in PRESIDENTIAL_DANGEROUS_MONTHS.get(cycle_year, [])) or "없음"
         is_bad_market = (neg_1m_cnt >= 100) and (neg_3m_cnt >= 100)
@@ -153,13 +159,13 @@ with tab1:
         overlap_codes = set(df_perf_t1.head(top_n_p)['종목코드']).intersection(set(df_spec_t1.head(top_n_s)['종목코드']))
         
         with c_l:
-            st.dataframe(df_perf_t1.style.apply(apply_korea_styling, highlight_codes=df_perf_t1.head(top_n_p)['종목코드'].tolist(), overlap_codes=overlap_codes, axis=1), use_container_width=True, hide_index=True, column_order=['통합티커_L', '종목명_L', '1개월(%)', '3개월(%)', '6개월(%)', '12개월(%)', '이번달수익률'], column_config=main_cfg)
+            st.dataframe(df_perf_t1.style.apply(apply_korea_styling, highlight_codes=df_perf_t1.head(top_n_p)['종목코드'].tolist(), overlap_codes=overlap_codes, axis=1), use_container_width=True, hide_index=True, column_order=['순위', '통합티커_L', '종목명_L', '1개월(%)', '3개월(%)', '6개월(%)', '12개월(%)', '이번달수익률'], column_config=main_cfg)
         with c_r:
-            st.dataframe(df_spec_t1.style.apply(apply_korea_styling, highlight_codes=df_spec_t1.head(top_n_s)['종목코드'].tolist(), overlap_codes=overlap_codes, axis=1), use_container_width=True, hide_index=True, column_order=['통합티커_L', '종목명_L', '1개월(%)', '12개월(%)', '이번달수익률'], column_config=main_cfg)
+            st.dataframe(df_spec_t1.style.apply(apply_korea_styling, highlight_codes=df_spec_t1.head(top_n_s)['종목코드'].tolist(), overlap_codes=overlap_codes, axis=1), use_container_width=True, hide_index=True, column_order=['순위', '통합티커_L', '종목명_L', '1개월(%)', '12개월(%)', '이번달수익률'], column_config=main_cfg)
 
         st.markdown("---")
         st.markdown(f"### 🏆 전체 시가총액 순위 <span style='font-size: 0.85rem; color: #9ca3af; font-weight:normal;'>&nbsp;&nbsp;💡 선정일: {base_date}</span>", unsafe_allow_html=True)
-        cols_m = [c for c in ['통합티커_L', '종목명_L', '시가총액', '종가', '1개월(%)', '3개월(%)', '6개월(%)', '12개월(%)', '이번달수익률'] if c in df_korea_t1.columns]
+        cols_m = ['순위'] + [c for c in ['통합티커_L', '종목명_L', '시가총액', '종가', '1개월(%)', '3개월(%)', '6개월(%)', '12개월(%)', '이번달수익률'] if c in df_korea_t1.columns]
         st.dataframe(df_korea_t1.style.apply(apply_korea_styling, axis=1), use_container_width=True, height=600, hide_index=True, column_order=cols_m, column_config=main_cfg)
 
 with tab2:
@@ -185,16 +191,19 @@ with tab2:
         neg_1m_d = (df_korea_d['1개월(%)'] < 0).sum()
         neg_3m_d = (df_korea_d['3개월(%)'] < 0).sum()
         
+        # 💡 순위 데이터 추가
+        df_perf_d['순위'] = range(1, len(df_perf_d) + 1)
+        df_spec_d['순위'] = range(1, len(df_spec_d) + 1)
+        if '시가총액' in df_korea_d.columns:
+            df_korea_d = df_korea_d.sort_values('시가총액', ascending=False)
+        df_korea_d['순위'] = range(1, len(df_korea_d) + 1)
+
         is_below_ma_d = (kospi_curr_d > 0) and (kospi_curr_d < kospi_mas_d.get(6, 0))
         is_bad_market_d = (neg_1m_d >= 100) and (neg_3m_d >= 100)
         
         status_d, box_d, text_d = ("🛑 투자 중지", "#FFEBEE", "#C62828") if (is_bad_market_d or is_below_ma_d) else ("✅ 투자 진행", "#E8F5E9", "#2E7D32")
         reason_desc_d = ("하락장" if is_bad_market_d else "") + (" + " if is_bad_market_d and is_below_ma_d else "") + ("6개월선 이탈" if is_below_ma_d else "")
         if not is_bad_market_d and not is_below_ma_d: reason_desc_d = "안전"
-        
-        target_year_d = int(b_date_d.split('-')[0])
-        cycle_year_d = get_cycle_year(target_year_d)
-        bad_m_str_d = ", ".join(f"{m}월" for m in PRESIDENTIAL_DANGEROUS_MONTHS.get(cycle_year_d, [])) or "없음"
 
         col1d, col2d, col3d, col4d, col5d, col6d = st.columns([0.9, 0.9, 1.0, 1.0, 1.4, 1.6])
         with col1d: st.metric("📈 KOSPI 1M", f"{kospi_1m_d}%")
@@ -216,15 +225,15 @@ with tab2:
         with c_d1:
             st.markdown(f"<h4 style='margin:0;'>🔥 퍼펙트 상승 <span style='font-size:13px; color:gray;'>({len(df_perf_d)}개)</span></h4>", unsafe_allow_html=True)
             st.markdown('<p class="strategy-desc">1,3,6,12M 수익률 모두 상위 30% 이내 & 0보다 큰 종목 (3M 순)</p>', unsafe_allow_html=True)
-            st.dataframe(df_perf_d.style.apply(apply_korea_styling, highlight_codes=df_perf_d.head(top_n_p)['종목코드'].tolist(), overlap_codes=overlap_d, axis=1), use_container_width=True, hide_index=True, column_order=['통합티커_L', '종목명_L', '1개월(%)', '3개월(%)', '6개월(%)', '12개월(%)'], column_config=main_cfg)
+            st.dataframe(df_perf_d.style.apply(apply_korea_styling, highlight_codes=df_perf_d.head(top_n_p)['종목코드'].tolist(), overlap_codes=overlap_d, axis=1), use_container_width=True, hide_index=True, column_order=['순위', '통합티커_L', '종목명_L', '1개월(%)', '3개월(%)', '6개월(%)', '12개월(%)'], column_config=main_cfg)
         with c_d2:
             st.markdown(f"<h4 style='margin:0;'>🐎 달리는 말 <span style='font-size:13px; color:gray;'>({len(df_spec_d)}개)</span></h4>", unsafe_allow_html=True)
             st.markdown('<p class="strategy-desc">12M 수익률 상위 30% 이내 & 1M 수익률 상위 10% 이내 (1M 순)</p>', unsafe_allow_html=True)
-            st.dataframe(df_spec_d.style.apply(apply_korea_styling, highlight_codes=df_spec_d.head(top_n_s)['종목코드'].tolist(), overlap_codes=overlap_d, axis=1), use_container_width=True, hide_index=True, column_order=['통합티커_L', '종목명_L', '1개월(%)', '12개월(%)'], column_config=main_cfg)
+            st.dataframe(df_spec_d.style.apply(apply_korea_styling, highlight_codes=df_spec_d.head(top_n_s)['종목코드'].tolist(), overlap_codes=overlap_d, axis=1), use_container_width=True, hide_index=True, column_order=['순위', '통합티커_L', '종목명_L', '1개월(%)', '12개월(%)'], column_config=main_cfg)
             
         st.markdown("---")
         st.markdown(f"### 🏆 전체 시가총액 순위 <span style='font-size: 0.85rem; color: #9ca3af; font-weight:normal;'>&nbsp;&nbsp;💡 기준일: {b_date_d}</span>", unsafe_allow_html=True)
-        cols_d = [c for c in ['통합티커_L', '종목명_L', '시가총액', '종가', '거래량', '1개월(%)', '3개월(%)', '6개월(%)', '12개월(%)'] if c in df_korea_d.columns]
+        cols_d = ['순위'] + [c for c in ['통합티커_L', '종목명_L', '시가총액', '종가', '거래량', '1개월(%)', '3개월(%)', '6개월(%)', '12개월(%)'] if c in df_korea_d.columns]
         st.dataframe(df_korea_d.style.apply(apply_korea_styling, axis=1), use_container_width=True, height=600, hide_index=True, column_order=cols_d, column_config=main_cfg)
     else:
         st.info("데일리 데이터 파일이 아직 생성되지 않았습니다.")
