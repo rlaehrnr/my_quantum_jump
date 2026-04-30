@@ -80,10 +80,24 @@ def run_backtest_k200(df, start_year, end_year, ma_months, apply_timing, rank_p,
         q12_s, q1_s = df_calc['12개월(%)'].quantile(1-spec_12m_pct/100), df_calc['1개월(%)'].quantile(0.9)
         cond_s = (df_calc['12개월(%)'] >= q12_s) & (df_calc['1개월(%)'] >= q1_s)
         spec_df = df_calc[cond_s].sort_values('1개월(%)', ascending=False).iloc[rank_s[0]-1:rank_s[1]]
-        ret_p, ret_s = perf_df['이번달수익률'].mean() * mult if not perf_df.empty else 0, spec_df['이번달수익률'].mean() * mult if not spec_df.empty else 0
-        sum_ret, total_len = perf_df['이번달수익률'].sum() + spec_df['이번달수익률'].sum(), len(perf_df) + len(spec_df)
+        
+        ret_p = perf_df['이번달수익률'].mean() * mult if not perf_df.empty else 0
+        ret_s = spec_df['이번달수익률'].mean() * mult if not spec_df.empty else 0
+        p_codes, s_codes = set(perf_df['종목코드']), set(spec_df['종목코드'])
+        all_codes = p_codes.union(s_codes)
+        ret_combined_excl = df_calc[df_calc['종목코드'].isin(all_codes)]['이번달수익률'].mean() * mult if all_codes else 0
+        sum_ret = perf_df['이번달수익률'].sum() + spec_df['이번달수익률'].sum()
+        total_len = len(perf_df) + len(spec_df)
         ret_combined_incl = (sum_ret / total_len * mult) if total_len > 0 else 0
-        records.append({'투자월': m_str, 'invested': mult > 0, f'🔥 퍼펙트 상승 ({rank_p[0]}~{rank_p[1]}위)': ret_p, f'🐎 달리는 말 ({rank_s[0]}~{rank_s[1]}위)': ret_s, '통합 전략 (중복 인정 1/N)': ret_combined_incl})
+        
+        records.append({
+            '투자월': m_str, 'invested': mult > 0, 
+            f'🔥 퍼펙트 상승 ({rank_p[0]}~{rank_p[1]}위)': ret_p, 
+            f'🐎 달리는 말 ({rank_s[0]}~{rank_s[1]}위)': ret_s,
+            '앙상블 (50:50 전략)': (ret_p * 0.5) + (ret_s * 0.5),
+            '통합 전략 (중복 제외 1/N)': ret_combined_excl,
+            '통합 전략 (중복 인정 1/N)': ret_combined_incl
+        })
     return pd.DataFrame(records), pd.DataFrame(trade_logs)
 
 # ==========================================
@@ -94,11 +108,9 @@ def get_us_ma_all(target_date_str, ticker='^GSPC'):
     target_date = pd.to_datetime(target_date_str)
     start_date = target_date - timedelta(days=450)
     try:
-        # 💡 지연 현상 방지를 위해 Ticker 객체 사용
         tk = yf.Ticker(ticker)
         df = tk.history(start=start_date, end=target_date + timedelta(days=1))
         if df.empty: return 0, {}
-        # 타임존 제거 (TypeError 방지)
         if df.index.tz is not None: df.index = df.index.tz_localize(None)
         curr_p = df['Close'].iloc[-1]
         mas = {4: round(df['Close'].rolling(80).mean().iloc[-1], 2), 5: round(df['Close'].rolling(100).mean().iloc[-1], 2), 6: round(df['Close'].rolling(120).mean().iloc[-1], 2), 10: round(df['Close'].rolling(200).mean().iloc[-1], 2), 12: round(df['Close'].rolling(240).mean().iloc[-1], 2)}
@@ -144,10 +156,10 @@ def get_strategy_stocks_us(df_month, top_pct=30):
     df_calc = calc_us_momentum(df_month)
     q12_1, q6_1, q3_1 = df_calc['12-1개월(%)'].quantile(1-top_pct/100), df_calc['6-1개월(%)'].quantile(1-top_pct/100), df_calc['3-1개월(%)'].quantile(1-top_pct/100)
     strat1 = df_calc[(df_calc['12-1개월(%)'] >= q12_1) & (df_calc['6-1개월(%)'] >= q6_1) & (df_calc['12-1개월(%)'] > 0)].sort_values('6-1개월(%)', ascending=False)
-    # 💡 정렬 기준 6-1M으로 통일
     strat2 = df_calc[(df_calc['6-1개월(%)'] >= q6_1) & (df_calc['3-1개월(%)'] >= q3_1) & (df_calc['6-1개월(%)'] > 0)].sort_values('6-1개월(%)', ascending=False)
     return df_calc, strat1, strat2
 
+# 💡 [핵심 복구] 앙상블 및 혼합 1/N 전략 재추가
 def run_backtest_us(df, start_year, end_year, ma_months, apply_timing, rank_s1, rank_s2, top_pct=30):
     import yfinance as yf
     try:
@@ -156,7 +168,8 @@ def run_backtest_us(df, start_year, end_year, ma_months, apply_timing, rank_s1, 
         spx['MA'] = spx['Close'].rolling(ma_months * 20).mean()
         spx['Is_Below'] = spx['Close'] < spx['MA']
     except: spx = pd.DataFrame()
-    records = []
+    
+    records, trade_logs = [], []
     for m_str in sorted(df['투자월'].dropna().unique()):
         m_yr = int(m_str.split('-')[0])
         if not (start_year <= m_yr <= end_year): continue
@@ -164,10 +177,37 @@ def run_backtest_us(df, start_year, end_year, ma_months, apply_timing, rank_s1, 
         base_date = pd.to_datetime(m_str + '-01') - pd.Timedelta(days=5)
         is_below = spx[spx.index <= base_date]['Is_Below'].iloc[-1] if not spx.empty else False
         mult = 0.0 if (apply_timing and is_below) else 1.0
-        _, s1, s2 = get_strategy_stocks_us(df_calc, top_pct)
-        r1, r2 = s1.iloc[rank_s1[0]-1:rank_s1[1]]['이번달수익률'].mean() * mult, s2.iloc[rank_s2[0]-1:rank_s2[1]]['이번달수익률'].mean() * mult
-        records.append({'투자월': m_str, 'invested': mult > 0, f'🔥 12-1M & 6-1M ({rank_s1[0]}~{rank_s1[1]}위)': r1, f'🐎 6-1M & 3-1M ({rank_s2[0]}~{rank_s2[1]}위)': r2})
-    return pd.DataFrame(records), pd.DataFrame()
+        
+        _, s1_all, s2_all = get_strategy_stocks_us(df_calc, top_pct)
+        s1 = s1_all.iloc[rank_s1[0]-1:rank_s1[1]]
+        s2 = s2_all.iloc[rank_s2[0]-1:rank_s2[1]]
+        
+        r1 = s1['이번달수익률'].mean() * mult if not s1.empty else 0
+        r2 = s2['이번달수익률'].mean() * mult if not s2.empty else 0
+        
+        s1_codes, s2_codes = set(s1['종목코드']), set(s2['종목코드'])
+        all_codes = s1_codes.union(s2_codes)
+        ret_combined_excl = df_calc[df_calc['종목코드'].isin(all_codes)]['이번달수익률'].mean() * mult if all_codes else 0
+        sum_ret = s1['이번달수익률'].sum() + s2['이번달수익률'].sum()
+        total_len = len(s1) + len(s2)
+        ret_combined_incl = (sum_ret / total_len * mult) if total_len > 0 else 0
+        
+        records.append({
+            '투자월': m_str, 'invested': mult > 0, 
+            f'🔥 12-1M & 6-1M ({rank_s1[0]}~{rank_s1[1]}위)': r1, 
+            f'🐎 6-1M & 3-1M ({rank_s2[0]}~{rank_s2[1]}위)': r2,
+            '앙상블 (50:50 전략)': (r1 * 0.5) + (r2 * 0.5),
+            '통합 전략 (중복 제외 1/N)': ret_combined_excl,
+            '통합 전략 (중복 인정 1/N)': ret_combined_incl
+        })
+        
+        if mult > 0:
+            for i, (_, r) in enumerate(s1.iterrows()): trade_logs.append({'투자월': m_str, '전략': '12-1M & 6-1M', '순위': f"{i+rank_s1[0]}위", '종목명': r['종목명'], '수익률(%)': r['이번달수익률']})
+            for i, (_, r) in enumerate(s2.iterrows()): trade_logs.append({'투자월': m_str, '전략': '6-1M & 3-1M', '순위': f"{i+rank_s2[0]}위", '종목명': r['종목명'], '수익률(%)': r['이번달수익률']})
+        else:
+            trade_logs.append({'투자월': m_str, '전략': '마켓타이밍', '순위': '-', '종목명': '현금보유(CASH)', '수익률(%)': 0.0})
+            
+    return pd.DataFrame(records), pd.DataFrame(trade_logs)
 
 def run_custom_backtest_us(df, start_year_c, end_year_c, ma_months_c, apply_timing_c, w1, w3, w6, w12, custom_pct, rank_c_s, rank_c_e):
     import yfinance as yf
@@ -177,7 +217,7 @@ def run_custom_backtest_us(df, start_year_c, end_year_c, ma_months_c, apply_timi
         spx['MA'] = spx['Close'].rolling(ma_months_c * 20).mean()
         spx['Is_Below'] = spx['Close'] < spx['MA']
     except: spx = pd.DataFrame()
-    records = []
+    records, trade_logs = [], []
     for m_str in sorted(df['투자월'].dropna().unique()):
         m_yr = int(m_str.split('-')[0])
         if not (start_year_c <= m_yr <= end_year_c): continue
@@ -187,5 +227,13 @@ def run_custom_backtest_us(df, start_year_c, end_year_c, ma_months_c, apply_timi
         mult = 0.0 if (apply_timing_c and is_below) else 1.0
         df_calc['스코어'] = (df_calc['1개월(%)']*w1) + (df_calc['3개월(%)']*w3) + (df_calc['6개월(%)']*w6) + (df_calc['12개월(%)']*w12)
         target = df_calc[df_calc['스코어'] >= df_calc['스코어'].quantile(1-custom_pct/100)].sort_values('스코어', ascending=False).iloc[rank_c_s-1:rank_c_e]
-        records.append({'투자월': m_str, 'invested': mult > 0, '커스텀 전략': target['이번달수익률'].mean() * mult})
-    return pd.DataFrame(records), pd.DataFrame()
+        
+        avg_ret = target['이번달수익률'].mean() * mult if not target.empty else 0
+        records.append({'투자월': m_str, 'invested': mult > 0, '커스텀 전략': avg_ret})
+        
+        if mult > 0:
+            for i, (_, r) in enumerate(target.iterrows()): trade_logs.append({'투자월': m_str, '전략': '커스텀', '순위': f"{i+rank_c_s}위", '종목명': r['종목명'], '수익률(%)': r['이번달수익률']})
+        else:
+            trade_logs.append({'투자월': m_str, '전략': '마켓타이밍', '순위': '-', '종목명': '현금보유(CASH)', '수익률(%)': 0.0})
+            
+    return pd.DataFrame(records), pd.DataFrame(trade_logs)
