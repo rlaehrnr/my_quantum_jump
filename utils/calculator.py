@@ -5,17 +5,23 @@ from datetime import datetime, timedelta
 # 🇰🇷 한국 주식 전용 함수
 # ==========================================
 
+# 💡 [완벽 복구] 선생님께서 직접 제공해주신 정확한 8년 주기 데이터
 PRESIDENTIAL_DANGEROUS_MONTHS = {
-    1: [2, 3, 5, 8],
-    2: [1, 2, 4, 8, 9],
-    3: [2, 5, 9, 10],
-    4: [2, 6, 8, 11],
-    5: [2, 3, 5, 8]
+    1: [2, 9],               # 1년차 위험달
+    2: [2, 4, 6, 9, 12],     # 2년차 위험달
+    3: [8, 9],               # 3년차 위험달
+    4: [3],                  # 4년차 위험달
+    5: [],                   # 5년차 (위험달 없음)
+    6: [7],                  # 6년차 위험달
+    7: [6, 8, 11, 12],       # 7년차 위험달
+    8: [1, 6, 9, 10, 11]     # 8년차 위험달
 }
 
 def get_cycle_year(current_year):
-    years_since_1945 = current_year - 1945
-    return (years_since_1945 % 4) + 1
+    # 💡 2021년 취임 기준, 8년차까지 순환
+    years_since = current_year - 2021
+    cycle_year = (years_since % 8) + 1
+    return cycle_year
 
 def get_kospi_ma_all(target_date_str):
     import FinanceDataReader as fdr
@@ -138,15 +144,14 @@ def run_backtest_k200(df, start_year, end_year, ma_months, apply_timing, rank_p,
     return pd.DataFrame(records), pd.DataFrame(trade_logs)
 
 def run_backtest_korea(df, start_year, end_year, ma_months, apply_timing, rank_p, rank_s, perf_pct, spec_12m_pct):
-    # KOREA 300(코스닥 포함) 백테스트: 코스피와 동일한 로직 사용
     return run_backtest_k200(df, start_year, end_year, ma_months, apply_timing, rank_p, rank_s, perf_pct, spec_12m_pct)
 
 
 # ==========================================
-# 🇺🇸 미국 주식 (S&P 500) 전용 함수
+# 🇺🇸 미국 주식 (S&P 500 / 나스닥) 전용 함수
 # ==========================================
 
-def get_us_ma_all(target_date_str, ticker='^GSPC'):
+def get_us_ma_all(target_date_str, ticker='SPY'):
     import yfinance as yf
     target_date = pd.to_datetime(target_date_str)
     start_date = target_date - timedelta(days=450)
@@ -184,7 +189,7 @@ def get_us_idx_return(target_date_str, ticker='^GSPC'):
 def map_english_columns(df):
     df = df.copy()
     col_mapping = {
-        'Date': '종목선정일', 'Year': '투자연도', 'Ticker': '종목코드', 'Close_Price': '종가',
+        'Date': '종목선정일', 'Year': '투자연도_raw', 'Ticker': '종목코드', 'Close_Price': '종가',
         'Past_1M_Return(%)': '1개월(%)', 'Past_3M_Return(%)': '3개월(%)', 
         'Past_6M_Return(%)': '6개월(%)', 'Past_12M_Return(%)': '12개월(%)', 
         'Forward_1M_Return(%)': '이번달수익률'
@@ -194,10 +199,12 @@ def map_english_columns(df):
     if '종목명' not in df.columns and '종목코드' in df.columns: df['종목명'] = df['종목코드']
     if '시가총액' not in df.columns: df['시가총액'] = 0
     if '거래량' not in df.columns: df['거래량'] = 0
-    if '투자월' not in df.columns and '종목선정일' in df.columns:
-        df['투자월'] = pd.to_datetime(df['종목선정일']).dt.strftime('%Y-%m')
+    
     if '종목선정일' in df.columns:
-        df['투자연도'] = pd.to_datetime(df['종목선정일']).dt.year
+        target_dates = pd.to_datetime(df['종목선정일']) + pd.Timedelta(days=15)
+        df['투자월'] = target_dates.dt.strftime('%Y-%m')
+        df['투자연도'] = target_dates.dt.year
+        
     return df
 
 def calc_us_momentum(df):
@@ -236,7 +243,7 @@ def run_backtest_us(df, start_year, end_year, apply_timing, rank_s1, rank_s2, to
 
     timing_dict = {}
     for m_str in sorted(df['투자월'].dropna().unique()):
-        base_date = pd.to_datetime(df[df['투자월'] == m_str]['종목선정일'].iloc[0])
+        base_date = pd.to_datetime(m_str + '-01') - pd.Timedelta(days=5) 
         if not spx.empty:
             past_spx = spx[spx.index <= base_date]
             timing_dict[m_str] = past_spx.iloc[-1]['Is_Below'] if not past_spx.empty else False
