@@ -242,6 +242,9 @@ def run_backtest_us(df, start_year, end_year, ma_months, apply_timing, rank_s1, 
     import yfinance as yf
     try:
         spx = yf.Ticker('^GSPC').history(start=f'{start_year-2}-01-01', end=f'{end_year}-12-31')
+        # 💡 [핵심 에러 수정] 타임존 제거로 비교 오류(TypeError) 방지
+        if spx.index.tz is not None:
+            spx.index = spx.index.tz_localize(None)
         spx['MA'] = spx['Close'].rolling(ma_months * 20).mean()
         spx['Is_Below'] = spx['Close'] < spx['MA']
     except:
@@ -251,6 +254,7 @@ def run_backtest_us(df, start_year, end_year, ma_months, apply_timing, rank_s1, 
     for m_str in sorted(df['투자월'].dropna().unique()):
         base_date = pd.to_datetime(m_str + '-01') - pd.Timedelta(days=5) 
         if not spx.empty:
+            # 💡 [핵심 에러 수정] 날짜 형식을 맞춰서 비교
             past_spx = spx[spx.index <= base_date]
             timing_dict[m_str] = past_spx.iloc[-1]['Is_Below'] if not past_spx.empty else False
         else: timing_dict[m_str] = False
