@@ -5,20 +5,18 @@ from datetime import datetime, timedelta
 # 🇰🇷 한국 주식 전용 함수
 # ==========================================
 
-# 💡 [완벽 복구] 선생님께서 직접 제공해주신 정확한 8년 주기 데이터
 PRESIDENTIAL_DANGEROUS_MONTHS = {
-    1: [2, 9],               # 1년차 위험달
-    2: [2, 4, 6, 9, 12],     # 2년차 위험달
-    3: [8, 9],               # 3년차 위험달
-    4: [3],                  # 4년차 위험달
-    5: [],                   # 5년차 (위험달 없음)
-    6: [7],                  # 6년차 위험달
-    7: [6, 8, 11, 12],       # 7년차 위험달
-    8: [1, 6, 9, 10, 11]     # 8년차 위험달
+    1: [2, 9],
+    2: [2, 4, 6, 9, 12],
+    3: [8, 9],
+    4: [3],
+    5: [],
+    6: [7],
+    7: [6, 8, 11, 12],
+    8: [1, 6, 9, 10, 11]
 }
 
 def get_cycle_year(current_year):
-    # 💡 2021년 취임 기준, 8년차까지 순환
     years_since = current_year - 2021
     cycle_year = (years_since % 8) + 1
     return cycle_year
@@ -151,16 +149,16 @@ def run_backtest_korea(df, start_year, end_year, ma_months, apply_timing, rank_p
 # 🇺🇸 미국 주식 (S&P 500 / 나스닥) 전용 함수
 # ==========================================
 
-def get_us_ma_all(target_date_str, ticker='^GSPC'): # 💡 SPY가 아닌 오리지널 ^GSPC로 복귀 (안전장치 추가)
+# 💡 [핵심] S&P500 데이터를 가장 안정적으로 가져오는 yf.Ticker.history 방식으로 교체
+def get_us_ma_all(target_date_str, ticker='^GSPC'):
     import yfinance as yf
     import pandas as pd
     from datetime import timedelta
     target_date = pd.to_datetime(target_date_str)
     start_date = target_date - timedelta(days=450)
     try:
-        df = yf.download(ticker, start=start_date, end=target_date + timedelta(days=1), progress=False)
-        if isinstance(df.columns, pd.MultiIndex): df.columns = df.columns.get_level_values(0)
-        df = df.dropna(subset=['Close']) # 빈 값 필터링
+        tkr = yf.Ticker(ticker)
+        df = tkr.history(start=start_date, end=target_date + timedelta(days=1))
         if df.empty: return 0, {}
         curr_p = df['Close'].iloc[-1]
         mas = {
@@ -180,9 +178,8 @@ def get_us_idx_return(target_date_str, ticker='^GSPC'):
     target_date = pd.to_datetime(target_date_str)
     start_date = target_date - timedelta(days=120)
     try:
-        df = yf.download(ticker, start=start_date, end=target_date + timedelta(days=1), progress=False)
-        if isinstance(df.columns, pd.MultiIndex): df.columns = df.columns.get_level_values(0)
-        df = df.dropna(subset=['Close'])
+        tkr = yf.Ticker(ticker)
+        df = tkr.history(start=start_date, end=target_date + timedelta(days=1))
         if df.empty: return 0.0, 0.0
         curr_p = df['Close'].iloc[-1]
         df_1m = df[df.index <= target_date - pd.DateOffset(months=1)]
@@ -235,18 +232,18 @@ def get_strategy_stocks_us(df_month, top_pct=30):
     strat1 = df_calc[cond1].sort_values('6-1개월(%)', ascending=False)
     
     cond2 = (df_calc['6-1개월(%)'] >= q6_1) & (df_calc['3-1개월(%)'] >= q3_1) & (df_calc['6-1개월(%)'] > 0) & (df_calc['3-1개월(%)'] > 0)
-    strat2 = df_calc[cond2].sort_values('3-1개월(%)', ascending=False)
+    # 💡 [핵심] 두 번째 전략도 6-1M 순서로 정렬 적용 완료
+    strat2 = df_calc[cond2].sort_values('6-1개월(%)', ascending=False)
     return df_calc, strat1, strat2
 
-def run_backtest_us(df, start_year, end_year, apply_timing, rank_s1, rank_s2, top_pct=30):
+# 💡 [핵심] 백테스트 엔진에 n개월선(ma_months) 조절 기능 추가
+def run_backtest_us(df, start_year, end_year, ma_months, apply_timing, rank_s1, rank_s2, top_pct=30):
     import pandas as pd
     import yfinance as yf
     try:
-        spx = yf.download('^GSPC', start=f'{start_year-2}-01-01', end=f'{end_year}-12-31', progress=False)
-        if isinstance(spx.columns, pd.MultiIndex): spx.columns = spx.columns.get_level_values(0)
-        spx = spx.dropna(subset=['Close'])
-        spx['MA200'] = spx['Close'].rolling(200).mean()
-        spx['Is_Below'] = spx['Close'] < spx['MA200']
+        spx = yf.Ticker('^GSPC').history(start=f'{start_year-2}-01-01', end=f'{end_year}-12-31')
+        spx['MA'] = spx['Close'].rolling(ma_months * 20).mean()
+        spx['Is_Below'] = spx['Close'] < spx['MA']
     except:
         spx = pd.DataFrame()
 
@@ -275,7 +272,7 @@ def run_backtest_us(df, start_year, end_year, apply_timing, rank_s1, rank_s2, to
         strat1_df = df_calc[cond1].sort_values('6-1개월(%)', ascending=False).iloc[rank_s1[0]-1:rank_s1[1]]
         
         cond2 = (df_calc['6-1개월(%)'] >= q6_1) & (df_calc['3-1개월(%)'] >= q3_1) & (df_calc['6-1개월(%)'] > 0) & (df_calc['3-1개월(%)'] > 0)
-        strat2_df = df_calc[cond2].sort_values('3-1개월(%)', ascending=False).iloc[rank_s2[0]-1:rank_s2[1]]
+        strat2_df = df_calc[cond2].sort_values('6-1개월(%)', ascending=False).iloc[rank_s2[0]-1:rank_s2[1]]
         
         is_below_ma = timing_dict.get(m_str, False)
         mult = 0.0 if (apply_timing and is_below_ma) else 1.0
@@ -307,16 +304,13 @@ def run_backtest_us(df, start_year, end_year, apply_timing, rank_s1, rank_s2, to
             
     return pd.DataFrame(records), pd.DataFrame(trade_logs)
 
-# 💡 [추가] 미국 전용 커스텀 스코어 백테스트 함수
-def run_custom_backtest_us(df, start_year_c, end_year_c, apply_timing_c, w1, w3, w6, w12, custom_pct, rank_c_s, rank_c_e):
+def run_custom_backtest_us(df, start_year_c, end_year_c, ma_months_c, apply_timing_c, w1, w3, w6, w12, custom_pct, rank_c_s, rank_c_e):
     import pandas as pd
     import yfinance as yf
     try:
-        spx = yf.download('^GSPC', start=f'{start_year_c-2}-01-01', end=f'{end_year_c}-12-31', progress=False)
-        if isinstance(spx.columns, pd.MultiIndex): spx.columns = spx.columns.get_level_values(0)
-        spx = spx.dropna(subset=['Close'])
-        spx['MA200'] = spx['Close'].rolling(200).mean()
-        spx['Is_Below'] = spx['Close'] < spx['MA200']
+        spx = yf.Ticker('^GSPC').history(start=f'{start_year_c-2}-01-01', end=f'{end_year_c}-12-31')
+        spx['MA'] = spx['Close'].rolling(ma_months_c * 20).mean()
+        spx['Is_Below'] = spx['Close'] < spx['MA']
     except:
         spx = pd.DataFrame()
 
