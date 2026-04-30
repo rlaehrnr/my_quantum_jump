@@ -5,7 +5,7 @@ from datetime import datetime, timedelta
 import os
 import FinanceDataReader as fdr
 
-st.set_page_config(page_title="KOSPI 200 모멘텀 터미널", layout="wide")
+st.set_page_config(page_title="KOSPI 200 모멘텀", layout="wide")
 
 from utils.data_loader import load_archive_data, get_folder_hash
 from utils.calculator import get_cycle_year, PRESIDENTIAL_DANGEROUS_MONTHS, get_kospi_ma_all, get_strategy_stocks_korea, run_backtest_k200, get_kospi_timing_for_backtest, get_idx_kr
