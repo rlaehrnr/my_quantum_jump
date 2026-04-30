@@ -3,7 +3,7 @@ import os
 
 def split_sp500_data():
     # 1. 원본 파일 이름 (깃허브 최상위에 있는 파일명 그대로)
-    file_path = 'sp500_퀀트데이터_2000_2025_Final_Cleaned_4.csv'
+    file_path = 'sp500_퀀트데이터_2000_2025_Final_Cleaned.csv'
     
     # 2. 결과물을 저장할 폴더 생성
     output_dir = 'archive_sp500'
