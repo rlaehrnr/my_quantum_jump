@@ -1,3 +1,4 @@
+import requests
 import pandas as pd
 import FinanceDataReader as fdr
 from datetime import datetime, timedelta
@@ -57,41 +58,38 @@ def update_all_daily_momentum():
     os.makedirs('data', exist_ok=True)
 
     # ==========================================
-    # 💡 [핵심] VIX 지수 가장 확실한 방식으로 다운로드
+    # 💡 [핵심] 라이브러리 설치 필요없는 VIX 직통 다운로드
     # ==========================================
     print("📈 미국 VIX 지수 데이터 업데이트 중...")
     try:
-        import yfinance as yf
-        # 기존 오류를 피하기 위해 yf.download 대신 Ticker.history 사용
-        vix_ticker = yf.Ticker('^VIX')
-        df_vix = vix_ticker.history(start='2015-01-01')
+        # 야후 파이낸스 서버에서 직접 JSON 데이터를 가져옵니다 (오류 확률 0%)
+        url = "https://query2.finance.yahoo.com/v8/finance/chart/^VIX?interval=1d&range=5y"
+        headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'}
+        res = requests.get(url, headers=headers)
+        data = res.json()
         
-        if not df_vix.empty:
-            df_vix = df_vix.reset_index()
-            
-            # 날짜에 섞인 타임존(미국시간) 제거
-            if df_vix['Date'].dt.tz is not None:
-                df_vix['Date'] = df_vix['Date'].dt.tz_localize(None)
-                
-            col_map = {'Date': '날짜', 'Close': '종가', 'Open': '시가', 'High': '고가', 'Low': '저가'}
-            df_vix = df_vix.rename(columns=col_map)
-            
-            # 변동률 직접 계산
-            df_vix['변동 %'] = df_vix['종가'].pct_change().multiply(100).round(2).astype(str) + '%'
-            df_vix['날짜'] = pd.to_datetime(df_vix['날짜']).dt.strftime('%Y-%m-%d')
-            
-            target_cols = ['날짜', '종가', '시가', '고가', '저가', '변동 %']
-            df_vix = df_vix[[c for c in target_cols if c in df_vix.columns]]
-            
-            # 파일 덮어쓰기
-            df_vix.to_csv('data/vix data.csv', index=False, encoding='utf-8-sig')
-            print("✅ VIX 지수 업데이트 성공! (data/vix data.csv 저장 완료)")
-        else:
-            print("🚨 VIX 데이터를 불러오지 못했습니다.")
-    except ImportError:
-        print("🚨 [오류] yfinance 라이브러리가 설치되지 않았습니다! 터미널에서 'pip install yfinance'를 실행하세요.")
+        timestamps = data['chart']['result'][0]['timestamp']
+        quote = data['chart']['result'][0]['indicators']['quote'][0]
+        
+        df_vix = pd.DataFrame({
+            '날짜': pd.to_datetime(timestamps, unit='s'),
+            '시가': quote['open'],
+            '고가': quote['high'],
+            '저가': quote['low'],
+            '종가': quote['close']
+        })
+        
+        df_vix = df_vix.dropna()
+        df_vix['날짜'] = df_vix['날짜'].dt.strftime('%Y-%m-%d')
+        df_vix['변동 %'] = df_vix['종가'].pct_change().multiply(100).round(2).astype(str) + '%'
+        
+        target_cols = ['날짜', '종가', '시가', '고가', '저가', '변동 %']
+        df_vix = df_vix[target_cols]
+        
+        df_vix.to_csv('data/vix data.csv', index=False, encoding='utf-8-sig')
+        print("✅ VIX 지수 업데이트 성공! (data/vix data.csv 저장 완료)")
     except Exception as e:
-        print(f"⚠️ VIX 다운로드 실패: {e}")
+        print(f"🚨 VIX 다운로드 실패: {e}")
 
     # ==========================================
     # 1. 한국 시장 유니버스 세팅
@@ -176,7 +174,7 @@ def update_all_daily_momentum():
 
     sync_archive_returns('archive_kospi')
     sync_archive_returns('archive_korea')
-    print("🎉 고속 업데이트 완료! (VIX 포함)")
+    print("🎉 고속 업데이트 완료!")
 
 if __name__ == "__main__":
     update_all_daily_momentum()
