@@ -5,7 +5,7 @@ from datetime import datetime, timedelta
 import os
 import FinanceDataReader as fdr
 
-st.set_page_config(page_title="KOREA 모멘텀 터미널", layout="wide")
+st.set_page_config(page_title="코스피_코스닥 통합 모멘텀", layout="wide")
 
 from utils.data_loader import load_archive_data, get_folder_hash
 from utils.calculator import get_cycle_year, PRESIDENTIAL_DANGEROUS_MONTHS, get_kospi_ma_all, get_strategy_stocks_korea, run_backtest_korea, get_kospi_timing_for_backtest, get_idx_kr
@@ -36,7 +36,7 @@ st.markdown('''
     <div style="margin-bottom: 20px;">
         <a href="https://m.stock.naver.com/" target="_blank" class="title-link" style="text-decoration: none; color: inherit;">
             <div style="display: flex; align-items: center; flex-wrap: wrap; gap: 12px;">
-                <h1 style="margin: 0; padding: 0; font-size: 2.2rem; font-weight: 800; line-height: 1.2; word-break: keep-all;">🇰🇷 KOREA 통합 모멘텀 (P150+D150)</h1>
+                <h1 style="margin: 0; padding: 0; font-size: 2.2rem; font-weight: 800; line-height: 1.2; word-break: keep-all;">🇰🇷 KOREA 통합 모멘텀 (피150+닥150)</h1>
                 <span style="font-size: 0.95rem; color: #3b82f6; background-color: #eff6ff; padding: 4px 10px; border-radius: 6px; border: 1px solid #bfdbfe; white-space: nowrap;">🔗 네이버 증권 이동</span>
             </div>
         </a>
