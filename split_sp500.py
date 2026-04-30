@@ -3,7 +3,7 @@ import os
 
 def split_sp500_data():
     # 1. 원본 파일 이름 (가장 최신 파일명으로 반영)
-    file_path = 'sp500_퀀트데이터_2000_2025_Final_Cleaned_5.csv'
+    file_path = 'sp500_퀀트데이터_2000_2025_Final_Cleaned.csv'
     
     output_dir = 'archive_sp500'
     os.makedirs(output_dir, exist_ok=True)
