@@ -151,13 +151,16 @@ def run_backtest_korea(df, start_year, end_year, ma_months, apply_timing, rank_p
 # 🇺🇸 미국 주식 (S&P 500 / 나스닥) 전용 함수
 # ==========================================
 
-def get_us_ma_all(target_date_str, ticker='SPY'):
+def get_us_ma_all(target_date_str, ticker='^GSPC'): # 💡 SPY가 아닌 오리지널 ^GSPC로 복귀 (안전장치 추가)
     import yfinance as yf
+    import pandas as pd
+    from datetime import timedelta
     target_date = pd.to_datetime(target_date_str)
     start_date = target_date - timedelta(days=450)
     try:
         df = yf.download(ticker, start=start_date, end=target_date + timedelta(days=1), progress=False)
         if isinstance(df.columns, pd.MultiIndex): df.columns = df.columns.get_level_values(0)
+        df = df.dropna(subset=['Close']) # 빈 값 필터링
         if df.empty: return 0, {}
         curr_p = df['Close'].iloc[-1]
         mas = {
@@ -172,11 +175,14 @@ def get_us_ma_all(target_date_str, ticker='SPY'):
 
 def get_us_idx_return(target_date_str, ticker='^GSPC'):
     import yfinance as yf
+    import pandas as pd
+    from datetime import timedelta
     target_date = pd.to_datetime(target_date_str)
     start_date = target_date - timedelta(days=120)
     try:
         df = yf.download(ticker, start=start_date, end=target_date + timedelta(days=1), progress=False)
         if isinstance(df.columns, pd.MultiIndex): df.columns = df.columns.get_level_values(0)
+        df = df.dropna(subset=['Close'])
         if df.empty: return 0.0, 0.0
         curr_p = df['Close'].iloc[-1]
         df_1m = df[df.index <= target_date - pd.DateOffset(months=1)]
@@ -187,6 +193,7 @@ def get_us_idx_return(target_date_str, ticker='^GSPC'):
     except: return 0.0, 0.0
 
 def map_english_columns(df):
+    import pandas as pd
     df = df.copy()
     col_mapping = {
         'Date': '종목선정일', 'Year': '투자연도_raw', 'Ticker': '종목코드', 'Close_Price': '종가',
@@ -231,11 +238,13 @@ def get_strategy_stocks_us(df_month, top_pct=30):
     strat2 = df_calc[cond2].sort_values('3-1개월(%)', ascending=False)
     return df_calc, strat1, strat2
 
-def run_backtest_us(df, start_year, end_year, apply_timing, rank_s1, rank_s2, top_pct):
+def run_backtest_us(df, start_year, end_year, apply_timing, rank_s1, rank_s2, top_pct=30):
+    import pandas as pd
     import yfinance as yf
     try:
         spx = yf.download('^GSPC', start=f'{start_year-2}-01-01', end=f'{end_year}-12-31', progress=False)
         if isinstance(spx.columns, pd.MultiIndex): spx.columns = spx.columns.get_level_values(0)
+        spx = spx.dropna(subset=['Close'])
         spx['MA200'] = spx['Close'].rolling(200).mean()
         spx['Is_Below'] = spx['Close'] < spx['MA200']
     except:
@@ -297,3 +306,49 @@ def run_backtest_us(df, start_year, end_year, apply_timing, rank_s1, rank_s2, to
             trade_logs.append({'투자월': m_str, '전략': '마켓타이밍', '순위': '-', '종목명': '현금보유(CASH)', '수익률(%)': 0.0})
             
     return pd.DataFrame(records), pd.DataFrame(trade_logs)
+
+# 💡 [추가] 미국 전용 커스텀 스코어 백테스트 함수
+def run_custom_backtest_us(df, start_year_c, end_year_c, apply_timing_c, w1, w3, w6, w12, custom_pct, rank_c_s, rank_c_e):
+    import pandas as pd
+    import yfinance as yf
+    try:
+        spx = yf.download('^GSPC', start=f'{start_year_c-2}-01-01', end=f'{end_year_c}-12-31', progress=False)
+        if isinstance(spx.columns, pd.MultiIndex): spx.columns = spx.columns.get_level_values(0)
+        spx = spx.dropna(subset=['Close'])
+        spx['MA200'] = spx['Close'].rolling(200).mean()
+        spx['Is_Below'] = spx['Close'] < spx['MA200']
+    except:
+        spx = pd.DataFrame()
+
+    timing_dict = {}
+    for m_str in sorted(df['투자월'].dropna().unique()):
+        base_date = pd.to_datetime(m_str + '-01') - pd.Timedelta(days=5)
+        if not spx.empty:
+            past_spx = spx[spx.index <= base_date]
+            timing_dict[m_str] = past_spx.iloc[-1]['Is_Below'] if not past_spx.empty else False
+        else: timing_dict[m_str] = False
+
+    records_c, trade_logs_c = [], []
+    for m_str in sorted(df['투자월'].dropna().unique()):
+        m_yr = int(m_str.split('-')[0])
+        if not (start_year_c <= m_yr <= end_year_c): continue
+        df_calc = df[df['투자월'] == m_str].copy()
+        if df_calc.empty: continue
+
+        is_below_ma = timing_dict.get(m_str, False)
+        mult_c = 0.0 if (apply_timing_c and is_below_ma) else 1.0
+
+        df_calc['스코어'] = (df_calc['1개월(%)']*w1) + (df_calc['3개월(%)']*w3) + (df_calc['6개월(%)']*w6) + (df_calc['12개월(%)']*w12)
+        q_limit = df_calc['스코어'].quantile(1 - (custom_pct / 100.0))
+        target = df_calc[df_calc['스코어'] >= q_limit].sort_values('스코어', ascending=False).iloc[rank_c_s-1:rank_c_e]
+
+        avg_ret = target['이번달수익률'].mean() if not target.empty else 0
+        records_c.append({'투자월': m_str, 'invested': mult_c > 0, '커스텀 전략': avg_ret * mult_c})
+
+        if mult_c > 0:
+            for i, (_, r) in enumerate(target.iterrows()):
+                trade_logs_c.append({'투자월': m_str, '전략': '커스텀', '순위': f"{i+rank_c_s}위", '종목명': r['종목명'], '수익률(%)': r['이번달수익률']})
+        else:
+            trade_logs_c.append({'투자월': m_str, '전략': '마켓타이밍', '순위': '-', '종목명': '현금보유(CASH)', '수익률(%)': 0.0})
+            
+    return pd.DataFrame(records_c), pd.DataFrame(trade_logs_c)
