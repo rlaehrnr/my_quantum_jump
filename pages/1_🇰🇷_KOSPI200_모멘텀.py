@@ -231,8 +231,13 @@ with tab2:
         reason_desc_d = ("하락장" if is_bad_market_d else "") + (" + " if is_bad_market_d and is_below_ma_d else "") + ("6개월선 이탈" if is_below_ma_d else "")
         if not is_bad_market_d and not is_below_ma_d: reason_desc_d = "안전"
 
+        # 💡 [교체 시작] VIX 파일 읽기부터 화면 출력 부분까지
         vix_file = 'data/vix data.csv'
-        vix_latest_high, vix_35_date_str, vix_35_high, days_diff_str = "데이터없음", "-", "-", "-"
+        vix_latest_high = "데이터없음"
+        vix_latest_date_str = ""  # 💡 정확한 날짜 표시를 위한 변수
+        vix_35_date_str = "-"
+        vix_35_high = "-"
+        days_diff_str = "-"
         is_vix_warning = False
 
         if os.path.exists(vix_file):
@@ -241,7 +246,12 @@ with tab2:
                 vix_df['날짜'] = pd.to_datetime(vix_df['날짜'])
                 vix_df = vix_df.sort_values('날짜')
                 if not vix_df.empty:
-                    vix_latest_high = f"{vix_df['고가'].iloc[-1]:.2f}"
+                    # 💡 최신 데이터의 고가 및 날짜(월/일) 추출
+                    latest_row = vix_df.iloc[-1]
+                    vix_latest_high = f"{latest_row['고가']:.2f}"
+                    vix_latest_date = latest_row['날짜']
+                    vix_latest_date_str = f"{vix_latest_date.month}/{vix_latest_date.day}"
+                    
                     high_35_df = vix_df[vix_df['고가'] >= 35.0]
                     if not high_35_df.empty:
                         last_35_row = high_35_df.iloc[-1]
@@ -249,7 +259,8 @@ with tab2:
                         vix_35_high = f"{last_35_row['고가']:.2f}"
                         days_diff = (pd.to_datetime(safe_date) - last_35_row['날짜']).days
                         days_diff_str = f"{days_diff}일 경과"
-                        if 0 <= days_diff <= 20: is_vix_warning = True
+                        if 0 <= days_diff <= 20:
+                            is_vix_warning = True
             except: pass
 
         col1d, col2d, col3d, col4d, col5d, col6d = st.columns([0.9, 0.9, 1.0, 1.0, 1.4, 1.6])
@@ -258,25 +269,29 @@ with tab2:
         with col3d: st.metric("📉 1개월 하락", f"{neg_1m_d}개")
         with col4d: st.metric("📉 3개월 하락", f"{neg_3m_d}개")
         
-        # 💡 [수정] VIX 박스 클릭 시 네이버 증권으로 이동하는 링크 추가
+        # 💡 [VIX 박스 렌더링] 링크 추가 및 "전일 (X/X일) 고가:" 텍스트 적용
         vix_bg = "#FFF0F0" if is_vix_warning else "#FFFFFF"
         vix_border = "#FFCDD2" if is_vix_warning else "#d1d5db"
         vix_title_color = "#C62828" if is_vix_warning else "#64748b"
         vix_val_color = "#D84315" if is_vix_warning else "#333333"
         vix_icon = "🚨" if is_vix_warning else "📊"
         
+        # 날짜 데이터가 있으면 "전일 (4/29일) 고가:" 형식으로, 없으면 "전일 고가:" 출력
+        vix_label = f"전일 ({vix_latest_date_str}일) 고가:" if vix_latest_date_str else "전일 고가:"
+        
         vix_html = f'''
         <a href="https://m.stock.naver.com/worldstock/index/.VIX/total" target="_blank" style="text-decoration: none; color: inherit;">
             <div class="title-link" style="background-color: {vix_bg}; padding: 10px; border-radius: 10px; text-align: center; border: 1px solid {vix_border}; height: 95px; display: flex; flex-direction: column; justify-content: center;">
                 <div style="font-size: 12px; font-weight: bold; color: {vix_title_color}; margin-bottom: 2px;">{vix_icon} VIX 35 돌파</div>
                 <div style="font-size: 11px; font-weight: bold; color: {vix_title_color}; margin-bottom: 4px;">VIX {vix_35_high} - {vix_35_date_str}돌파 ({days_diff_str})</div>
-                <div style="font-size: 15px; color: {vix_val_color}; font-weight:900;">전일 고가: {vix_latest_high}</div>
+                <div style="font-size: 15px; color: {vix_val_color}; font-weight:900;">{vix_label} {vix_latest_high}</div>
             </div>
         </a>'''
         
         with col5d: st.markdown(vix_html, unsafe_allow_html=True)
         with col6d: st.markdown(f'<div style="background-color: {box_d}; padding: 10px; border-radius: 10px; text-align: center; border: 1px solid {text_d}; height: 95px; display: flex; flex-direction: column; justify-content: center;"><p style="margin: 0; font-size: 12px; color: {text_d}; font-weight: bold;">오늘의 시장 상태 ({reason_desc_d})</p><div style="margin: 4px 0 0 0; font-size: 1.5rem; font-weight: 900; color: {text_d};">{status_d}</div></div>', unsafe_allow_html=True)
         st.markdown("<hr style='margin: 1rem 0;'>", unsafe_allow_html=True)
+        # 💡 [교체 끝]
 
         for df in [df_perf_d, df_spec_d, df_korea_d]:
             df['통합티커_L'] = df.apply(lambda r: f"https://finance.naver.com/item/main.naver?code={r['종목코드']}#KOSPI:{r['종목코드']}", axis=1)
