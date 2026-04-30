@@ -98,7 +98,18 @@ def run_backtest_k200(df, start_year, end_year, ma_months, apply_timing, rank_p,
             '통합 전략 (중복 제외 1/N)': ret_combined_excl,
             '통합 전략 (중복 인정 1/N)': ret_combined_incl
         })
+        
+        if mult > 0:
+            for i, (_, r) in enumerate(perf_df.iterrows()): trade_logs.append({'투자월': m_str, '전략': '퍼펙트', '순위': f"{i+rank_p[0]}위", '종목명': r['종목명'], '수익률(%)': r['이번달수익률']})
+            for i, (_, r) in enumerate(spec_df.iterrows()): trade_logs.append({'투자월': m_str, '전략': '달리는말', '순위': f"{i+rank_s[0]}위", '종목명': r['종목명'], '수익률(%)': r['이번달수익률']})
+        else:
+            trade_logs.append({'투자월': m_str, '전략': '마켓타이밍', '순위': '-', '종목명': '현금보유(CASH)', '수익률(%)': 0.0})
+            
     return pd.DataFrame(records), pd.DataFrame(trade_logs)
+
+def run_backtest_korea(df, start_year, end_year, ma_months, apply_timing, rank_p, rank_s, perf_pct, spec_12m_pct):
+    return run_backtest_k200(df, start_year, end_year, ma_months, apply_timing, rank_p, rank_s, perf_pct, spec_12m_pct)
+
 
 # ==========================================
 # 🇺🇸 미국 주식 (S&P 500 / 나스닥) 전용 함수
@@ -159,7 +170,7 @@ def get_strategy_stocks_us(df_month, top_pct=30):
     strat2 = df_calc[(df_calc['6-1개월(%)'] >= q6_1) & (df_calc['3-1개월(%)'] >= q3_1) & (df_calc['6-1개월(%)'] > 0)].sort_values('6-1개월(%)', ascending=False)
     return df_calc, strat1, strat2
 
-# 💡 [핵심 복구] 앙상블 및 혼합 1/N 전략 재추가
+# 💡 [핵심 복구] 앙상블 및 혼합 1/N 전략 완벽 계산
 def run_backtest_us(df, start_year, end_year, ma_months, apply_timing, rank_s1, rank_s2, top_pct=30):
     import yfinance as yf
     try:
@@ -174,6 +185,8 @@ def run_backtest_us(df, start_year, end_year, ma_months, apply_timing, rank_s1, 
         m_yr = int(m_str.split('-')[0])
         if not (start_year <= m_yr <= end_year): continue
         df_calc = df[df['투자월'] == m_str].copy()
+        if df_calc.empty: continue
+        
         base_date = pd.to_datetime(m_str + '-01') - pd.Timedelta(days=5)
         is_below = spx[spx.index <= base_date]['Is_Below'].iloc[-1] if not spx.empty else False
         mult = 0.0 if (apply_timing and is_below) else 1.0
@@ -222,9 +235,12 @@ def run_custom_backtest_us(df, start_year_c, end_year_c, ma_months_c, apply_timi
         m_yr = int(m_str.split('-')[0])
         if not (start_year_c <= m_yr <= end_year_c): continue
         df_calc = df[df['투자월'] == m_str].copy()
+        if df_calc.empty: continue
+        
         base_date = pd.to_datetime(m_str + '-01') - pd.Timedelta(days=5)
         is_below = spx[spx.index <= base_date]['Is_Below'].iloc[-1] if not spx.empty else False
         mult = 0.0 if (apply_timing_c and is_below) else 1.0
+        
         df_calc['스코어'] = (df_calc['1개월(%)']*w1) + (df_calc['3개월(%)']*w3) + (df_calc['6개월(%)']*w6) + (df_calc['12개월(%)']*w12)
         target = df_calc[df_calc['스코어'] >= df_calc['스코어'].quantile(1-custom_pct/100)].sort_values('스코어', ascending=False).iloc[rank_c_s-1:rank_c_e]
         
