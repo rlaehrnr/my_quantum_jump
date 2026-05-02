@@ -86,6 +86,7 @@ def get_strategy_stocks_korea(df):
     
     return df.copy(), df_perf, df_spec
 
+# 💡 백테스트 공통 엔진
 def _base_backtest_engine(df, start_year, end_year, ma_months, apply_timing, rank_p, rank_s, perf_pct, spec_12m_pct, market_threshold=None):
     timing_dict = get_kospi_timing_for_backtest(ma_months)
     records, trade_logs = [], []
@@ -96,6 +97,7 @@ def _base_backtest_engine(df, start_year, end_year, ma_months, apply_timing, ran
         m_data = df[df['투자월'] == m].copy()
         if m_data.empty: continue
 
+        # KOSPI 200만 시총 200위 자르기
         if market_threshold == 100:
             cap_col = '시가총액(억)' if '시가총액(억)' in m_data.columns else '시가총액'
             if cap_col in m_data.columns:
@@ -104,8 +106,14 @@ def _base_backtest_engine(df, start_year, end_year, ma_months, apply_timing, ran
         ret_col = '다음달수익률(%)' if '다음달수익률(%)' in m_data.columns else '이번달수익률'
         is_below_ma = timing_dict.get(m, False)
         
-        neg_1m, neg_3m = (m_data['1개월(%)'] < 0).sum(), (m_data['3개월(%)'] < 0).sum()
-        is_bad_market = (neg_1m >= 100 and neg_3m >= 100)
+        # 💡 [버그 수정] KOSPI 200(market_threshold==100)일 때만 하락장 100개 방어기제 작동
+        # KOREA 통합 전략은 is_bad_market을 무조건 False로 두어 이평선만 보도록 수정
+        is_bad_market = False
+        if market_threshold == 100:
+            neg_1m, neg_3m = (m_data['1개월(%)'] < 0).sum(), (m_data['3개월(%)'] < 0).sum()
+            is_bad_market = (neg_1m >= 100 and neg_3m >= 100)
+            
+        # KOREA는 is_below_ma 하나만, KOSPI 200은 둘 다 적용됨
         mult = 0.0 if (apply_timing and (is_bad_market or is_below_ma)) else 1.0
 
         q_p, q_s = 1.0 - (perf_pct / 100.0), 1.0 - (spec_12m_pct / 100.0)
