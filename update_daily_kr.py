@@ -1,4 +1,3 @@
-import requests
 import pandas as pd
 import FinanceDataReader as fdr
 from datetime import datetime, timedelta
@@ -7,13 +6,11 @@ import glob
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
 # ==========================================
-# 💡 [추가] 마지막 유효 영업일 추출 함수
+# 🇰🇷 한국 시장 유효 영업일 추출 (KOSPI 지수 기준)
 # ==========================================
-def get_last_business_day():
+def get_last_business_day_kr():
     try:
-        # 최근 14일치 코스피(KS11) 지수 데이터를 불러옵니다.
         df = fdr.DataReader('KS11', datetime.today() - timedelta(days=14))
-        # 거래량이 1000 이상 터진 정상 영업일만 필터링 (아침 7시 초기화 가짜 데이터 무시)
         valid_days = df[df['Volume'] > 1000] 
         if not valid_days.empty:
             return valid_days.index[-1].strftime('%Y-%m-%d')
@@ -36,8 +33,7 @@ def calculate_return_unified(df_hist, target_date, current_price):
     except:
         return 0.0
 
-# 💡 [수정] real_base_date_str 변수를 받아 기준일에 박아 넣습니다.
-def process_ticker(row, start_date, today, dates, real_base_date_str):
+def process_ticker_kr(row, start_date, today, dates, real_base_date_str):
     code = row['Code']
     name = row['Name']
     market = row['시장']
@@ -54,7 +50,7 @@ def process_ticker(row, start_date, today, dates, real_base_date_str):
             '종목코드': code, 
             '종목명': name, 
             '시장': market,
-            '기준일': real_base_date_str,  # 💡 오늘 달력 날짜가 아닌 진짜 영업일 적용!
+            '기준일': real_base_date_str, 
             '시가총액': marcap, 
             '종가': curr_price, 
             '거래량': curr_vol,
@@ -67,32 +63,15 @@ def process_ticker(row, start_date, today, dates, real_base_date_str):
     except:
         return None
 
-def update_all_daily_momentum():
-    print("🚀 [최적화 버전] 데일리 수익률 (KR/US) 및 VIX 데이터 동기화 시작...")
+def update_daily_momentum_kr():
+    print("🚀 [한국 전용] 데일리 수익률 업데이트 시작...")
     today = datetime.today()
-    
-    # 💡 [추가] 진짜 영업일 계산 후 터미널에 출력
-    real_base_date_str = get_last_business_day()
-    print(f"✅ 정확한 마지막 영업일 기준: {real_base_date_str}")
+    real_base_date_str = get_last_business_day_kr()
+    print(f"✅ 정확한 한국 영업일 기준: {real_base_date_str}")
     
     os.makedirs('data', exist_ok=True)
 
-    print("📈 미국 VIX 지수 데이터 업데이트 중...")
-    try:
-        url = "https://query2.finance.yahoo.com/v8/finance/chart/^VIX?interval=1d&range=5y"
-        headers = {'User-Agent': 'Mozilla/5.0'}
-        res = requests.get(url, headers=headers)
-        data = res.json()
-        timestamps = data['chart']['result'][0]['timestamp']
-        quote = data['chart']['result'][0]['indicators']['quote'][0]
-        df_vix = pd.DataFrame({'날짜': pd.to_datetime(timestamps, unit='s'), '시가': quote['open'], '고가': quote['high'], '저가': quote['low'], '종가': quote['close']}).dropna()
-        df_vix['날짜'] = df_vix['날짜'].dt.strftime('%Y-%m-%d')
-        df_vix['변동 %'] = df_vix['종가'].pct_change().multiply(100).round(2).astype(str) + '%'
-        df_vix[['날짜', '종가', '시가', '고가', '저가', '변동 %']].to_csv('data/vix data.csv', index=False, encoding='utf-8-sig')
-        print("✅ VIX 지수 업데이트 성공!")
-    except Exception as e: print(f"🚨 VIX 다운로드 실패: {e}")
-
-    print("🔄 한국 및 미국 주식 시장 데이터 로드 중...")
+    print("🔄 한국 주식 시장 데이터 로드 중...")
     df_kospi = fdr.StockListing('KOSPI')
     df_kosdaq = fdr.StockListing('KOSDAQ')
     df_kospi['Code'] = df_kospi['Code'].astype(str).str.zfill(6)
@@ -109,31 +88,16 @@ def update_all_daily_momentum():
     
     all_target_df = pd.concat([k200_df, korea300_df]).drop_duplicates(subset=['Code']).copy()
 
-    # 미국 S&P 500 목록 가져오기
-    try:
-        df_sp500 = fdr.StockListing('S&P500')
-        df_sp500['Code'] = df_sp500['Symbol'].str.replace('.', '-', regex=False)
-        df_sp500['Name'] = df_sp500['Symbol'] if 'Name' not in df_sp500.columns else df_sp500['Name']
-        df_sp500['시장'] = 'S&P500'
-        df_sp500['Marcap'] = 0
-        all_target_df = pd.concat([all_target_df, df_sp500[['Code', 'Name', '시장', 'Marcap']]]).drop_duplicates(subset=['Code']).copy()
-    except Exception as e:
-        print(f"⚠️ S&P 500 목록 로드 실패: {e}")
-        df_sp500 = pd.DataFrame()
-
-    shares_dict = {row['Code']: row['Marcap']/row['Close'] for _, row in all_target_df.iterrows() if row.get('Close', 0) > 0}
-    
     last_month_end = get_end_of_month(today, 1)
     dates = { '1개월': last_month_end, '3개월': get_end_of_month(today, 3), '6개월': get_end_of_month(today, 6), '12개월': get_end_of_month(today, 12) }
     start_date = dates['12개월'] - timedelta(days=15)
     
-    print(f"📊 총 {len(all_target_df)}개 종목 주가 동시 다운로드 중...")
+    print(f"📊 총 {len(all_target_df)}개 한국 종목 주가 다운로드 중...")
     price_cache = {}
     daily_records_dict = {}
     
     with ThreadPoolExecutor(max_workers=20) as executor:
-        # 💡 [수정] process_ticker 호출 시 real_base_date_str 추가 전달
-        futures = [executor.submit(process_ticker, row, start_date, today, dates, real_base_date_str) for _, row in all_target_df.iterrows()]
+        futures = [executor.submit(process_ticker_kr, row, start_date, today, dates, real_base_date_str) for _, row in all_target_df.iterrows()]
         for future in as_completed(futures):
             result = future.result()
             if result:
@@ -147,26 +111,22 @@ def update_all_daily_momentum():
     korea300_records = [daily_records_dict[c] for c in korea300_df['Code'] if c in daily_records_dict]
     pd.DataFrame(korea300_records).to_csv('data/momentum_data_daily_korea.csv', index=False, encoding='utf-8-sig')
 
-    if not df_sp500.empty:
-        sp500_records = [daily_records_dict[c] for c in df_sp500['Code'] if c in daily_records_dict]
-        pd.DataFrame(sp500_records).to_csv('data/momentum_data_daily_sp500.csv', index=False, encoding='utf-8-sig')
-
-    print("✅ 데일리 모멘텀 저장 완료!")
+    print("✅ 한국 데일리 모멘텀 저장 완료!")
 
     def sync_archive_returns(archive_folder):
         archive_files = sorted(glob.glob(f'{archive_folder}/only_*.csv'))
         if not archive_files: return
         latest_file = archive_files[-1]
-        df_latest = pd.read_csv(latest_file, dtype={'종목코드': str, 'Ticker': str})
+        df_latest = pd.read_csv(latest_file, dtype={'종목코드': str})
         
         target_col = '종목선정일' if '종목선정일' in df_latest.columns else 'Date'
-        code_col = '종목코드' if '종목코드' in df_latest.columns else 'Ticker'
+        code_col = '종목코드' 
         ret_col = '이번달수익률' if '이번달수익률' in df_latest.columns else 'Forward_1M_Return(%)'
         
         if target_col in df_latest.columns:
             csv_base_date = df_latest[target_col].iloc[0]
             for idx, row in df_latest.iterrows():
-                code = str(row[code_col]).zfill(6) if 'archive_kospi' in archive_folder or 'archive_korea' in archive_folder else str(row[code_col])
+                code = str(row[code_col]).zfill(6)
                 df_h = price_cache.get(code, pd.DataFrame())
                 if df_h.empty:
                     try: df_h = fdr.DataReader(code, csv_base_date, today)
@@ -181,8 +141,7 @@ def update_all_daily_momentum():
 
     sync_archive_returns('archive_kospi')
     sync_archive_returns('archive_korea')
-    sync_archive_returns('archive_sp500') 
-    print("🎉 고속 업데이트 완벽 종료!")
+    print("🎉 🇰🇷 한국 업데이트 완벽 종료!")
 
 if __name__ == "__main__":
-    update_all_daily_momentum()
+    update_daily_momentum_kr()
