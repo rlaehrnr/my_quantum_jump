@@ -6,6 +6,21 @@ import os
 import glob
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
+# ==========================================
+# 💡 [추가] 마지막 유효 영업일 추출 함수
+# ==========================================
+def get_last_business_day():
+    try:
+        # 최근 14일치 코스피(KS11) 지수 데이터를 불러옵니다.
+        df = fdr.DataReader('KS11', datetime.today() - timedelta(days=14))
+        # 거래량이 1000 이상 터진 정상 영업일만 필터링 (아침 7시 초기화 가짜 데이터 무시)
+        valid_days = df[df['Volume'] > 1000] 
+        if not valid_days.empty:
+            return valid_days.index[-1].strftime('%Y-%m-%d')
+    except:
+        pass
+    return datetime.today().strftime('%Y-%m-%d')
+
 def get_end_of_month(dt, months_ago):
     first_of_current = dt.replace(day=1)
     target_month = first_of_current - pd.DateOffset(months=months_ago - 1)
@@ -21,7 +36,8 @@ def calculate_return_unified(df_hist, target_date, current_price):
     except:
         return 0.0
 
-def process_ticker(row, start_date, today, dates):
+# 💡 [수정] real_base_date_str 변수를 받아 기준일에 박아 넣습니다.
+def process_ticker(row, start_date, today, dates, real_base_date_str):
     code = row['Code']
     name = row['Name']
     market = row['시장']
@@ -38,7 +54,7 @@ def process_ticker(row, start_date, today, dates):
             '종목코드': code, 
             '종목명': name, 
             '시장': market,
-            '기준일': today.strftime('%Y-%m-%d'),
+            '기준일': real_base_date_str,  # 💡 오늘 달력 날짜가 아닌 진짜 영업일 적용!
             '시가총액': marcap, 
             '종가': curr_price, 
             '거래량': curr_vol,
@@ -54,7 +70,11 @@ def process_ticker(row, start_date, today, dates):
 def update_all_daily_momentum():
     print("🚀 [최적화 버전] 데일리 수익률 (KR/US) 및 VIX 데이터 동기화 시작...")
     today = datetime.today()
-    base_date = today.strftime('%Y-%m-%d')
+    
+    # 💡 [추가] 진짜 영업일 계산 후 터미널에 출력
+    real_base_date_str = get_last_business_day()
+    print(f"✅ 정확한 마지막 영업일 기준: {real_base_date_str}")
+    
     os.makedirs('data', exist_ok=True)
 
     print("📈 미국 VIX 지수 데이터 업데이트 중...")
@@ -89,7 +109,7 @@ def update_all_daily_momentum():
     
     all_target_df = pd.concat([k200_df, korea300_df]).drop_duplicates(subset=['Code']).copy()
 
-    # 💡 [추가] 미국 S&P 500 목록 가져오기
+    # 미국 S&P 500 목록 가져오기
     try:
         df_sp500 = fdr.StockListing('S&P500')
         df_sp500['Code'] = df_sp500['Symbol'].str.replace('.', '-', regex=False)
@@ -112,7 +132,8 @@ def update_all_daily_momentum():
     daily_records_dict = {}
     
     with ThreadPoolExecutor(max_workers=20) as executor:
-        futures = [executor.submit(process_ticker, row, start_date, today, dates) for _, row in all_target_df.iterrows()]
+        # 💡 [수정] process_ticker 호출 시 real_base_date_str 추가 전달
+        futures = [executor.submit(process_ticker, row, start_date, today, dates, real_base_date_str) for _, row in all_target_df.iterrows()]
         for future in as_completed(futures):
             result = future.result()
             if result:
@@ -126,7 +147,6 @@ def update_all_daily_momentum():
     korea300_records = [daily_records_dict[c] for c in korea300_df['Code'] if c in daily_records_dict]
     pd.DataFrame(korea300_records).to_csv('data/momentum_data_daily_korea.csv', index=False, encoding='utf-8-sig')
 
-    # 💡 [추가] 미국 데일리 파일 저장
     if not df_sp500.empty:
         sp500_records = [daily_records_dict[c] for c in df_sp500['Code'] if c in daily_records_dict]
         pd.DataFrame(sp500_records).to_csv('data/momentum_data_daily_sp500.csv', index=False, encoding='utf-8-sig')
@@ -161,7 +181,7 @@ def update_all_daily_momentum():
 
     sync_archive_returns('archive_kospi')
     sync_archive_returns('archive_korea')
-    sync_archive_returns('archive_sp500') # 💡 미국 월별 아카이브도 이번달 수익률 채워줌
+    sync_archive_returns('archive_sp500') 
     print("🎉 고속 업데이트 완벽 종료!")
 
 if __name__ == "__main__":
