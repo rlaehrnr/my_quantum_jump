@@ -11,9 +11,58 @@ st.set_page_config(page_title="US S&P 500 모멘텀 터미널", layout="wide")
 from utils.data_loader import load_archive_data, get_folder_hash
 from utils.calculator import get_cycle_year, PRESIDENTIAL_DANGEROUS_MONTHS
 from utils.ui_components import inject_custom_css, apply_korea_styling, style_kospi_ma, get_styled_stats, get_mdd_history, get_monthly_heatmap, ma_cfg, main_cfg
-from utils.calculator import get_us_ma_all, get_us_idx_return, calc_us_momentum, get_strategy_stocks_us, map_english_columns, run_backtest_us, run_custom_backtest_us
+from utils.calculator import calc_us_momentum, get_strategy_stocks_us, map_english_columns, run_backtest_us, run_custom_backtest_us
 
 inject_custom_css()
+
+# ==========================================
+# 💡 [핵심 해결] 미국 지수 안전 호출 함수 (시차/타임존 에러 완벽 방어)
+# ==========================================
+@st.cache_data(ttl=3600)
+def robust_get_us_ma_all(target_date_str, ticker='^GSPC'):
+    import yfinance as yf
+    try:
+        target_date = pd.to_datetime(target_date_str)
+        tk = yf.Ticker(ticker)
+        # 안전하게 앞뒤로 며칠 더 여유를 두고 가져옵니다.
+        df = tk.history(start=target_date - timedelta(days=400), end=target_date + timedelta(days=5))
+        if df.empty: return 0.0, {}
+        if df.index.tz is not None: df.index = df.index.tz_localize(None)
+        df = df[df.index <= target_date]
+        if df.empty: return 0.0, {}
+        
+        curr_p = df['Close'].iloc[-1]
+        mas = {
+            4: round(df['Close'].rolling(80).mean().iloc[-1], 2),
+            5: round(df['Close'].rolling(100).mean().iloc[-1], 2),
+            6: round(df['Close'].rolling(120).mean().iloc[-1], 2),
+            10: round(df['Close'].rolling(200).mean().iloc[-1], 2),
+            12: round(df['Close'].rolling(240).mean().iloc[-1], 2)
+        }
+        return curr_p, mas
+    except Exception:
+        return 0.0, {}
+
+@st.cache_data(ttl=3600)
+def robust_get_us_idx_return(target_date_str, ticker='^GSPC'):
+    import yfinance as yf
+    try:
+        target_date = pd.to_datetime(target_date_str)
+        tk = yf.Ticker(ticker)
+        df = tk.history(start=target_date - timedelta(days=120), end=target_date + timedelta(days=5))
+        if df.empty: return 0.0, 0.0
+        if df.index.tz is not None: df.index = df.index.tz_localize(None)
+        df = df[df.index <= target_date]
+        if df.empty: return 0.0, 0.0
+
+        curr_p = df['Close'].iloc[-1]
+        df_1m = df[df.index <= target_date - pd.DateOffset(months=1)]
+        ret_1m = round(((curr_p / df_1m['Close'].iloc[-1]) - 1) * 100, 2) if not df_1m.empty else 0.0
+        df_3m = df[df.index <= target_date - pd.DateOffset(months=3)]
+        ret_3m = round(((curr_p / df_3m['Close'].iloc[-1]) - 1) * 100, 2) if not df_3m.empty else 0.0
+        return ret_1m, ret_3m
+    except Exception:
+        return 0.0, 0.0
 
 st.markdown('''
     <div style="margin-bottom: 20px;">
@@ -35,43 +84,48 @@ if df_master.empty:
     st.error("🚨 archive_sp500 폴더에 데이터가 없습니다!")
     st.stop()
 
-# 💡 [핵심 방어막] 과거 데이터(4월) 호환성 및 영어 컬럼 매핑 완벽 보호
+# ==========================================
+# 💡 [핵심 해결 2] 과거 4월(영어) + 5월(한글) 데이터 완벽 융합
+# ==========================================
 df_master = map_english_columns(df_master)
 
-# 종목코드가 없는 쓰레기 데이터 강제 삭제
+if 'Date' in df_master.columns and '종목선정일' not in df_master.columns:
+    df_master['종목선정일'] = df_master['Date']
+df_master['종목선정일'] = pd.to_datetime(df_master['종목선정일'], errors='coerce')
+df_master = df_master.dropna(subset=['종목선정일'])
+
+if 'Ticker' in df_master.columns and '종목코드' not in df_master.columns:
+    df_master['종목코드'] = df_master['Ticker']
 df_master = df_master.dropna(subset=['종목코드'])
 df_master['종목코드'] = df_master['종목코드'].astype(str).replace('nan', '')
 df_master = df_master[df_master['종목코드'] != '']
 
-# 과거 파일에 '종목명', '시장' 컬럼이 아예 없을 때를 대비한 땜빵 처리
-if '종목명' not in df_master.columns:
-    df_master['종목명'] = df_master['종목코드']
+if '종목명' not in df_master.columns: df_master['종목명'] = df_master['종목코드']
 df_master['종목명'] = df_master['종목명'].fillna(df_master['종목코드'])
-df_master['종목명'] = np.where(df_master['종목명'] == 'nan', df_master['종목코드'], df_master['종목명'])
+df_master['종목명'] = np.where(df_master['종목명'].astype(str).str.lower() == 'nan', df_master['종목코드'], df_master['종목명'])
 
-if '시장' not in df_master.columns:
-    df_master['시장'] = 'US'
-df_master['시장'] = df_master['시장'].fillna('US').replace('nan', 'US')
+if '시장' not in df_master.columns: df_master['시장'] = 'US'
+df_master['시장'] = df_master['시장'].fillna('US')
+df_master['시장'] = np.where(df_master['시장'].astype(str).str.lower() == 'nan', 'US', df_master['시장'])
 
-# 이제 안심하고 문자열을 합칩니다.
 df_master['통합티커'] = df_master['시장'] + ":" + df_master['종목코드']
+
+# 날짜가 다르게 적혀 있어도 시스템이 강제로 5월, 4월 등을 똑바로 생성합니다.
+target_dates = df_master['종목선정일'] + pd.Timedelta(days=15)
+df_master['투자월'] = target_dates.dt.strftime('%Y-%m')
+df_master['투자연도'] = target_dates.dt.year
 
 target_cols = ['시가총액', '종가', '거래량', '1개월(%)', '3개월(%)', '6개월(%)', '12개월(%)', '이번달수익률']
 for col in target_cols:
-    if col in df_master.columns:
-        df_master[col] = pd.to_numeric(df_master[col], errors='coerce').fillna(0)
-    else:
-        df_master[col] = 0
+    if col in df_master.columns: df_master[col] = pd.to_numeric(df_master[col], errors='coerce').fillna(0)
+    else: df_master[col] = 0
 
-# 💡 [핵심 방어막 2] 슬라이더 크래시 원천 차단 (최소/최대 연도가 똑같으면 에러남)
+# 💡 [핵심 해결 3] 슬라이더 크래시 방지 (시작-끝 연도 강제 분리)
 valid_years = df_master['투자연도'].dropna().unique().astype(int).tolist()
-if not valid_years:
-    valid_years = [datetime.today().year]
-    
+if not valid_years: valid_years = [datetime.today().year]
 years_list = sorted(valid_years)
 min_y, max_y = min(years_list), max(years_list)
-if min_y == max_y:
-    min_y = min_y - 1  # 강제로 간격을 벌려서 슬라이더 에러 방지
+if min_y >= max_y: min_y = max_y - 1 
 
 # UI 표 설정
 us_main_cfg = main_cfg.copy()
@@ -83,10 +137,11 @@ us_main_cfg.update({
     '시가총액': st.column_config.NumberColumn('시가총액', format="%d")
 })
 
-col_order_strat1 = ['순위', '통합티커_L', '종목명_L', '시가총액', '종가', '12-1개월(%)', '6-1개월(%)', '이번달수익률']
-col_order_strat2 = ['순위', '통합티커_L', '종목명_L', '시가총액', '종가', '6-1개월(%)', '3-1개월(%)', '이번달수익률']
-col_order_d1 = ['순위', '통합티커_L', '종목명_L', '시가총액', '종가', '12-1개월(%)', '6-1개월(%)']
-col_order_d2 = ['순위', '통합티커_L', '종목명_L', '시가총액', '종가', '6-1개월(%)', '3-1개월(%)']
+# 💡 [요청 사항 반영] 전략표에서 시가총액, 종가 제거
+col_order_strat1 = ['순위', '통합티커_L', '종목명_L', '12-1개월(%)', '6-1개월(%)', '이번달수익률']
+col_order_strat2 = ['순위', '통합티커_L', '종목명_L', '6-1개월(%)', '3-1개월(%)', '이번달수익률']
+col_order_d1 = ['순위', '통합티커_L', '종목명_L', '12-1개월(%)', '6-1개월(%)']
+col_order_d2 = ['순위', '통합티커_L', '종목명_L', '6-1개월(%)', '3-1개월(%)']
 
 naver_exceptions = {'CIEN': '.K', 'COHR': '.K', 'EQNR': '.K', 'DELL': '.K'}
 def get_naver_ticker(code):
@@ -123,19 +178,15 @@ with tab1:
             target_month_str = f"{safe_year}-{selected_month}"
             df_monthly = df_master[df_master['투자월'] == target_month_str].copy()
         else:
-            st.warning(f"🚨 {safe_year}년에 해당하는 데이터가 없습니다. (수집 실패 또는 누락)")
+            st.warning(f"🚨 {safe_year}년에 해당하는 데이터가 없습니다.")
             df_monthly = pd.DataFrame()
     
     if not df_monthly.empty:
         base_date = df_monthly['종목선정일'].iloc[0] if '종목선정일' in df_monthly.columns and not pd.isna(df_monthly['종목선정일'].iloc[0]) else datetime.today().strftime('%Y-%m-%d')
-        month_label.markdown(f"<div style='margin-bottom: 5px; font-size:0.95rem; font-weight:600;'><b>🌙 투자 월</b> <span style='font-size: 0.85rem; color: #9ca3af; font-weight:normal;'>&nbsp;&nbsp;💡 선정일: {base_date}</span></div>", unsafe_allow_html=True)
+        month_label.markdown(f"<div style='margin-bottom: 5px; font-size:0.95rem; font-weight:600;'><b>🌙 투자 월</b> <span style='font-size: 0.85rem; color: #9ca3af; font-weight:normal;'>&nbsp;&nbsp;💡 선정일: {base_date.strftime('%Y-%m-%d') if isinstance(base_date, pd.Timestamp) else base_date}</span></div>", unsafe_allow_html=True)
 
-        @st.cache_data(ttl=3600)
-        def get_ma_data(date):
-            spx_curr, spx_mas = get_us_ma_all(date, '^GSPC')
-            ndx_curr, ndx_mas = get_us_ma_all(date, '^IXIC')
-            return spx_curr, spx_mas, ndx_curr, ndx_mas
-        spx_curr, spx_mas, ndx_curr, ndx_mas = get_ma_data(base_date)
+        spx_curr, spx_mas = robust_get_us_ma_all(base_date, '^GSPC')
+        ndx_curr, ndx_mas = robust_get_us_ma_all(base_date, '^IXIC')
         
         ma_df = pd.DataFrame([
             {'지수_L': f"https://m.stock.naver.com/worldstock/index/.INX/total#S&P500", '현재가_L': f"https://m.stock.naver.com/fchart/foreign/index/.INX#{spx_curr:,.2f}", 'base_price': round(spx_curr, 2), '4개월선': spx_mas.get(4, 0), '5개월선': spx_mas.get(5, 0), '6개월선': spx_mas.get(6, 0), '10개월선': spx_mas.get(10, 0), '12개월선': spx_mas.get(12, 0)},
@@ -144,8 +195,8 @@ with tab1:
         st.dataframe(style_kospi_ma(ma_df), use_container_width=True, hide_index=True, column_config=ma_cfg)
         
         df_us_t1, df_strat1_t1, df_strat2_t1 = get_strategy_stocks_us(df_monthly, top_pct=30)
-        spx_1m, spx_3m = get_us_idx_return(base_date, '^GSPC')
-        ndx_1m, ndx_3m = get_us_idx_return(base_date, '^IXIC')
+        spx_1m, spx_3m = robust_get_us_idx_return(base_date, '^GSPC')
+        ndx_1m, ndx_3m = robust_get_us_idx_return(base_date, '^IXIC')
         
         df_strat1_t1['순위'] = range(1, len(df_strat1_t1) + 1)
         df_strat2_t1['순위'] = range(1, len(df_strat2_t1) + 1)
@@ -215,10 +266,9 @@ with tab1:
             st.dataframe(df_3_1.style.apply(apply_korea_styling, axis=1), use_container_width=True, hide_index=True, column_order=['순위', '통합티커_L', '종목명_L', '3-1개월(%)'], column_config=us_main_cfg)
 
         st.markdown("---")
-        st.markdown(f"### 🌐 S&P 500 전체 순위 <span style='font-size: 0.85rem; color: #9ca3af; font-weight:normal;'>&nbsp;&nbsp;💡 선정일: {base_date}</span>", unsafe_allow_html=True)
+        st.markdown(f"### 🌐 S&P 500 전체 순위 <span style='font-size: 0.85rem; color: #9ca3af; font-weight:normal;'>&nbsp;&nbsp;💡 선정일: {base_date.strftime('%Y-%m-%d') if isinstance(base_date, pd.Timestamp) else base_date}</span>", unsafe_allow_html=True)
         cols_m = ['순위', '통합티커_L', '종목명_L', '시가총액', '종가', '1개월(%)', '3개월(%)', '6개월(%)', '12개월(%)', '12-1개월(%)', '6-1개월(%)', '3-1개월(%)', '이번달수익률']
         st.dataframe(df_us_t1.style.apply(apply_korea_styling, axis=1), use_container_width=True, height=600, hide_index=True, column_order=cols_m, column_config=us_main_cfg)
-
 
 # ==========================================
 # 탭 2. 실시간 데일리 순위
@@ -228,13 +278,17 @@ with tab2:
         df_daily = pd.read_csv(f_daily)
         df_daily = map_english_columns(df_daily)
         
-        # 💡 결측치/과거 데이터 완벽 방어
+        # 💡 [해결 3] 데일리 탭 numpy 조건문 완벽 이식
         df_daily = df_daily.dropna(subset=['종목코드'])
         df_daily['종목코드'] = df_daily['종목코드'].astype(str).replace('nan', '')
+        
         if '종목명' not in df_daily.columns: df_daily['종목명'] = df_daily['종목코드']
-        df_daily['종목명'] = df_daily['종목명'].fillna(df_daily['종목코드']).replace('nan', df_daily['종목코드'])
+        df_daily['종목명'] = df_daily['종목명'].fillna(df_daily['종목코드'])
+        df_daily['종목명'] = np.where(df_daily['종목명'].astype(str).str.lower() == 'nan', df_daily['종목코드'], df_daily['종목명'])
+        
         if '시장' not in df_daily.columns: df_daily['시장'] = 'US'
-        df_daily['시장'] = df_daily['시장'].fillna('US').replace('nan', 'US')
+        df_daily['시장'] = df_daily['시장'].fillna('US')
+        df_daily['시장'] = np.where(df_daily['시장'].astype(str).str.lower() == 'nan', 'US', df_daily['시장'])
         
         df_daily['통합티커'] = df_daily['시장'] + ":" + df_daily['종목코드']
         
@@ -247,12 +301,8 @@ with tab2:
         
         st.markdown(f"<div style='margin-bottom: 5px; font-size:0.95rem; font-weight:600;'><b>🕒 실시간 데일리 순위</b> <span style='font-size: 0.85rem; color: #9ca3af; font-weight:normal;'>&nbsp;&nbsp;💡 기준일: {b_date_d}</span></div>", unsafe_allow_html=True)
         
-        @st.cache_data(ttl=3600)
-        def get_ma_data_d(date):
-            spx_curr_d, spx_mas_d = get_us_ma_all(date, '^GSPC')
-            ndx_curr_d, ndx_mas_d = get_us_ma_all(date, '^IXIC')
-            return spx_curr_d, spx_mas_d, ndx_curr_d, ndx_mas_d
-        spx_curr_d, spx_mas_d, ndx_curr_d, ndx_mas_d = get_ma_data_d(safe_date)
+        spx_curr_d, spx_mas_d = robust_get_us_ma_all(safe_date, '^GSPC')
+        ndx_curr_d, ndx_mas_d = robust_get_us_ma_all(safe_date, '^IXIC')
 
         ma_df_d = pd.DataFrame([
             {'지수_L': f"https://m.stock.naver.com/worldstock/index/.INX/total#S&P500", '현재가_L': f"https://m.stock.naver.com/fchart/foreign/index/.INX#{spx_curr_d:,.2f}", 'base_price': round(spx_curr_d, 2), '4개월선': spx_mas_d.get(4, 0), '5개월선': spx_mas_d.get(5, 0), '6개월선': spx_mas_d.get(6, 0), '10개월선': spx_mas_d.get(10, 0), '12개월선': spx_mas_d.get(12, 0)},
@@ -261,8 +311,8 @@ with tab2:
         st.dataframe(style_kospi_ma(ma_df_d), use_container_width=True, hide_index=True, column_config=ma_cfg)
         
         df_us_d, df_strat1_d, df_strat2_d = get_strategy_stocks_us(df_daily, top_pct=30)
-        spx_1m_d, spx_3m_d = get_us_idx_return(safe_date, '^GSPC')
-        ndx_1m_d, ndx_3m_d = get_us_idx_return(safe_date, '^IXIC')
+        spx_1m_d, spx_3m_d = robust_get_us_idx_return(safe_date, '^GSPC')
+        ndx_1m_d, ndx_3m_d = robust_get_us_idx_return(safe_date, '^IXIC')
         
         df_strat1_d['순위'] = range(1, len(df_strat1_d) + 1)
         df_strat2_d['순위'] = range(1, len(df_strat2_d) + 1)
@@ -362,7 +412,6 @@ with tab2:
         cols_d = ['순위', '통합티커_L', '종목명_L', '시가총액', '종가', '거래량', '1개월(%)', '3개월(%)', '6개월(%)', '12개월(%)', '12-1개월(%)', '6-1개월(%)', '3-1개월(%)']
         st.dataframe(df_us_d.style.apply(apply_korea_styling, axis=1), use_container_width=True, height=600, hide_index=True, column_order=cols_d, column_config=us_main_cfg)
 
-
 # ==========================================
 # 탭 3. 전략 백테스트
 # ==========================================
@@ -412,7 +461,6 @@ with tab3:
             
             st.plotly_chart(px.line(df_cum.reset_index().melt(id_vars='투자월'), x='투자월', y='value', color='variable', log_y=True, title="누적 자산 성장 곡선 (Log Scale)"), use_container_width=True)
             with st.expander("📝 월별 전체 상세 기록 보기"): st.dataframe(df_res.drop(columns=['invested']).set_index('투자월').style.format("{:.2f}%"), use_container_width=True)
-
 
 # ==========================================
 # 탭 4. 스코어 커스텀 백테스트
