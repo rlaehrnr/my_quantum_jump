@@ -6,12 +6,10 @@ import os
 
 st.set_page_config(page_title="US S&P 500 모멘텀 터미널", layout="wide")
 
-# 💡 [핵심 수정] calculator.py 에서는 한국 코드나 공통 UI 변수만 가져옵니다. 
 from utils.data_loader import load_archive_data, get_folder_hash
 from utils.calculator import get_cycle_year, PRESIDENTIAL_DANGEROUS_MONTHS
 from utils.ui_components import inject_custom_css, apply_korea_styling, style_kospi_ma, get_styled_stats, get_mdd_history, get_monthly_heatmap, ma_cfg, main_cfg
 
-# 💡 [핵심 수정] 미국 전용 함수는 모두 us_helpers.py 에서 독립적으로 가져옵니다!
 from utils.us_helpers import (
     preprocess_us_data, add_naver_links, robust_get_us_ma_all, robust_get_us_idx_return, 
     get_spx_history_cached, generate_excel_report_cached, 
@@ -19,6 +17,11 @@ from utils.us_helpers import (
 )
 
 inject_custom_css()
+
+# 💡 [해결] 탭 4 커스텀 백테스트용 캐시 래퍼 함수 추가
+@st.cache_data(show_spinner=False)
+def cached_run_custom_backtest_us(df, start_year_c, end_year_c, ma_months_c, apply_timing_c, w1, w3, w6, w12, custom_pct, rank_c_s, rank_c_e):
+    return run_custom_backtest_us(df, start_year_c, end_year_c, ma_months_c, apply_timing_c, w1, w3, w6, w12, custom_pct, rank_c_s, rank_c_e)
 
 def render_vix_widget(safe_date):
     vix_file = 'data/vix data.csv'
@@ -361,10 +364,10 @@ with tab3:
             st.markdown("<div style='margin-top: 28px;'></div>", unsafe_allow_html=True)
             run_bt_us = st.form_submit_button("✅ 백테스트 실행", use_container_width=True)
 
-    if run_bt_us or 'run_bt_state_us_v5' not in st.session_state:
-        st.session_state['run_bt_state_us_v5'] = True
+    if run_bt_us or 'run_bt_state_us_v6' not in st.session_state:
+        st.session_state['run_bt_state_us_v6'] = True
 
-    if st.session_state.get('run_bt_state_us_v5', False):
+    if st.session_state.get('run_bt_state_us_v6', False):
         spx_hist = get_spx_history_cached()
         
         with st.spinner("미국 모멘텀 백테스트 구동 중... (동일 조건일 경우 0.1초 렌더링)"):
