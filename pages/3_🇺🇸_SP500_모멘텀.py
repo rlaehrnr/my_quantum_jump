@@ -15,7 +15,7 @@ from utils.calculator import run_custom_backtest_us
 from utils.us_helpers import (
     preprocess_us_data, add_naver_links, robust_get_us_ma_all, robust_get_us_idx_return, 
     get_spx_history_cached, generate_excel_report_cached, 
-    get_strategy_stocks_us_custom, run_backtest_us_fast
+    get_strategy_stocks_us_custom, run_backtest_us_fast, run_custom_backtest_us
 )
 
 inject_custom_css()
