@@ -195,6 +195,13 @@ def run_backtest_korea(df, start_year, end_year, ma_months, apply_timing, rank_p
         ret_p = (target_p[ret_col].mean() * mult) if not target_p.empty else 0.0
         ret_s = (target_s[ret_col].mean() * mult) if not target_s.empty else 0.0
 
+        s_codes = target_s['종목코드'].tolist() # 달리는 말에 선정된 종목코드 추출
+        target_p_unique = target_p[~target_p['종목코드'].isin(s_codes)] # 퍼펙트 종목 중 달리는 말과 겹치는 것 제외
+        ret_p_unique = (target_p_unique[ret_col].mean() * mult) if not target_p_unique.empty else 0.0
+        
+        # 달리는말 전체 수익률(50%) + 중복제외된 퍼펙트 수익률(50%)
+        ret_ensemble_priority = (ret_s + ret_p_unique) / 2
+
         combined_codes_unique = list(set(target_p['종목코드'].tolist() + target_s['종목코드'].tolist()))
         ret_total_unique = (m_data[m_data['종목코드'].isin(combined_codes_unique)][ret_col].mean() * mult) if combined_codes_unique else 0.0
         
@@ -206,6 +213,7 @@ def run_backtest_korea(df, start_year, end_year, ma_months, apply_timing, rank_p
             f'🔥 퍼펙트 상승 ({rank_p[0]}~{rank_p[1]}위)': ret_p, 
             f'🐎 달리는 말 ({rank_s[0]}~{rank_s[1]}위)': ret_s, 
             '앙상블 (50:50 전략)': (ret_p+ret_s)/2, 
+            '앙상블 (달리는말 우선 50:50)': ret_ensemble_priority,
             '통합 전략 (중복 제외 1/N)': ret_total_unique,
             '통합 전략 (중복 인정 1/N)': ret_total_dup
         })
