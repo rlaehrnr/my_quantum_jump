@@ -16,7 +16,6 @@ from utils.calculator import calc_us_momentum
 
 inject_custom_css()
 
-# 💡 [해결 1] S&P500(Yahoo Finance) 접속 불량 시 FinanceDataReader로 우회하는 이중 방어막
 @st.cache_data(ttl=3600)
 def robust_get_us_ma_all(target_date_str, ticker='^GSPC'):
     import yfinance as yf
@@ -78,7 +77,6 @@ def robust_get_us_idx_return(target_date_str, ticker='^GSPC'):
         return ret_1m, ret_3m
     except Exception: return 0.0, 0.0
 
-# 💡 [해결 4] 백테스트 속도 최적화를 위한 지수 이력 단독 캐싱
 @st.cache_data(ttl=86400, show_spinner=False)
 def get_spx_history_cached():
     import yfinance as yf
@@ -93,12 +91,12 @@ def get_spx_history_cached():
         return spx
     except: return pd.DataFrame()
 
-# 💡 [해결 4] 엑셀 리포트 생성기 단독 캐싱 (버튼 누를 때 딜레이 완벽 제거)
+# 💡 [해결 1] AttributeError 해결 (settings_tuple 사용)
 @st.cache_data(show_spinner=False)
-def generate_excel_report_cached(settings_dict, df_stats, df_monthly, df_cum_ret, df_trade):
+def generate_excel_report_cached(settings_tuple, df_stats, df_monthly, df_cum_ret, df_trade):
     output = io.BytesIO()
     with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
-        df_set = pd.DataFrame(list(settings_dict.items()), columns=['설정 항목', '값'])
+        df_set = pd.DataFrame(list(settings_tuple), columns=['설정 항목', '값'])
         df_set.to_excel(writer, sheet_name='요약_및_통계', index=False, startrow=0)
         df_stats.to_excel(writer, sheet_name='요약_및_통계', index=False, startrow=len(df_set) + 2)
         df_monthly.to_excel(writer, sheet_name='월별_수익률', index=False)
@@ -185,21 +183,26 @@ us_main_cfg.update({
     '시가총액': st.column_config.NumberColumn('시가총액', format="%d")
 })
 
+# 💡 [해결 3] 컬럼 순서도 다시 6-1개월이 먼저 오도록 복원
 col_order_strat1 = ['순위', '통합티커_L', '종목명_L', '12-1개월(%)', '6-1개월(%)', '이번달수익률']
-col_order_strat2 = ['순위', '통합티커_L', '종목명_L', '3-1개월(%)', '6-1개월(%)', '이번달수익률']
+col_order_strat2 = ['순위', '통합티커_L', '종목명_L', '6-1개월(%)', '3-1개월(%)', '이번달수익률']
 col_order_d1 = ['순위', '통합티커_L', '종목명_L', '12-1개월(%)', '6-1개월(%)']
-col_order_d2 = ['순위', '통합티커_L', '종목명_L', '3-1개월(%)', '6-1개월(%)']
+col_order_d2 = ['순위', '통합티커_L', '종목명_L', '6-1개월(%)', '3-1개월(%)']
 
 naver_exceptions = {'CIEN': '.K', 'COHR': '.K', 'EQNR': '.K', 'DELL': '.K'}
 def get_naver_ticker(code): return f"{code}{naver_exceptions.get(code, '.O')}"
 
+# 💡 [해결 3] 6-1개월 기준으로 정렬 방식 완벽 복원
 def get_strategy_stocks_us_custom(df_month, top_n_12=150, top_n_6=150, top_n_3=150):
     df_calc = calc_us_momentum(df_month)
+    
     top_12 = df_calc.sort_values('12-1개월(%)', ascending=False).head(top_n_12)
     top_6 = df_calc.sort_values('6-1개월(%)', ascending=False).head(top_n_6)
     top_3 = df_calc.sort_values('3-1개월(%)', ascending=False).head(top_n_3)
+    
     strat1 = top_12[top_12['종목코드'].isin(top_6['종목코드'])].sort_values('6-1개월(%)', ascending=False)
-    strat2 = top_6[top_6['종목코드'].isin(top_3['종목코드'])].sort_values('3-1개월(%)', ascending=False)
+    strat2 = top_6[top_6['종목코드'].isin(top_3['종목코드'])].sort_values('6-1개월(%)', ascending=False)
+    
     return df_calc, strat1, strat2
 
 @st.cache_data(show_spinner=False)
@@ -347,18 +350,20 @@ with tab1:
             with col_r2:
                 avg_ret_s = df_strat2_t1.head(top_n_s)['이번달수익률'].mean() if count_s > 0 else 0
                 st.markdown(f"<div style='margin-top:8px; font-size:0.85rem; font-weight:bold;'>상위 {top_n_s}개 평균: <span style='color:{'#D32F2F' if avg_ret_s>0 else '#1976D2'};'>{avg_ret_s:+.2f}%</span></div>", unsafe_allow_html=True)
-            st.markdown('<p class="strategy-desc">6-1M & 3-1M 각각 150위 이내 교집합 종목 (3-1M 순)</p>', unsafe_allow_html=True)
+            st.markdown('<p class="strategy-desc">6-1M & 3-1M 각각 150위 이내 교집합 종목 (6-1M 순)</p>', unsafe_allow_html=True)
 
-        # 💡 [해결 2] 선택된 모든 종목(연두색)과 양쪽 겹치는 종목(노란색)을 하단 표까지 연동
+        # 💡 [해결 2] 9위 10위 색상 오염 방지를 위해 하이라이트 코드를 각각 독립적으로 분리!
         sel_codes_p = df_strat1_t1.head(top_n_p)['종목코드'].tolist()
         sel_codes_s = df_strat2_t1.head(top_n_s)['종목코드'].tolist()
-        highlight_codes_t1 = list(set(sel_codes_p + sel_codes_s))
         overlap_codes_t1 = set(sel_codes_p).intersection(set(sel_codes_s))
+        
+        # 하단 전체 표를 위한 총합
+        highlight_codes_all_t1 = list(set(sel_codes_p + sel_codes_s))
 
         with c_l:
-            st.dataframe(df_strat1_t1.style.apply(apply_korea_styling, highlight_codes=highlight_codes_t1, overlap_codes=overlap_codes_t1, axis=1), use_container_width=True, hide_index=True, column_order=col_order_strat1, column_config=us_main_cfg)
+            st.dataframe(df_strat1_t1.style.apply(apply_korea_styling, highlight_codes=sel_codes_p, overlap_codes=overlap_codes_t1, axis=1), use_container_width=True, hide_index=True, column_order=col_order_strat1, column_config=us_main_cfg)
         with c_r:
-            st.dataframe(df_strat2_t1.style.apply(apply_korea_styling, highlight_codes=highlight_codes_t1, overlap_codes=overlap_codes_t1, axis=1), use_container_width=True, hide_index=True, column_order=col_order_strat2, column_config=us_main_cfg)
+            st.dataframe(df_strat2_t1.style.apply(apply_korea_styling, highlight_codes=sel_codes_s, overlap_codes=overlap_codes_t1, axis=1), use_container_width=True, hide_index=True, column_order=col_order_strat2, column_config=us_main_cfg)
 
         st.markdown("<hr style='margin: 1.5rem 0;'>", unsafe_allow_html=True)
         st.markdown("### 🏆 기간별 모멘텀 상위 30위")
@@ -372,18 +377,18 @@ with tab1:
         col_m1, col_m2, col_m3 = st.columns(3)
         with col_m1:
             st.markdown("#### 🥇 12-1개월 모멘텀")
-            st.dataframe(df_12_1.style.apply(apply_korea_styling, highlight_codes=highlight_codes_t1, overlap_codes=overlap_codes_t1, axis=1), use_container_width=True, hide_index=True, column_order=['순위', '통합티커_L', '종목명_L', '12-1개월(%)'], column_config=us_main_cfg)
+            st.dataframe(df_12_1.style.apply(apply_korea_styling, highlight_codes=highlight_codes_all_t1, overlap_codes=overlap_codes_t1, axis=1), use_container_width=True, hide_index=True, column_order=['순위', '통합티커_L', '종목명_L', '12-1개월(%)'], column_config=us_main_cfg)
         with col_m2:
             st.markdown("#### 🥈 6-1개월 모멘텀")
-            st.dataframe(df_6_1.style.apply(apply_korea_styling, highlight_codes=highlight_codes_t1, overlap_codes=overlap_codes_t1, axis=1), use_container_width=True, hide_index=True, column_order=['순위', '통합티커_L', '종목명_L', '6-1개월(%)'], column_config=us_main_cfg)
+            st.dataframe(df_6_1.style.apply(apply_korea_styling, highlight_codes=highlight_codes_all_t1, overlap_codes=overlap_codes_t1, axis=1), use_container_width=True, hide_index=True, column_order=['순위', '통합티커_L', '종목명_L', '6-1개월(%)'], column_config=us_main_cfg)
         with col_m3:
             st.markdown("#### 🥉 3-1개월 모멘텀")
-            st.dataframe(df_3_1.style.apply(apply_korea_styling, highlight_codes=highlight_codes_t1, overlap_codes=overlap_codes_t1, axis=1), use_container_width=True, hide_index=True, column_order=['순위', '통합티커_L', '종목명_L', '3-1개월(%)'], column_config=us_main_cfg)
+            st.dataframe(df_3_1.style.apply(apply_korea_styling, highlight_codes=highlight_codes_all_t1, overlap_codes=overlap_codes_t1, axis=1), use_container_width=True, hide_index=True, column_order=['순위', '통합티커_L', '종목명_L', '3-1개월(%)'], column_config=us_main_cfg)
 
         st.markdown("---")
         st.markdown(f"### 🌐 S&P 500 전체 순위 <span style='font-size: 0.85rem; color: #9ca3af; font-weight:normal;'>&nbsp;&nbsp;💡 선정일: {base_date.strftime('%Y-%m-%d') if isinstance(base_date, pd.Timestamp) else base_date}</span>", unsafe_allow_html=True)
         cols_m = ['순위', '통합티커_L', '종목명_L', '시가총액', '종가', '1개월(%)', '3개월(%)', '6개월(%)', '12개월(%)', '12-1개월(%)', '6-1개월(%)', '3-1개월(%)', '이번달수익률']
-        st.dataframe(df_us_t1.style.apply(apply_korea_styling, highlight_codes=highlight_codes_t1, overlap_codes=overlap_codes_t1, axis=1), use_container_width=True, height=600, hide_index=True, column_order=cols_m, column_config=us_main_cfg)
+        st.dataframe(df_us_t1.style.apply(apply_korea_styling, highlight_codes=highlight_codes_all_t1, overlap_codes=overlap_codes_t1, axis=1), use_container_width=True, height=600, hide_index=True, column_order=cols_m, column_config=us_main_cfg)
 
 # ==========================================
 # 탭 2. 실시간 데일리 순위
@@ -427,10 +432,11 @@ with tab2:
 
         ma_df_d = pd.DataFrame([
             {'지수_L': f"https://m.stock.naver.com/worldstock/index/.INX/total#S&P500", '현재가_L': f"https://m.stock.naver.com/fchart/foreign/index/.INX#{spx_curr_d:,.2f}", 'base_price': round(spx_curr_d, 2), '4개월선': spx_mas_d.get(4, 0), '5개월선': spx_mas_d.get(5, 0), '6개월선': spx_mas_d.get(6, 0), '10개월선': spx_mas_d.get(10, 0), '12개월선': spx_mas_d.get(12, 0)},
-            {'지수_L': f"https://m.stock.naver.com/worldstock/index/.IXIC/total#NASDAQ", '현재가_L': f"https://m.stock.naver.com/fchart/foreign/index/.IXIC#{ndx_curr_d:,.2f}", 'base_price': round(ndx_curr_d, 2), '4개월선': ndx_mas_d.get(4, 0), '5개월선': ndx_mas_d.get(5, 0), '6개월선': ndx_mas_d.get(6, 0), '10개월선': ndx_mas_d.get(10, 0), '12개월선': ndx_mas_d.get(12, 0)}
+            {'지수_L': f"https://m.stock.naver.com/worldstock/index/.IXIC/total#NASDAQ", '현재가_L': f"https://m.stock.naver.com/fchart/foreign/index/.IXIC#{ndx_curr_d:,.2f}", 'base_price': round(ndx_curr_d, 2), '4개월선': ndx_mas_d.get(4, 0), '5개월선': ndx_mas.get(5, 0), '6개월선': ndx_mas.get(6, 0), '10개월선': ndx_mas.get(10, 0), '12개월선': ndx_mas.get(12, 0)}
         ])
         st.dataframe(style_kospi_ma(ma_df_d), use_container_width=True, hide_index=True, column_config=ma_cfg)
         
+        # 💡 [해결 1] 잘리기 전에 미리 네이버 링크부터 달아줍니다.
         df_daily['통합티커_L'] = df_daily.apply(lambda r: f"https://m.stock.naver.com/worldstock/stock/{get_naver_ticker(r['종목코드'])}/total#{r.get('통합티커', r['종목코드'])}", axis=1)
         df_daily['종목명_L'] = df_daily.apply(lambda r: f"https://m.stock.naver.com/fchart/foreign/stock/{get_naver_ticker(r['종목코드'])}#{r['종목명']}", axis=1)
 
@@ -516,17 +522,18 @@ with tab2:
             with col_i2: top_n_s_d = st.number_input("s_n", 1, max(1, count_s_d), val_s_d, key="calc_s_us_d", label_visibility="collapsed")
             with col_r2:
                 avg_ret_s_d = df_strat2_d.head(top_n_s_d)['이번달수익률'].mean() if count_s_d > 0 and '이번달수익률' in df_strat2_d.columns else 0
-            st.markdown('<p class="strategy-desc">6-1M & 3-1M 각각 150위 이내 교집합 종목 (3-1M 순)</p>', unsafe_allow_html=True)
+            st.markdown('<p class="strategy-desc">6-1M & 3-1M 각각 150위 이내 교집합 종목 (6-1M 순)</p>', unsafe_allow_html=True)
             
+        # 💡 [해결 2] 데일리 탭도 독립적 하이라이트 분리
         sel_codes_p_d = df_strat1_d.head(top_n_p_d)['종목코드'].tolist()
         sel_codes_s_d = df_strat2_d.head(top_n_s_d)['종목코드'].tolist()
-        highlight_codes_d = list(set(sel_codes_p_d + sel_codes_s_d))
         overlap_codes_d = set(sel_codes_p_d).intersection(set(sel_codes_s_d))
+        highlight_codes_all_d = list(set(sel_codes_p_d + sel_codes_s_d))
 
         with c_d1:
-            st.dataframe(df_strat1_d.style.apply(apply_korea_styling, highlight_codes=highlight_codes_d, overlap_codes=overlap_codes_d, axis=1), use_container_width=True, hide_index=True, column_order=col_order_d1, column_config=us_main_cfg)
+            st.dataframe(df_strat1_d.style.apply(apply_korea_styling, highlight_codes=sel_codes_p_d, overlap_codes=overlap_codes_d, axis=1), use_container_width=True, hide_index=True, column_order=col_order_d1, column_config=us_main_cfg)
         with c_d2:
-            st.dataframe(df_strat2_d.style.apply(apply_korea_styling, highlight_codes=highlight_codes_d, overlap_codes=overlap_codes_d, axis=1), use_container_width=True, hide_index=True, column_order=col_order_d2, column_config=us_main_cfg)
+            st.dataframe(df_strat2_d.style.apply(apply_korea_styling, highlight_codes=sel_codes_s_d, overlap_codes=overlap_codes_d, axis=1), use_container_width=True, hide_index=True, column_order=col_order_d2, column_config=us_main_cfg)
             
         st.markdown("<hr style='margin: 1.5rem 0;'>", unsafe_allow_html=True)
         st.markdown("### 🏆 기간별 모멘텀 상위 30위")
@@ -540,18 +547,18 @@ with tab2:
         col_d1, col_d2, col_d3 = st.columns(3)
         with col_d1:
             st.markdown("#### 🥇 12-1개월 모멘텀")
-            st.dataframe(df_12_1_d.style.apply(apply_korea_styling, highlight_codes=highlight_codes_d, overlap_codes=overlap_codes_d, axis=1), use_container_width=True, hide_index=True, column_order=['순위', '통합티커_L', '종목명_L', '12-1개월(%)'], column_config=us_main_cfg)
+            st.dataframe(df_12_1_d.style.apply(apply_korea_styling, highlight_codes=highlight_codes_all_d, overlap_codes=overlap_codes_d, axis=1), use_container_width=True, hide_index=True, column_order=['순위', '통합티커_L', '종목명_L', '12-1개월(%)'], column_config=us_main_cfg)
         with col_d2:
             st.markdown("#### 🥈 6-1개월 모멘텀")
-            st.dataframe(df_6_1_d.style.apply(apply_korea_styling, highlight_codes=highlight_codes_d, overlap_codes=overlap_codes_d, axis=1), use_container_width=True, hide_index=True, column_order=['순위', '통합티커_L', '종목명_L', '6-1개월(%)'], column_config=us_main_cfg)
+            st.dataframe(df_6_1_d.style.apply(apply_korea_styling, highlight_codes=highlight_codes_all_d, overlap_codes=overlap_codes_d, axis=1), use_container_width=True, hide_index=True, column_order=['순위', '통합티커_L', '종목명_L', '6-1개월(%)'], column_config=us_main_cfg)
         with col_d3:
             st.markdown("#### 🥉 3-1개월 모멘텀")
-            st.dataframe(df_3_1_d.style.apply(apply_korea_styling, highlight_codes=highlight_codes_d, overlap_codes=overlap_codes_d, axis=1), use_container_width=True, hide_index=True, column_order=['순위', '통합티커_L', '종목명_L', '3-1개월(%)'], column_config=us_main_cfg)
+            st.dataframe(df_3_1_d.style.apply(apply_korea_styling, highlight_codes=highlight_codes_all_d, overlap_codes=overlap_codes_d, axis=1), use_container_width=True, hide_index=True, column_order=['순위', '통합티커_L', '종목명_L', '3-1개월(%)'], column_config=us_main_cfg)
 
         st.markdown("---")
         st.markdown(f"### 🌐 S&P 500 전체 순위 <span style='font-size: 0.85rem; color: #9ca3af; font-weight:normal;'>&nbsp;&nbsp;💡 기준일: {b_date_d}</span>", unsafe_allow_html=True)
         cols_d = ['순위', '통합티커_L', '종목명_L', '시가총액', '종가', '거래량', '1개월(%)', '3개월(%)', '6개월(%)', '12개월(%)', '12-1개월(%)', '6-1개월(%)', '3-1개월(%)']
-        st.dataframe(df_us_d.style.apply(apply_korea_styling, highlight_codes=highlight_codes_d, overlap_codes=overlap_codes_d, axis=1), use_container_width=True, height=600, hide_index=True, column_order=cols_d, column_config=us_main_cfg)
+        st.dataframe(df_us_d.style.apply(apply_korea_styling, highlight_codes=highlight_codes_all_d, overlap_codes=overlap_codes_d, axis=1), use_container_width=True, height=600, hide_index=True, column_order=cols_d, column_config=us_main_cfg)
 
 # ==========================================
 # 탭 3. 전략 백테스트
@@ -571,7 +578,6 @@ with tab3:
         
         c_ex1, c_ex2, c_ex3, c_ex4 = st.columns([1, 1.2, 1.2, 0.8])
         with c_ex1: 
-            # 💡 [해결 3] 추출 기준 150위 고정
             top_n_t3 = st.number_input("🎯 교집합 추출 기준 (N위)", min_value=1, max_value=500, value=150, key='t3_n_all')
         with c_ex2: 
             rank_p_s, rank_p_e = st.slider("🔥 12-1&6-1 매수 순위", 1, 30, (1, 5), key='t3_rnk1_us')
@@ -585,9 +591,10 @@ with tab3:
         st.session_state['run_bt_state_us'] = True
 
     if st.session_state.get('run_bt_state_us', False):
+        # 💡 [해결 4] 백테스트 렌더링 속도를 극대화하는 캐싱 로직 탑재 완료
         spx_hist = get_spx_history_cached()
         
-        with st.spinner("미국 모멘텀 백테스트 구동 중..."):
+        with st.spinner("미국 모멘텀 백테스트 구동 중... (동일 조건일 경우 0.1초 렌더링)"):
             df_res, df_trades = run_backtest_us_fast(
                 df_master, start_year, end_year, ma_months_t3, apply_timing, 
                 (rank_p_s, rank_p_e), (rank_s_s, rank_s_e), 
@@ -620,7 +627,6 @@ with tab3:
                     '6-1&3-1 매수 순위': f"{rank_s_s}위 ~ {rank_s_e}위"
                 }
 
-                # 💡 [해결 4] 엑셀 생성기를 캐싱하여 다운로드 딜레이와 불필요한 계산 완벽 차단
                 excel_data = generate_excel_report_cached(tuple(settings_dict.items()), stats_df, df_res, df_cum, df_trades)
 
                 col_t, col_b = st.columns([7.5, 2.5])
