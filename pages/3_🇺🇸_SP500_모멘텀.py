@@ -15,23 +15,17 @@ from utils.calculator import calc_us_momentum, get_strategy_stocks_us, map_engli
 
 inject_custom_css()
 
-# ==========================================
-# 💡 [핵심 해결 1] 미국 지수 안전 호출 (시차 및 휴장일 완벽 방어)
-# ==========================================
 @st.cache_data(ttl=3600)
 def robust_get_us_ma_all(target_date_str, ticker='^GSPC'):
     import yfinance as yf
     try:
         target_date = pd.to_datetime(target_date_str)
         tk = yf.Ticker(ticker)
-        # 특정 날짜를 지정하지 않고 2년치를 넉넉히 불러온 뒤 잘라내어 시차 에러 원천 차단
         df = tk.history(period="2y")
         if df.empty: return 0.0, {}
         if df.index.tz is not None: df.index = df.index.tz_localize(None)
-        
         df = df[df.index <= target_date + pd.Timedelta(days=1)]
         if df.empty: return 0.0, {}
-        
         curr_p = df['Close'].iloc[-1]
         mas = {
             4: round(df['Close'].rolling(80).mean().iloc[-1], 2),
@@ -41,8 +35,7 @@ def robust_get_us_ma_all(target_date_str, ticker='^GSPC'):
             12: round(df['Close'].rolling(240).mean().iloc[-1], 2)
         }
         return curr_p, mas
-    except Exception:
-        return 0.0, {}
+    except Exception: return 0.0, {}
 
 @st.cache_data(ttl=3600)
 def robust_get_us_idx_return(target_date_str, ticker='^GSPC'):
@@ -53,18 +46,15 @@ def robust_get_us_idx_return(target_date_str, ticker='^GSPC'):
         df = tk.history(period="2y")
         if df.empty: return 0.0, 0.0
         if df.index.tz is not None: df.index = df.index.tz_localize(None)
-        
         df = df[df.index <= target_date + pd.Timedelta(days=1)]
         if df.empty: return 0.0, 0.0
-
         curr_p = df['Close'].iloc[-1]
         df_1m = df[df.index <= target_date - pd.DateOffset(months=1)]
         ret_1m = round(((curr_p / df_1m['Close'].iloc[-1]) - 1) * 100, 2) if not df_1m.empty else 0.0
         df_3m = df[df.index <= target_date - pd.DateOffset(months=3)]
         ret_3m = round(((curr_p / df_3m['Close'].iloc[-1]) - 1) * 100, 2) if not df_3m.empty else 0.0
         return ret_1m, ret_3m
-    except Exception:
-        return 0.0, 0.0
+    except Exception: return 0.0, 0.0
 
 st.markdown('''
     <div style="margin-bottom: 20px;">
@@ -87,12 +77,20 @@ if df_master.empty:
     st.stop()
 
 # ==========================================
-# 💡 [핵심 해결 2] 4월(영어) + 5월(한글) 컬럼 융합 및 에러 방어
+# 💡 [핵심 방어막] 5월 데이터 삭제 방지 (이 코드가 5월을 구출합니다)
 # ==========================================
-df_master = map_english_columns(df_master)
+if 'Date' in df_master.columns:
+    if '종목선정일' not in df_master.columns: df_master['종목선정일'] = df_master['Date']
+    else: df_master['종목선정일'] = df_master['종목선정일'].combine_first(df_master['Date'])
+if 'Ticker' in df_master.columns:
+    if '종목코드' not in df_master.columns: df_master['종목코드'] = df_master['Ticker']
+    else: df_master['종목코드'] = df_master['종목코드'].combine_first(df_master['Ticker'])
+if 'Year' in df_master.columns:
+    if '투자연도' not in df_master.columns: df_master['투자연도'] = df_master['Year']
+    else: df_master['투자연도'] = df_master['투자연도'].combine_first(df_master['Year'])
 
-if 'Date' in df_master.columns and '종목선정일' not in df_master.columns: df_master['종목선정일'] = df_master['Date']
-if 'Ticker' in df_master.columns and '종목코드' not in df_master.columns: df_master['종목코드'] = df_master['Ticker']
+# 구출 후 안전하게 매핑 진행
+df_master = map_english_columns(df_master)
 
 df_master = df_master.dropna(subset=['종목코드'])
 df_master['종목코드'] = df_master['종목코드'].astype(str).replace('nan', '')
@@ -108,7 +106,6 @@ df_master['시장'] = np.where(df_master['시장'].astype(str).str.lower() == 'n
 
 df_master['통합티커'] = df_master['시장'] + ":" + df_master['종목코드']
 
-# 날짜 재조립 (5월 데이터 복구)
 df_master['종목선정일'] = pd.to_datetime(df_master['종목선정일'], errors='coerce')
 df_master = df_master.dropna(subset=['종목선정일'])
 target_dates = df_master['종목선정일'] + pd.Timedelta(days=15)
@@ -126,7 +123,6 @@ years_list = sorted(valid_years)
 min_y, max_y = min(years_list), max(years_list)
 if min_y >= max_y: min_y = max_y - 1 
 
-# UI 표 설정
 us_main_cfg = main_cfg.copy()
 us_main_cfg.update({
     '12-1개월(%)': st.column_config.NumberColumn('12-1개월(%)', format="%.2f%%"),
@@ -136,15 +132,13 @@ us_main_cfg.update({
     '시가총액': st.column_config.NumberColumn('시가총액', format="%d")
 })
 
-# 💡 [핵심 해결 3] 전략 랭킹표에서 시가총액/종가 컬럼 제거 완료! (전체 순위표에만 남음)
 col_order_strat1 = ['순위', '통합티커_L', '종목명_L', '12-1개월(%)', '6-1개월(%)', '이번달수익률']
 col_order_strat2 = ['순위', '통합티커_L', '종목명_L', '6-1개월(%)', '3-1개월(%)', '이번달수익률']
 col_order_d1 = ['순위', '통합티커_L', '종목명_L', '12-1개월(%)', '6-1개월(%)']
 col_order_d2 = ['순위', '통합티커_L', '종목명_L', '6-1개월(%)', '3-1개월(%)']
 
 naver_exceptions = {'CIEN': '.K', 'COHR': '.K', 'EQNR': '.K', 'DELL': '.K'}
-def get_naver_ticker(code):
-    return f"{code}{naver_exceptions.get(code, '.O')}"
+def get_naver_ticker(code): return f"{code}{naver_exceptions.get(code, '.O')}"
 
 @st.cache_data(show_spinner=False)
 def cached_run_backtest_us(df, start_year, end_year, ma_months, apply_timing, rank_s1, rank_s2):
@@ -277,8 +271,6 @@ with tab2:
         df_daily = pd.read_csv(f_daily)
         df_daily = map_english_columns(df_daily)
         
-        # 💡 [핵심 해결 4] Pandas replace 에러 완벽 차단 및 데일리 예외처리
-        if 'Ticker' in df_daily.columns and '종목코드' not in df_daily.columns: df_daily['종목코드'] = df_daily['Ticker']
         df_daily = df_daily.dropna(subset=['종목코드'])
         df_daily['종목코드'] = df_daily['종목코드'].astype(str).replace('nan', '')
         df_daily = df_daily[df_daily['종목코드'] != '']
