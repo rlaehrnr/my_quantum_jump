@@ -52,7 +52,7 @@ def preprocess_us_data(df, is_daily=False):
     return df
 
 def add_naver_links(df):
-    naver_exceptions = {'CIEN': '.K', 'COHR': '.K', 'EQNR': '.K', 'DELL': '.K'}
+    naver_exceptions = {'CIEN': '.K', 'COHR': '.K', 'EQNR': '.K', 'DELL': '.K', 'KEYS': '.K'}
     def get_naver_ticker(code): return f"{code}{naver_exceptions.get(code, '.O')}"
     
     df['통합티커_L'] = df.apply(lambda r: f"https://m.stock.naver.com/worldstock/stock/{get_naver_ticker(r['종목코드'])}/total#{r.get('통합티커', r['종목코드'])}", axis=1)
