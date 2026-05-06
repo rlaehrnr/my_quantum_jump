@@ -5,6 +5,7 @@ from datetime import datetime, timedelta
 import os
 import FinanceDataReader as fdr
 import numpy as np
+import io  # 💡 엑셀 파일 생성을 위한 라이브러리 추가
 
 st.set_page_config(page_title="US S&P 500 모멘텀 터미널", layout="wide")
 
@@ -133,16 +134,16 @@ us_main_cfg.update({
     '시가총액': st.column_config.NumberColumn('시가총액', format="%d")
 })
 
-# 💡 6-1M & 3-1M의 컬럼 순서를 '3-1개월'이 먼저 오도록 배치
+# 💡 [복구 완료] 6-1M 이 표의 앞쪽(우선순위)에 오도록 다시 복구했습니다.
 col_order_strat1 = ['순위', '통합티커_L', '종목명_L', '12-1개월(%)', '6-1개월(%)', '이번달수익률']
-col_order_strat2 = ['순위', '통합티커_L', '종목명_L', '3-1개월(%)', '6-1개월(%)', '이번달수익률']
+col_order_strat2 = ['순위', '통합티커_L', '종목명_L', '6-1개월(%)', '3-1개월(%)', '이번달수익률']
 col_order_d1 = ['순위', '통합티커_L', '종목명_L', '12-1개월(%)', '6-1개월(%)']
-col_order_d2 = ['순위', '통합티커_L', '종목명_L', '3-1개월(%)', '6-1개월(%)']
+col_order_d2 = ['순위', '통합티커_L', '종목명_L', '6-1개월(%)', '3-1개월(%)']
 
 naver_exceptions = {'CIEN': '.K', 'COHR': '.K', 'EQNR': '.K', 'DELL': '.K'}
 def get_naver_ticker(code): return f"{code}{naver_exceptions.get(code, '.O')}"
 
-# 💡 [핵심 해결 1] 기본 150위 추출 및 6-1&3-1은 '3-1개월' 기준 정렬
+# 💡 [복구 완료] 정렬 기준을 다시 6-1개월(%)로 완벽 복구했습니다.
 def get_strategy_stocks_us_custom(df_month, top_n_12=150, top_n_6=150, top_n_3=150):
     df_calc = calc_us_momentum(df_month)
     
@@ -151,8 +152,7 @@ def get_strategy_stocks_us_custom(df_month, top_n_12=150, top_n_6=150, top_n_3=1
     top_3 = df_calc.sort_values('3-1개월(%)', ascending=False).head(top_n_3)
     
     strat1 = top_12[top_12['종목코드'].isin(top_6['종목코드'])].sort_values('6-1개월(%)', ascending=False)
-    # 💡 3-1개월(%) 우선 정렬
-    strat2 = top_6[top_6['종목코드'].isin(top_3['종목코드'])].sort_values('3-1개월(%)', ascending=False)
+    strat2 = top_6[top_6['종목코드'].isin(top_3['종목코드'])].sort_values('6-1개월(%)', ascending=False)
     
     return df_calc, strat1, strat2
 
@@ -263,7 +263,6 @@ with tab1:
         df_monthly['통합티커_L'] = df_monthly.apply(lambda r: f"https://m.stock.naver.com/worldstock/stock/{get_naver_ticker(r['종목코드'])}/total#{r.get('통합티커', r['종목코드'])}", axis=1)
         df_monthly['종목명_L'] = df_monthly.apply(lambda r: f"https://m.stock.naver.com/fchart/foreign/stock/{get_naver_ticker(r['종목코드'])}#{r['종목명']}", axis=1)
 
-        # 💡 상위 150위 추출 교집합
         df_us_t1, df_strat1_t1, df_strat2_t1 = get_strategy_stocks_us_custom(df_monthly, top_n_12=150, top_n_6=150, top_n_3=150)
         spx_1m, spx_3m = robust_get_us_idx_return(base_date, '^GSPC')
         ndx_1m, ndx_3m = robust_get_us_idx_return(base_date, '^IXIC')
@@ -310,7 +309,7 @@ with tab1:
             with col_r2:
                 avg_ret_s = df_strat2_t1.head(top_n_s)['이번달수익률'].mean() if count_s > 0 else 0
                 st.markdown(f"<div style='margin-top:8px; font-size:0.85rem; font-weight:bold;'>상위 {top_n_s}개 평균: <span style='color:{'#D32F2F' if avg_ret_s>0 else '#1976D2'};'>{avg_ret_s:+.2f}%</span></div>", unsafe_allow_html=True)
-            st.markdown('<p class="strategy-desc">6-1M & 3-1M 각각 150위 이내 교집합 종목 (3-1M 순)</p>', unsafe_allow_html=True)
+            st.markdown('<p class="strategy-desc">6-1M & 3-1M 각각 150위 이내 교집합 종목 (6-1M 순)</p>', unsafe_allow_html=True)
 
         overlap_codes_t1 = set(df_strat1_t1.head(top_n_p)['종목코드']).intersection(set(df_strat2_t1.head(top_n_s)['종목코드']))
 
@@ -393,7 +392,6 @@ with tab2:
         df_daily['통합티커_L'] = df_daily.apply(lambda r: f"https://m.stock.naver.com/worldstock/stock/{get_naver_ticker(r['종목코드'])}/total#{r.get('통합티커', r['종목코드'])}", axis=1)
         df_daily['종목명_L'] = df_daily.apply(lambda r: f"https://m.stock.naver.com/fchart/foreign/stock/{get_naver_ticker(r['종목코드'])}#{r['종목명']}", axis=1)
 
-        # 💡 상위 150위 추출 교집합
         df_us_d, df_strat1_d, df_strat2_d = get_strategy_stocks_us_custom(df_daily, top_n_12=150, top_n_6=150, top_n_3=150)
         spx_1m_d, spx_3m_d = robust_get_us_idx_return(safe_date, '^GSPC')
         ndx_1m_d, ndx_3m_d = robust_get_us_idx_return(safe_date, '^IXIC')
@@ -476,7 +474,7 @@ with tab2:
             with col_i2: top_n_s_d = st.number_input("s_n", 1, max(1, count_s_d), val_s_d, key="calc_s_us_d", label_visibility="collapsed")
             with col_r2:
                 avg_ret_s_d = df_strat2_d.head(top_n_s_d)['이번달수익률'].mean() if count_s_d > 0 and '이번달수익률' in df_strat2_d.columns else 0
-            st.markdown('<p class="strategy-desc">6-1M & 3-1M 각각 150위 이내 교집합 종목 (3-1M 순)</p>', unsafe_allow_html=True)
+            st.markdown('<p class="strategy-desc">6-1M & 3-1M 각각 150위 이내 교집합 종목 (6-1M 순)</p>', unsafe_allow_html=True)
             
         overlap_codes_d = set(df_strat1_d.head(top_n_p_d)['종목코드']).intersection(set(df_strat2_d.head(top_n_s_d)['종목코드']))
 
@@ -526,10 +524,9 @@ with tab3:
         st.markdown("<hr style='margin: 10px 0px;'>", unsafe_allow_html=True)
         st.markdown("##### ✂️ 모멘텀 추출 및 매수 순위 설정")
         
-        # 💡 [핵심 해결 2] 설정 항목들을 한 줄에 압축 배치
         c_ex1, c_ex2, c_ex3, c_ex4 = st.columns([1, 1.2, 1.2, 0.8])
         with c_ex1: 
-            top_n_t3 = st.number_input("🎯 교집합 추출 기준 (N위)", min_value=1, max_value=500, value=150, key='t3_n_all')
+            top_n_t3 = st.number_input("🎯 교집합 추출 기준 (N위)", min_value=1, max_value=500, value=10, key='t3_n_all')
         with c_ex2: 
             rank_p_s, rank_p_e = st.slider("🔥 12-1&6-1 매수 순위", 1, 30, (1, 5), key='t3_rnk1_us')
         with c_ex3: 
@@ -554,10 +551,6 @@ with tab3:
                 df_cum.loc[(pd.to_datetime(df_res['투자월'].iloc[0]) - pd.DateOffset(months=1)).strftime('%Y-%m')] = 100
                 df_cum = df_cum.sort_index()
 
-                col_t, col_b = st.columns([7.5, 2.5])
-                with col_t: st.markdown("#### 📊 전략 핵심 통계 (초기 자본 100 기준)")
-                with col_b: st.download_button("📥 상세내역 다운로드", df_trades.to_csv(index=False).encode('utf-8-sig'), "US_조합_백테스트.csv", "text/csv", use_container_width=True)
-
                 stats = []
                 for col in s_cols:
                     final_val = df_cum[col].iloc[-1]
@@ -567,7 +560,53 @@ with tab3:
                     mdd = ((df_cum[col]/df_cum[col].cummax())-1).min()*100
                     stats.append({"전략명": col, "CAGR (연평균)": f"{cagr:.1f}%", "총 누적수익률": f"{final_val-100:,.1f}%", "MDD (최대낙폭)": f"{mdd:.1f}%", "투자월 비율": f"{(df_res['invested'].sum()/len(df_res))*100:.1f}%", "월별 승률": f"{win_rate:.1f}%", "평균 수익률": f"{df_res.loc[df_res['invested'], col].mean():.2f}%" if df_res['invested'].any() else "0.00%"})
                 
-                st.dataframe(get_styled_stats(pd.DataFrame(stats)), use_container_width=True, hide_index=True)
+                stats_df = pd.DataFrame(stats)
+                
+                # 💡 [해결 3] 궁극의 엑셀 리포트 데이터 생성
+                settings_dict = {
+                    '테스트 시작 연도': f"{start_year}년",
+                    '테스트 종료 연도': f"{end_year}년",
+                    '마켓타이밍 (개월선)': f"{ma_months_t3}개월선",
+                    '마켓타이밍 적용': "적용(현금)" if apply_timing else "미적용",
+                    '교집합 추출 기준': f"상위 {top_n_t3}위 이내",
+                    '12-1&6-1 매수 순위': f"{rank_p_s}위 ~ {rank_p_e}위",
+                    '6-1&3-1 매수 순위': f"{rank_s_s}위 ~ {rank_s_e}위"
+                }
+
+                def generate_excel_report(settings, df_stats, df_monthly, df_cum_ret, df_trade):
+                    output = io.BytesIO()
+                    with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
+                        # 1. 요약 및 통계
+                        df_set = pd.DataFrame(list(settings.items()), columns=['설정 항목', '값'])
+                        df_set.to_excel(writer, sheet_name='요약_및_통계', index=False, startrow=0)
+                        df_stats.to_excel(writer, sheet_name='요약_및_통계', index=False, startrow=len(df_set) + 2)
+                        
+                        # 2. 월별 수익률 (히트맵용)
+                        df_monthly.to_excel(writer, sheet_name='월별_수익률', index=False)
+                        
+                        # 3. 전략별 MDD
+                        df_mdd = ((df_cum_ret / df_cum_ret.cummax()) - 1) * 100
+                        df_mdd_reset = df_mdd.reset_index()
+                        df_mdd_reset.to_excel(writer, sheet_name='전략별_MDD', index=False)
+                        
+                        # 4. 누적 수익률
+                        df_cum_reset = df_cum_ret.reset_index()
+                        df_cum_reset.to_excel(writer, sheet_name='누적_수익률', index=False)
+                        
+                        # 5. 매매 상세 내역
+                        if not df_trade.empty:
+                            df_trade.to_excel(writer, sheet_name='상세_매매내역', index=False)
+                            
+                    return output.getvalue()
+
+                excel_data = generate_excel_report(settings_dict, stats_df, df_res, df_cum, df_trades)
+
+                col_t, col_b = st.columns([7.5, 2.5])
+                with col_t: st.markdown("#### 📊 전략 핵심 통계 (초기 자본 100 기준)")
+                with col_b: 
+                    st.download_button("📥 종합 엑셀 리포트 다운로드", data=excel_data, file_name="US_백테스트_종합리포트.xlsx", mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", use_container_width=True)
+
+                st.dataframe(get_styled_stats(stats_df), use_container_width=True, hide_index=True)
                 
                 st.markdown("#### 🗓️ 상세 분석 (월별 수익률 히트맵 & MDD)")
                 analysis_strat_t3 = st.radio("분석할 전략을 선택하세요", s_cols, horizontal=True, index=0, key="analysis_radio_t3_us")
