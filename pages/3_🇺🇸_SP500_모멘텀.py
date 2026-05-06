@@ -6,12 +6,12 @@ import os
 
 st.set_page_config(page_title="US S&P 500 모멘텀 터미널", layout="wide")
 
+# 💡 [핵심 수정] calculator.py 에서는 한국 코드나 공통 UI 변수만 가져옵니다. 
 from utils.data_loader import load_archive_data, get_folder_hash
 from utils.calculator import get_cycle_year, PRESIDENTIAL_DANGEROUS_MONTHS
 from utils.ui_components import inject_custom_css, apply_korea_styling, style_kospi_ma, get_styled_stats, get_mdd_history, get_monthly_heatmap, ma_cfg, main_cfg
-from utils.calculator import run_custom_backtest_us
 
-# 💡 [코드 다이어트 성공!] 무거운 백그라운드 로직은 us_helpers 파일에서 불러옵니다.
+# 💡 [핵심 수정] 미국 전용 함수는 모두 us_helpers.py 에서 독립적으로 가져옵니다!
 from utils.us_helpers import (
     preprocess_us_data, add_naver_links, robust_get_us_ma_all, robust_get_us_idx_return, 
     get_spx_history_cached, generate_excel_report_cached, 
@@ -20,7 +20,6 @@ from utils.us_helpers import (
 
 inject_custom_css()
 
-# 💡 VIX 위젯 렌더링 함수 (페이지 다이어트용)
 def render_vix_widget(safe_date):
     vix_file = 'data/vix data.csv'
     vix_latest_high, vix_latest_date_str = "데이터없음", ""
@@ -81,7 +80,6 @@ if df_master_raw.empty:
     st.error("🚨 archive_sp500 폴더에 데이터가 없습니다!")
     st.stop()
 
-# 💡 [코드 다이어트] 헬퍼 함수로 데이터를 한 번에 정리합니다.
 df_master = preprocess_us_data(df_master_raw, is_daily=False)
 
 valid_years = df_master['투자연도'].dropna().unique().astype(int).tolist()
@@ -149,7 +147,6 @@ with tab1:
         df_monthly = add_naver_links(df_monthly)
         df_us_t1, df_strat1_t1, df_strat2_t1 = get_strategy_stocks_us_custom(df_monthly, top_n_12=150, top_n_6=150, top_n_3=150)
         
-        # 💡 [요청사항 1] 전체 순위 표를 커스텀 스코어로 정렬합니다.
         df_us_t1['커스텀스코어'] = (-0.1 * df_us_t1['1개월(%)']) + (0.7 * df_us_t1['3개월(%)']) + (0.4 * df_us_t1['6개월(%)'])
         df_us_t1 = df_us_t1.sort_values('커스텀스코어', ascending=False)
         df_us_t1['순위'] = range(1, len(df_us_t1) + 1)
@@ -259,7 +256,6 @@ with tab2:
         df_daily = add_naver_links(df_daily)
         df_us_d, df_strat1_d, df_strat2_d = get_strategy_stocks_us_custom(df_daily, top_n_12=150, top_n_6=150, top_n_3=150)
         
-        # 💡 [요청사항 1] 전체 순위 표를 커스텀 스코어로 정렬
         df_us_d['커스텀스코어'] = (-0.1 * df_us_d['1개월(%)']) + (0.7 * df_us_d['3개월(%)']) + (0.4 * df_us_d['6개월(%)'])
         df_us_d = df_us_d.sort_values('커스텀스코어', ascending=False)
         df_us_d['순위'] = range(1, len(df_us_d) + 1)
@@ -453,7 +449,7 @@ with tab4:
     if apply_weights or 'custom_run_us' not in st.session_state: st.session_state['custom_run_us'] = True
     if st.session_state.get('custom_run_us', False):
         with st.spinner("미국 커스텀 시뮬레이션 중..."):
-            df_res_c, df_trades_c = run_custom_backtest_us(df_master, start_year_c, end_year_c, ma_months_t4, apply_timing_c, w1, w3, w6, w12, custom_pct, rank_c_s, rank_c_e)
+            df_res_c, df_trades_c = cached_run_custom_backtest_us(df_master, start_year_c, end_year_c, ma_months_t4, apply_timing_c, w1, w3, w6, w12, custom_pct, rank_c_s, rank_c_e)
             if not df_res_c.empty:
                 df_cum_c = (1 + df_res_c.set_index('투자월')[['커스텀 전략']] / 100).cumprod() * 100
                 df_cum_c.loc[(pd.to_datetime(df_res_c['투자월'].iloc[0]) - pd.DateOffset(months=1)).strftime('%Y-%m')] = 100
