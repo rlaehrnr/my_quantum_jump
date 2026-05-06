@@ -77,19 +77,19 @@ if df_master.empty:
     st.stop()
 
 # ==========================================
-# 💡 [핵심 방어막] 5월 데이터 삭제 방지 (이 코드가 5월을 구출합니다)
+# 💡 [핵심 해결] 5월 데이터 증발 완벽 차단 로직 (Pre-merging)
 # ==========================================
-if 'Date' in df_master.columns:
-    if '종목선정일' not in df_master.columns: df_master['종목선정일'] = df_master['Date']
-    else: df_master['종목선정일'] = df_master['종목선정일'].combine_first(df_master['Date'])
-if 'Ticker' in df_master.columns:
-    if '종목코드' not in df_master.columns: df_master['종목코드'] = df_master['Ticker']
-    else: df_master['종목코드'] = df_master['종목코드'].combine_first(df_master['Ticker'])
-if 'Year' in df_master.columns:
-    if '투자연도' not in df_master.columns: df_master['투자연도'] = df_master['Year']
-    else: df_master['투자연도'] = df_master['투자연도'].combine_first(df_master['Year'])
+col_pairs = [
+    ('Date', '종목선정일'), ('Ticker', '종목코드'), ('Year', '투자연도_raw'), ('Close_Price', '종가'),
+    ('Past_1M_Return(%)', '1개월(%)'), ('Past_3M_Return(%)', '3개월(%)'), 
+    ('Past_6M_Return(%)', '6개월(%)'), ('Past_12M_Return(%)', '12개월(%)'), 
+    ('Forward_1M_Return(%)', '이번달수익률')
+]
+for eng, kor in col_pairs:
+    if eng in df_master.columns and kor in df_master.columns:
+        df_master[eng] = df_master[eng].fillna(df_master[kor])
+        df_master = df_master.drop(columns=[kor])
 
-# 구출 후 안전하게 매핑 진행
 df_master = map_english_columns(df_master)
 
 df_master = df_master.dropna(subset=['종목코드'])
@@ -108,9 +108,16 @@ df_master['통합티커'] = df_master['시장'] + ":" + df_master['종목코드'
 
 df_master['종목선정일'] = pd.to_datetime(df_master['종목선정일'], errors='coerce')
 df_master = df_master.dropna(subset=['종목선정일'])
-target_dates = df_master['종목선정일'] + pd.Timedelta(days=15)
-df_master['투자월'] = target_dates.dt.strftime('%Y-%m')
-df_master['투자연도'] = target_dates.dt.year
+
+# [핵심] 기존 투자월이 있으면 살리고, 없으면 종목선정일 기준으로 만듭니다.
+if '투자월' not in df_master.columns:
+    df_master['투자월'] = (df_master['종목선정일'] + pd.Timedelta(days=15)).dt.strftime('%Y-%m')
+else:
+    missing_idx = df_master['투자월'].isnull()
+    if missing_idx.any():
+        df_master.loc[missing_idx, '투자월'] = (df_master.loc[missing_idx, '종목선정일'] + pd.Timedelta(days=15)).dt.strftime('%Y-%m')
+
+df_master['투자연도'] = df_master['투자월'].str.split('-').str[0].astype(float).fillna(0).astype(int)
 
 target_cols = ['시가총액', '종가', '거래량', '1개월(%)', '3개월(%)', '6개월(%)', '12개월(%)', '이번달수익률']
 for col in target_cols:
@@ -221,7 +228,8 @@ with tab1:
         with c_l:
             col_t1, col_i1, col_r1 = st.columns([4, 2, 4])
             with col_t1: st.markdown(f"<h4 style='margin:0;'>🔥 12-1M & 6-1M <span style='font-size:13px; color:gray;'>({count_p}개)</span></h4>", unsafe_allow_html=True)
-            with col_i1: top_n_p = st.number_input("p_n", 1, max(1, count_p), min(6, count_p) if count_p > 0 else 1, key="calc_p", label_visibility="collapsed")
+            # 💡 [핵심 해결 2] 기본 5개 세팅 (min 값을 5로 조정)
+            with col_i1: top_n_p = st.number_input("p_n", 1, max(1, count_p), min(5, count_p) if count_p > 0 else 1, key="calc_p_us", label_visibility="collapsed")
             with col_r1:
                 avg_ret_p = df_strat1_t1.head(top_n_p)['이번달수익률'].mean() if count_p > 0 else 0
                 st.markdown(f"<div style='margin-top:8px; font-size:0.85rem; font-weight:bold;'>상위 {top_n_p}개 평균: <span style='color:{'#D32F2F' if avg_ret_p>0 else '#1976D2'};'>{avg_ret_p:+.2f}%</span></div>", unsafe_allow_html=True)
@@ -231,7 +239,8 @@ with tab1:
         with c_r:
             col_t2, col_i2, col_r2 = st.columns([4, 2, 4])
             with col_t2: st.markdown(f"<h4 style='margin:0;'>🐎 6-1M & 3-1M <span style='font-size:13px; color:gray;'>({count_s}개)</span></h4>", unsafe_allow_html=True)
-            with col_i2: top_n_s = st.number_input("s_n", 1, max(1, count_s), min(2, count_s) if count_s > 0 else 1, key="calc_s", label_visibility="collapsed")
+            # 💡 [핵심 해결 2] 기본 5개 세팅 (min 값을 5로 조정)
+            with col_i2: top_n_s = st.number_input("s_n", 1, max(1, count_s), min(5, count_s) if count_s > 0 else 1, key="calc_s_us", label_visibility="collapsed")
             with col_r2:
                 avg_ret_s = df_strat2_t1.head(top_n_s)['이번달수익률'].mean() if count_s > 0 else 0
                 st.markdown(f"<div style='margin-top:8px; font-size:0.85rem; font-weight:bold;'>상위 {top_n_s}개 평균: <span style='color:{'#D32F2F' if avg_ret_s>0 else '#1976D2'};'>{avg_ret_s:+.2f}%</span></div>", unsafe_allow_html=True)
@@ -269,6 +278,13 @@ with tab1:
 with tab2:
     if os.path.exists(f_daily):
         df_daily = pd.read_csv(f_daily)
+        
+        # 💡 [핵심 방어막] 데일리 데이터도 똑같이 번역기 충돌 방지 코드를 장착합니다.
+        for eng, kor in col_pairs:
+            if eng in df_daily.columns and kor in df_daily.columns:
+                df_daily[eng] = df_daily[eng].fillna(df_daily[kor])
+                df_daily = df_daily.drop(columns=[kor])
+                
         df_daily = map_english_columns(df_daily)
         
         df_daily = df_daily.dropna(subset=['종목코드'])
