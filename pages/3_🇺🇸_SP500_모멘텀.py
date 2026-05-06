@@ -3,111 +3,64 @@ import pandas as pd
 import plotly.express as px
 from datetime import datetime, timedelta
 import os
-import FinanceDataReader as fdr
-import numpy as np
-import io
 
 st.set_page_config(page_title="US S&P 500 모멘텀 터미널", layout="wide")
 
 from utils.data_loader import load_archive_data, get_folder_hash
 from utils.calculator import get_cycle_year, PRESIDENTIAL_DANGEROUS_MONTHS
 from utils.ui_components import inject_custom_css, apply_korea_styling, style_kospi_ma, get_styled_stats, get_mdd_history, get_monthly_heatmap, ma_cfg, main_cfg
+from utils.calculator import run_custom_backtest_us
 
-# 💡 [해결 2] NameError 방지를 위해 필요한 모든 함수를 확실하게 Import 합니다!
-from utils.calculator import calc_us_momentum, run_custom_backtest_us
+# 💡 [코드 다이어트 성공!] 무거운 백그라운드 로직은 us_helpers 파일에서 불러옵니다.
+from utils.us_helpers import (
+    preprocess_us_data, add_naver_links, robust_get_us_ma_all, robust_get_us_idx_return, 
+    get_spx_history_cached, generate_excel_report_cached, 
+    get_strategy_stocks_us_custom, run_backtest_us_fast
+)
 
 inject_custom_css()
 
-@st.cache_data(ttl=3600)
-def robust_get_us_ma_all(target_date_str, ticker='^GSPC'):
-    import yfinance as yf
-    try:
-        target_date = pd.to_datetime(target_date_str).normalize()
-        df = pd.DataFrame()
+# 💡 VIX 위젯 렌더링 함수 (페이지 다이어트용)
+def render_vix_widget(safe_date):
+    vix_file = 'data/vix data.csv'
+    vix_latest_high, vix_latest_date_str = "데이터없음", ""
+    vix_35_date_str, vix_35_high, days_diff_str = "-", "-", "-"
+    is_vix_warning = False
+
+    if os.path.exists(vix_file):
         try:
-            df = yf.Ticker(ticker).history(period="2y")
-            if not df.empty and df.index.tz is not None: df.index = df.index.tz_localize(None)
+            vix_df = pd.read_csv(vix_file)
+            vix_df['날짜'] = pd.to_datetime(vix_df['날짜'])
+            vix_df = vix_df.sort_values('날짜')
+            if not vix_df.empty:
+                latest_row = vix_df.iloc[-1]
+                vix_latest_high = f"{latest_row['고가']:.2f}"
+                vix_latest_date = latest_row['날짜']
+                vix_latest_date_str = f"{vix_latest_date.month}/{vix_latest_date.day}"
+                
+                high_35_df = vix_df[vix_df['고가'] >= 35.0]
+                if not high_35_df.empty:
+                    last_35_row = high_35_df.iloc[-1]
+                    vix_35_date_str = last_35_row['날짜'].strftime('%y/%m/%d')
+                    vix_35_high = f"{last_35_row['고가']:.2f}"
+                    days_diff = (pd.to_datetime(safe_date) - last_35_row['날짜']).days
+                    days_diff_str = f"{days_diff}일 경과"
+                    if 0 <= days_diff <= 20: is_vix_warning = True
         except: pass
         
-        if df.empty:
-            fdr_ticker = 'US500' if ticker == '^GSPC' else 'IXIC'
-            df = fdr.DataReader(fdr_ticker)
-            
-        if df.empty: return 0.0, {}
-        
-        df.index = pd.to_datetime(df.index).normalize()
-        df = df[df.index <= target_date]
-        if df.empty: return 0.0, {}
-        
-        curr_p = df['Close'].iloc[-1]
-        mas = {
-            4: round(df['Close'].rolling(80).mean().iloc[-1], 2),
-            5: round(df['Close'].rolling(100).mean().iloc[-1], 2),
-            6: round(df['Close'].rolling(120).mean().iloc[-1], 2),
-            10: round(df['Close'].rolling(200).mean().iloc[-1], 2),
-            12: round(df['Close'].rolling(240).mean().iloc[-1], 2)
-        }
-        return curr_p, mas
-    except Exception: return 0.0, {}
-
-@st.cache_data(ttl=3600)
-def robust_get_us_idx_return(target_date_str, ticker='^GSPC'):
-    import yfinance as yf
-    try:
-        target_date = pd.to_datetime(target_date_str).normalize()
-        df = pd.DataFrame()
-        try:
-            df = yf.Ticker(ticker).history(period="2y")
-            if not df.empty and df.index.tz is not None: df.index = df.index.tz_localize(None)
-        except: pass
-        
-        if df.empty:
-            fdr_ticker = 'US500' if ticker == '^GSPC' else 'IXIC'
-            df = fdr.DataReader(fdr_ticker)
-            
-        if df.empty: return 0.0, 0.0
-        
-        df.index = pd.to_datetime(df.index).normalize()
-        df = df[df.index <= target_date]
-        if df.empty: return 0.0, 0.0
-        
-        curr_p = df['Close'].iloc[-1]
-        df_1m = df[df.index <= target_date - pd.DateOffset(months=1)]
-        ret_1m = round(((curr_p / df_1m['Close'].iloc[-1]) - 1) * 100, 2) if not df_1m.empty else 0.0
-        df_3m = df[df.index <= target_date - pd.DateOffset(months=3)]
-        ret_3m = round(((curr_p / df_3m['Close'].iloc[-1]) - 1) * 100, 2) if not df_3m.empty else 0.0
-        return ret_1m, ret_3m
-    except Exception: return 0.0, 0.0
-
-@st.cache_data(ttl=86400, show_spinner=False)
-def get_spx_history_cached():
-    import yfinance as yf
-    try:
-        spx = pd.DataFrame()
-        try:
-            spx = yf.Ticker('^GSPC').history(start='1998-01-01')
-            if not spx.empty and spx.index.tz is not None: spx.index = spx.index.tz_localize(None)
-        except: pass
-        if spx.empty: spx = fdr.DataReader('US500', '1998-01-01')
-        if not spx.empty: spx.index = pd.to_datetime(spx.index).normalize()
-        return spx
-    except: return pd.DataFrame()
-
-@st.cache_data(show_spinner=False)
-def generate_excel_report_cached(settings_tuple, df_stats, df_monthly, df_cum_ret, df_trade):
-    output = io.BytesIO()
-    with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
-        df_set = pd.DataFrame(list(settings_tuple), columns=['설정 항목', '값'])
-        df_set.to_excel(writer, sheet_name='요약_및_통계', index=False, startrow=0)
-        df_stats.to_excel(writer, sheet_name='요약_및_통계', index=False, startrow=len(df_set) + 2)
-        df_monthly.to_excel(writer, sheet_name='월별_수익률', index=False)
-        df_mdd = ((df_cum_ret / df_cum_ret.cummax()) - 1) * 100
-        df_mdd.reset_index().to_excel(writer, sheet_name='전략별_MDD', index=False)
-        df_cum_ret.reset_index().to_excel(writer, sheet_name='누적_수익률', index=False)
-        if not df_trade.empty:
-            df_trade.to_excel(writer, sheet_name='상세_매매내역', index=False)
-    return output.getvalue()
-
+    vix_bg = "#FFF0F0" if is_vix_warning else "#FFFFFF"
+    vix_border = "#FFCDD2" if is_vix_warning else "#d1d5db"
+    vix_title_color = "#C62828" if is_vix_warning else "#64748b"
+    vix_val_color = "#D84315" if is_vix_warning else "#333333"
+    vix_icon = "🚨" if is_vix_warning else "📊"
+    vix_label = f"전일 ({vix_latest_date_str}일) 고가:" if vix_latest_date_str else "전일 고가:"
+    
+    return f'''<a href="https://m.stock.naver.com/worldstock/index/.VIX/total" target="_blank" style="text-decoration: none; color: inherit;">
+        <div class="title-link" style="background-color: {vix_bg}; padding: 10px; border-radius: 10px; text-align: center; border: 1px solid {vix_border}; height: 95px; display: flex; flex-direction: column; justify-content: center;">
+            <div style="font-size: 12px; font-weight: bold; color: {vix_title_color}; margin-bottom: 2px;">{vix_icon} VIX 35 돌파</div>
+            <div style="font-size: 11px; font-weight: bold; color: {vix_title_color}; margin-bottom: 4px;">VIX {vix_35_high} - {vix_35_date_str}돌파 ({days_diff_str})</div>
+            <div style="font-size: 15px; color: {vix_val_color}; font-weight:900;">{vix_label} {vix_latest_high}</div>
+        </div></a>'''
 
 st.markdown('''
     <div style="margin-bottom: 20px;">
@@ -121,53 +74,15 @@ st.markdown('''
 ''', unsafe_allow_html=True)
 
 archive_path = "archive_sp500"
-f_daily = 'data/momentum_data_daily_sp500.csv'
 f_hash = get_folder_hash(archive_path) 
-df_master = load_archive_data(archive_path, f_hash) 
+df_master_raw = load_archive_data(archive_path, f_hash) 
 
-if df_master.empty:
+if df_master_raw.empty:
     st.error("🚨 archive_sp500 폴더에 데이터가 없습니다!")
     st.stop()
 
-col_mapping = {
-    'Date': '종목선정일', 'Year': '투자연도_raw', 'Ticker': '종목코드', 
-    'Close_Price': '종가', 'Past_1M_Return(%)': '1개월(%)', 
-    'Past_3M_Return(%)': '3개월(%)', 'Past_6M_Return(%)': '6개월(%)', 
-    'Past_12M_Return(%)': '12개월(%)', 'Forward_1M_Return(%)': '이번달수익률'
-}
-
-for eng, kor in col_mapping.items():
-    if eng in df_master.columns and kor in df_master.columns:
-        df_master[kor] = df_master[kor].fillna(df_master[eng])
-        df_master = df_master.drop(columns=[eng])
-    elif eng in df_master.columns:
-        df_master = df_master.rename(columns={eng: kor})
-
-df_master = df_master.dropna(subset=['종목코드'])
-df_master['종목코드'] = df_master['종목코드'].astype(str).replace('nan', '')
-df_master = df_master[df_master['종목코드'] != '']
-
-if '종목명' not in df_master.columns: df_master['종목명'] = df_master['종목코드']
-df_master['종목명'] = df_master['종목명'].fillna(df_master['종목코드'])
-df_master['종목명'] = np.where(df_master['종목명'].astype(str).str.lower() == 'nan', df_master['종목코드'], df_master['종목명'])
-
-if '시장' not in df_master.columns: df_master['시장'] = 'US'
-df_master['시장'] = df_master['시장'].fillna('US')
-df_master['시장'] = np.where(df_master['시장'].astype(str).str.lower() == 'nan', 'US', df_master['시장'])
-
-df_master['통합티커'] = df_master['시장'] + ":" + df_master['종목코드']
-
-df_master['종목선정일'] = pd.to_datetime(df_master['종목선정일'], errors='coerce')
-df_master = df_master.dropna(subset=['종목선정일'])
-
-target_dates = df_master['종목선정일'] + pd.Timedelta(days=15)
-df_master['투자월'] = target_dates.dt.strftime('%Y-%m')
-df_master['투자연도'] = target_dates.dt.year
-
-target_cols = ['시가총액', '종가', '거래량', '1개월(%)', '3개월(%)', '6개월(%)', '12개월(%)', '이번달수익률']
-for col in target_cols:
-    if col in df_master.columns: df_master[col] = pd.to_numeric(df_master[col], errors='coerce').fillna(0)
-    else: df_master[col] = 0
+# 💡 [코드 다이어트] 헬퍼 함수로 데이터를 한 번에 정리합니다.
+df_master = preprocess_us_data(df_master_raw, is_daily=False)
 
 valid_years = df_master['투자연도'].dropna().unique().astype(int).tolist()
 if not valid_years: valid_years = [datetime.today().year]
@@ -180,6 +95,7 @@ us_main_cfg.update({
     '12-1개월(%)': st.column_config.NumberColumn('12-1개월(%)', format="%.2f%%"),
     '6-1개월(%)': st.column_config.NumberColumn('6-1개월(%)', format="%.2f%%"),
     '3-1개월(%)': st.column_config.NumberColumn('3-1개월(%)', format="%.2f%%"),
+    '커스텀스코어': st.column_config.NumberColumn('커스텀스코어', format="%.2f"),
     '종가': st.column_config.NumberColumn('종가', format="%.2f"),
     '시가총액': st.column_config.NumberColumn('시가총액', format="%d")
 })
@@ -188,90 +104,8 @@ col_order_strat1 = ['순위', '통합티커_L', '종목명_L', '12-1개월(%)', 
 col_order_strat2 = ['순위', '통합티커_L', '종목명_L', '6-1개월(%)', '3-1개월(%)', '이번달수익률']
 col_order_d1 = ['순위', '통합티커_L', '종목명_L', '12-1개월(%)', '6-1개월(%)']
 col_order_d2 = ['순위', '통합티커_L', '종목명_L', '6-1개월(%)', '3-1개월(%)']
-
-naver_exceptions = {'CIEN': '.K', 'COHR': '.K', 'EQNR': '.K', 'DELL': '.K'}
-def get_naver_ticker(code): return f"{code}{naver_exceptions.get(code, '.O')}"
-
-
-# 💡 [핵심 해결 1] 백테스트 결과 왜곡의 주범이었던 "0보다 큰 종목" 조건 완벽 복구
-def get_strategy_stocks_us_custom(df_month, top_n_12=150, top_n_6=150, top_n_3=150):
-    df_calc = calc_us_momentum(df_month)
-    
-    # [수정] 모멘텀이 마이너스(-)인 종목은 애초에 합격시키지 않습니다.
-    df_12_valid = df_calc[df_calc['12-1개월(%)'] > 0]
-    df_6_valid = df_calc[df_calc['6-1개월(%)'] > 0]
-    df_3_valid = df_calc[df_calc['3-1개월(%)'] > 0]
-    
-    top_12 = df_12_valid.sort_values('12-1개월(%)', ascending=False).head(top_n_12)
-    top_6 = df_6_valid.sort_values('6-1개월(%)', ascending=False).head(top_n_6)
-    top_3 = df_3_valid.sort_values('3-1개월(%)', ascending=False).head(top_n_3)
-    
-    strat1 = top_12[top_12['종목코드'].isin(top_6['종목코드'])].sort_values('6-1개월(%)', ascending=False)
-    strat2 = top_6[top_6['종목코드'].isin(top_3['종목코드'])].sort_values('6-1개월(%)', ascending=False)
-    
-    return df_calc, strat1, strat2
-
-@st.cache_data(show_spinner=False)
-def run_backtest_us_fast(df, start_year, end_year, ma_months, apply_timing, rank_s1, rank_s2, top_n_12, top_n_6, top_n_3, spx):
-    if not spx.empty:
-        spx['MA'] = spx['Close'].rolling(ma_months * 20).mean()
-        spx['Is_Below'] = spx['Close'] < spx['MA']
-        
-    records, trade_logs = [], []
-    for m_str in sorted(df['투자월'].dropna().unique()):
-        m_yr = int(m_str.split('-')[0])
-        if not (start_year <= m_yr <= end_year): continue
-        df_calc = df[df['투자월'] == m_str].copy()
-        if df_calc.empty: continue
-        
-        base_date = pd.to_datetime(m_str + '-01') - pd.Timedelta(days=5)
-        is_below = False
-        if not spx.empty:
-            past_spx = spx[spx.index <= base_date]
-            if not past_spx.empty: is_below = past_spx['Is_Below'].iloc[-1]
-                
-        mult = 0.0 if (apply_timing and is_below) else 1.0
-        
-        _, s1_all, s2_all = get_strategy_stocks_us_custom(df_calc, top_n_12, top_n_6, top_n_3)
-        s1 = s1_all.iloc[rank_s1[0]-1:rank_s1[1]] if not s1_all.empty else pd.DataFrame()
-        s2 = s2_all.iloc[rank_s2[0]-1:rank_s2[1]] if not s2_all.empty else pd.DataFrame()
-        
-        r1 = s1['이번달수익률'].mean() * mult if not s1.empty else 0
-        r2 = s2['이번달수익률'].mean() * mult if not s2.empty else 0
-        
-        s1_codes = set(s1['종목코드']) if not s1.empty else set()
-        s2_codes = set(s2['종목코드']) if not s2.empty else set()
-        all_codes = s1_codes.union(s2_codes)
-        ret_combined_excl = df_calc[df_calc['종목코드'].isin(all_codes)]['이번달수익률'].mean() * mult if all_codes else 0
-        
-        sum_ret = (s1['이번달수익률'].sum() if not s1.empty else 0) + (s2['이번달수익률'].sum() if not s2.empty else 0)
-        total_len = len(s1) + len(s2)
-        ret_combined_incl = (sum_ret / total_len * mult) if total_len > 0 else 0
-        
-        records.append({
-            '투자월': m_str, 'invested': mult > 0, 
-            f'🔥 12-1M & 6-1M ({rank_s1[0]}~{rank_s1[1]}위)': r1, 
-            f'🐎 6-1M & 3-1M ({rank_s2[0]}~{rank_s2[1]}위)': r2,
-            '앙상블 (50:50 전략)': (r1 * 0.5) + (r2 * 0.5),
-            '통합 전략 (중복 제외 1/N)': ret_combined_excl,
-            '통합 전략 (중복 인정 1/N)': ret_combined_incl
-        })
-        
-        if mult > 0:
-            if not s1.empty:
-                for i, (_, r) in enumerate(s1.iterrows()): trade_logs.append({'투자월': m_str, '전략': '12-1M & 6-1M', '순위': f"{i+rank_s1[0]}위", '종목명': r['종목명'], '수익률(%)': r['이번달수익률']})
-            if not s2.empty:
-                for i, (_, r) in enumerate(s2.iterrows()): trade_logs.append({'투자월': m_str, '전략': '6-1M & 3-1M', '순위': f"{i+rank_s2[0]}위", '종목명': r['종목명'], '수익률(%)': r['이번달수익률']})
-        else:
-            trade_logs.append({'투자월': m_str, '전략': '마켓타이밍', '순위': '-', '종목명': '현금보유(CASH)', '수익률(%)': 0.0})
-            
-    return pd.DataFrame(records), pd.DataFrame(trade_logs)
-
-# 💡 [해결 2] NameError 방지를 위해 커스텀 백테스트 래퍼 함수 선언
-@st.cache_data(show_spinner=False)
-def cached_run_custom_backtest_us(df, start_year_c, end_year_c, ma_months_c, apply_timing_c, w1, w3, w6, w12, custom_pct, rank_c_s, rank_c_e):
-    return run_custom_backtest_us(df, start_year_c, end_year_c, ma_months_c, apply_timing_c, w1, w3, w6, w12, custom_pct, rank_c_s, rank_c_e)
-
+cols_m = ['순위', '통합티커_L', '종목명_L', '시가총액', '종가', '1개월(%)', '3개월(%)', '6개월(%)', '12개월(%)', '12-1개월(%)', '6-1개월(%)', '3-1개월(%)', '커스텀스코어', '이번달수익률']
+cols_d = ['순위', '통합티커_L', '종목명_L', '시가총액', '종가', '거래량', '1개월(%)', '3개월(%)', '6개월(%)', '12개월(%)', '12-1개월(%)', '6-1개월(%)', '3-1개월(%)', '커스텀스코어']
 
 tab1, tab2, tab3, tab4 = st.tabs(["📅 월별 상세 분석", "🕒 실시간 데일리 순위", "📈 전략 백테스트", "🏅 스코어 커스텀 백테스트"])
 
@@ -312,17 +146,19 @@ with tab1:
         ])
         st.dataframe(style_kospi_ma(ma_df), use_container_width=True, hide_index=True, column_config=ma_cfg)
         
-        df_monthly['통합티커_L'] = df_monthly.apply(lambda r: f"https://m.stock.naver.com/worldstock/stock/{get_naver_ticker(r['종목코드'])}/total#{r.get('통합티커', r['종목코드'])}", axis=1)
-        df_monthly['종목명_L'] = df_monthly.apply(lambda r: f"https://m.stock.naver.com/fchart/foreign/stock/{get_naver_ticker(r['종목코드'])}#{r['종목명']}", axis=1)
-
+        df_monthly = add_naver_links(df_monthly)
         df_us_t1, df_strat1_t1, df_strat2_t1 = get_strategy_stocks_us_custom(df_monthly, top_n_12=150, top_n_6=150, top_n_3=150)
+        
+        # 💡 [요청사항 1] 전체 순위 표를 커스텀 스코어로 정렬합니다.
+        df_us_t1['커스텀스코어'] = (-0.1 * df_us_t1['1개월(%)']) + (0.7 * df_us_t1['3개월(%)']) + (0.4 * df_us_t1['6개월(%)'])
+        df_us_t1 = df_us_t1.sort_values('커스텀스코어', ascending=False)
+        df_us_t1['순위'] = range(1, len(df_us_t1) + 1)
+        
         spx_1m, spx_3m = robust_get_us_idx_return(base_date, '^GSPC')
         ndx_1m, ndx_3m = robust_get_us_idx_return(base_date, '^IXIC')
         
         df_strat1_t1['순위'] = range(1, len(df_strat1_t1) + 1)
         df_strat2_t1['순위'] = range(1, len(df_strat2_t1) + 1)
-        df_us_t1 = df_us_t1.sort_values('시가총액', ascending=False) if '시가총액' in df_us_t1.columns else df_us_t1
-        df_us_t1['순위'] = range(1, len(df_us_t1) + 1)
 
         cycle_year_t1 = get_cycle_year(safe_year)
         bad_m_str_t1 = ", ".join(f"{m}월" for m in PRESIDENTIAL_DANGEROUS_MONTHS.get(cycle_year_t1, [])) or "없음"
@@ -395,43 +231,19 @@ with tab1:
 
         st.markdown("---")
         st.markdown(f"### 🌐 S&P 500 전체 순위 <span style='font-size: 0.85rem; color: #9ca3af; font-weight:normal;'>&nbsp;&nbsp;💡 선정일: {base_date.strftime('%Y-%m-%d') if isinstance(base_date, pd.Timestamp) else base_date}</span>", unsafe_allow_html=True)
-        cols_m = ['순위', '통합티커_L', '종목명_L', '시가총액', '종가', '1개월(%)', '3개월(%)', '6개월(%)', '12개월(%)', '12-1개월(%)', '6-1개월(%)', '3-1개월(%)', '이번달수익률']
         st.dataframe(df_us_t1.style.apply(apply_korea_styling, highlight_codes=highlight_codes_all_t1, overlap_codes=overlap_codes_t1, axis=1), use_container_width=True, height=600, hide_index=True, column_order=cols_m, column_config=us_main_cfg)
 
 # ==========================================
 # 탭 2. 실시간 데일리 순위
 # ==========================================
 with tab2:
-    if os.path.exists(f_daily):
-        df_daily = pd.read_csv(f_daily)
-        
-        for eng, kor in col_mapping.items():
-            if eng in df_daily.columns and kor in df_daily.columns:
-                df_daily[kor] = df_daily[kor].fillna(df_daily[eng])
-                df_daily = df_daily.drop(columns=[eng])
-            elif eng in df_daily.columns:
-                df_daily = df_daily.rename(columns={eng: kor})
-        
-        df_daily = df_daily.dropna(subset=['종목코드'])
-        df_daily['종목코드'] = df_daily['종목코드'].astype(str).replace('nan', '')
-        df_daily = df_daily[df_daily['종목코드'] != '']
-        
-        if '종목명' not in df_daily.columns: df_daily['종목명'] = df_daily['종목코드']
-        df_daily['종목명'] = df_daily['종목명'].fillna(df_daily['종목코드'])
-        df_daily['종목명'] = np.where(df_daily['종목명'].astype(str).str.lower() == 'nan', df_daily['종목코드'], df_daily['종목명'])
-        
-        if '시장' not in df_daily.columns: df_daily['시장'] = 'US'
-        df_daily['시장'] = df_daily['시장'].fillna('US')
-        df_daily['시장'] = np.where(df_daily['시장'].astype(str).str.lower() == 'nan', 'US', df_daily['시장'])
-        
-        df_daily['통합티커'] = df_daily['시장'] + ":" + df_daily['종목코드']
+    f_daily_path = 'data/momentum_data_daily_sp500.csv'
+    if os.path.exists(f_daily_path):
+        df_daily_raw = pd.read_csv(f_daily_path)
+        df_daily = preprocess_us_data(df_daily_raw, is_daily=True)
         
         b_date_d = df_daily['기준일'].iloc[0] if '기준일' in df_daily.columns else "오늘"
         safe_date = b_date_d if b_date_d != "오늘" else datetime.today().strftime('%Y-%m-%d')
-        
-        for col in target_cols:
-            if col in df_daily.columns: df_daily[col] = pd.to_numeric(df_daily[col], errors='coerce').fillna(0)
-            else: df_daily[col] = 0
         
         st.markdown(f"<div style='margin-bottom: 5px; font-size:0.95rem; font-weight:600;'><b>🕒 실시간 데일리 순위</b> <span style='font-size: 0.85rem; color: #9ca3af; font-weight:normal;'>&nbsp;&nbsp;💡 기준일: {b_date_d}</span></div>", unsafe_allow_html=True)
         
@@ -444,69 +256,30 @@ with tab2:
         ])
         st.dataframe(style_kospi_ma(ma_df_d), use_container_width=True, hide_index=True, column_config=ma_cfg)
         
-        df_daily['통합티커_L'] = df_daily.apply(lambda r: f"https://m.stock.naver.com/worldstock/stock/{get_naver_ticker(r['종목코드'])}/total#{r.get('통합티커', r['종목코드'])}", axis=1)
-        df_daily['종목명_L'] = df_daily.apply(lambda r: f"https://m.stock.naver.com/fchart/foreign/stock/{get_naver_ticker(r['종목코드'])}#{r['종목명']}", axis=1)
-
+        df_daily = add_naver_links(df_daily)
         df_us_d, df_strat1_d, df_strat2_d = get_strategy_stocks_us_custom(df_daily, top_n_12=150, top_n_6=150, top_n_3=150)
+        
+        # 💡 [요청사항 1] 전체 순위 표를 커스텀 스코어로 정렬
+        df_us_d['커스텀스코어'] = (-0.1 * df_us_d['1개월(%)']) + (0.7 * df_us_d['3개월(%)']) + (0.4 * df_us_d['6개월(%)'])
+        df_us_d = df_us_d.sort_values('커스텀스코어', ascending=False)
+        df_us_d['순위'] = range(1, len(df_us_d) + 1)
+        
         spx_1m_d, spx_3m_d = robust_get_us_idx_return(safe_date, '^GSPC')
         ndx_1m_d, ndx_3m_d = robust_get_us_idx_return(safe_date, '^IXIC')
         
         df_strat1_d['순위'] = range(1, len(df_strat1_d) + 1)
         df_strat2_d['순위'] = range(1, len(df_strat2_d) + 1)
-        df_us_d = df_us_d.sort_values('시가총액', ascending=False) if '시가총액' in df_us_d.columns else df_us_d
-        df_us_d['순위'] = range(1, len(df_us_d) + 1)
 
         is_below_ma_d = (spx_curr_d > 0) and (spx_curr_d < spx_mas_d.get(10, 0))
         status_d, box_d, text_d = ("🛑 투자 중지", "#FFEBEE", "#C62828") if is_below_ma_d else ("✅ 투자 진행", "#E8F5E9", "#2E7D32")
         reason_desc_d = "S&P500 200일선 이탈" if is_below_ma_d else "안전"
-
-        vix_file = 'data/vix data.csv'
-        vix_latest_high, vix_latest_date_str = "데이터없음", ""
-        vix_35_date_str, vix_35_high, days_diff_str = "-", "-", "-"
-        is_vix_warning = False
-
-        if os.path.exists(vix_file):
-            try:
-                vix_df = pd.read_csv(vix_file)
-                vix_df['날짜'] = pd.to_datetime(vix_df['날짜'])
-                vix_df = vix_df.sort_values('날짜')
-                if not vix_df.empty:
-                    latest_row = vix_df.iloc[-1]
-                    vix_latest_high = f"{latest_row['고가']:.2f}"
-                    vix_latest_date = latest_row['날짜']
-                    vix_latest_date_str = f"{vix_latest_date.month}/{vix_latest_date.day}"
-                    
-                    high_35_df = vix_df[vix_df['고가'] >= 35.0]
-                    if not high_35_df.empty:
-                        last_35_row = high_35_df.iloc[-1]
-                        vix_35_date_str = last_35_row['날짜'].strftime('%y/%m/%d')
-                        vix_35_high = f"{last_35_row['고가']:.2f}"
-                        days_diff = (pd.to_datetime(safe_date) - last_35_row['날짜']).days
-                        days_diff_str = f"{days_diff}일 경과"
-                        if 0 <= days_diff <= 20: is_vix_warning = True
-            except: pass
 
         col1d, col2d, col3d, col4d, col5d, col6d = st.columns([1.0, 1.0, 1.0, 1.0, 1.4, 1.6])
         with col1d: st.metric("📈 S&P 500 1M", f"{spx_1m_d}%")
         with col2d: st.metric("📈 S&P 500 3M", f"{spx_3m_d}%")
         with col3d: st.metric("📈 NASDAQ 1M", f"{ndx_1m_d}%")
         with col4d: st.metric("📈 NASDAQ 3M", f"{ndx_3m_d}%")
-        
-        vix_bg = "#FFF0F0" if is_vix_warning else "#FFFFFF"
-        vix_border = "#FFCDD2" if is_vix_warning else "#d1d5db"
-        vix_title_color = "#C62828" if is_vix_warning else "#64748b"
-        vix_val_color = "#D84315" if is_vix_warning else "#333333"
-        vix_icon = "🚨" if is_vix_warning else "📊"
-        vix_label = f"전일 ({vix_latest_date_str}일) 고가:" if vix_latest_date_str else "전일 고가:"
-        
-        vix_html = f'''<a href="https://m.stock.naver.com/worldstock/index/.VIX/total" target="_blank" style="text-decoration: none; color: inherit;">
-            <div class="title-link" style="background-color: {vix_bg}; padding: 10px; border-radius: 10px; text-align: center; border: 1px solid {vix_border}; height: 95px; display: flex; flex-direction: column; justify-content: center;">
-                <div style="font-size: 12px; font-weight: bold; color: {vix_title_color}; margin-bottom: 2px;">{vix_icon} VIX 35 돌파</div>
-                <div style="font-size: 11px; font-weight: bold; color: {vix_title_color}; margin-bottom: 4px;">VIX {vix_35_high} - {vix_35_date_str}돌파 ({days_diff_str})</div>
-                <div style="font-size: 15px; color: {vix_val_color}; font-weight:900;">{vix_label} {vix_latest_high}</div>
-            </div></a>'''
-        
-        with col5d: st.markdown(vix_html, unsafe_allow_html=True)
+        with col5d: st.markdown(render_vix_widget(safe_date), unsafe_allow_html=True)
         with col6d: st.markdown(f'<div style="background-color: {box_d}; padding: 10px; border-radius: 10px; text-align: center; border: 1px solid {text_d}; height: 95px; display: flex; flex-direction: column; justify-content: center;"><p style="margin: 0; font-size: 12px; color: {text_d}; font-weight: bold;">오늘의 시장 상태 ({reason_desc_d})</p><div style="margin: 4px 0 0 0; font-size: 1.5rem; font-weight: 900; color: {text_d};">{status_d}</div></div>', unsafe_allow_html=True)
         st.markdown("<hr style='margin: 1rem 0;'>", unsafe_allow_html=True)
 
@@ -563,7 +336,6 @@ with tab2:
 
         st.markdown("---")
         st.markdown(f"### 🌐 S&P 500 전체 순위 <span style='font-size: 0.85rem; color: #9ca3af; font-weight:normal;'>&nbsp;&nbsp;💡 기준일: {b_date_d}</span>", unsafe_allow_html=True)
-        cols_d = ['순위', '통합티커_L', '종목명_L', '시가총액', '종가', '거래량', '1개월(%)', '3개월(%)', '6개월(%)', '12개월(%)', '12-1개월(%)', '6-1개월(%)', '3-1개월(%)']
         st.dataframe(df_us_d.style.apply(apply_korea_styling, highlight_codes=highlight_codes_all_d, overlap_codes=overlap_codes_d, axis=1), use_container_width=True, height=600, hide_index=True, column_order=cols_d, column_config=us_main_cfg)
 
 # ==========================================
@@ -593,10 +365,10 @@ with tab3:
             st.markdown("<div style='margin-top: 28px;'></div>", unsafe_allow_html=True)
             run_bt_us = st.form_submit_button("✅ 백테스트 실행", use_container_width=True)
 
-    if run_bt_us or 'run_bt_state_us_v4' not in st.session_state:
-        st.session_state['run_bt_state_us_v4'] = True
+    if run_bt_us or 'run_bt_state_us_v5' not in st.session_state:
+        st.session_state['run_bt_state_us_v5'] = True
 
-    if st.session_state.get('run_bt_state_us_v4', False):
+    if st.session_state.get('run_bt_state_us_v5', False):
         spx_hist = get_spx_history_cached()
         
         with st.spinner("미국 모멘텀 백테스트 구동 중... (동일 조건일 경우 0.1초 렌더링)"):
@@ -681,7 +453,7 @@ with tab4:
     if apply_weights or 'custom_run_us' not in st.session_state: st.session_state['custom_run_us'] = True
     if st.session_state.get('custom_run_us', False):
         with st.spinner("미국 커스텀 시뮬레이션 중..."):
-            df_res_c, df_trades_c = cached_run_custom_backtest_us(df_master, start_year_c, end_year_c, ma_months_t4, apply_timing_c, w1, w3, w6, w12, custom_pct, rank_c_s, rank_c_e)
+            df_res_c, df_trades_c = run_custom_backtest_us(df_master, start_year_c, end_year_c, ma_months_t4, apply_timing_c, w1, w3, w6, w12, custom_pct, rank_c_s, rank_c_e)
             if not df_res_c.empty:
                 df_cum_c = (1 + df_res_c.set_index('투자월')[['커스텀 전략']] / 100).cumprod() * 100
                 df_cum_c.loc[(pd.to_datetime(df_res_c['투자월'].iloc[0]) - pd.DateOffset(months=1)).strftime('%Y-%m')] = 100
