@@ -125,7 +125,7 @@ def update_daily_momentum_us():
         archive_files = sorted(glob.glob(f'{archive_folder}/only_*.csv'))
         if not archive_files: return
         latest_file = archive_files[-1]
-        df_latest = pd.read_csv(latest_file, dtype={'Ticker': str})
+        df_latest = pd.read_csv(latest_file, dtype=str)
         
         target_col = '종목선정일' if '종목선정일' in df_latest.columns else 'Date'
         code_col = '종목코드' if '종목코드' in df_latest.columns else 'Ticker'
