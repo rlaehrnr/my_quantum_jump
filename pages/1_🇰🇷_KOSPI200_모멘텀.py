@@ -335,9 +335,7 @@ with tab3:
     with st.spinner("엔진 구동 중..."):
         df_res, df_trades = cached_run_backtest_korea(df_master, start_year, end_year, ma_months_t3, apply_timing, (rank_p_s, rank_p_e), (rank_s_s, rank_s_e), perf_pct_t3, spec_12m_pct_t3)
         if not df_res.empty:
-            s_cols_raw = [c for c in df_res.columns if c not in ['투자월', 'invested']]
-            target_order = [f'🔥 퍼펙트 상승 ({rank_p_s}~{rank_p_e}위)', f'🐎 달리는 말 ({rank_s_s}~{rank_s_e}위)', '앙상블 (50:50 전략)', '통합 전략 (중복 제외 1/N)', '통합 전략 (중복 인정 1/N)']
-            s_cols = [c for c in target_order if c in s_cols_raw] + [c for c in s_cols_raw if c not in target_order]
+            s_cols = [c for c in df_res.columns if c not in ['투자월', 'invested']]
             df_cum = (1 + df_res.set_index('투자월')[s_cols] / 100).cumprod() * 100
             df_cum.loc[(pd.to_datetime(df_res['투자월'].iloc[0]) - pd.DateOffset(months=1)).strftime('%Y-%m')] = 100
             df_cum = df_cum.sort_index()
