@@ -46,7 +46,8 @@ df_master = df_master[df_master['종목코드'] != '']
 # 과거 파일에 '종목명', '시장' 컬럼이 아예 없을 때를 대비한 땜빵 처리
 if '종목명' not in df_master.columns:
     df_master['종목명'] = df_master['종목코드']
-df_master['종목명'] = df_master['종목명'].fillna(df_master['종목코드']).replace('nan', df_master['종목코드'])
+df_master['종목명'] = df_master['종목명'].fillna(df_master['종목코드'])
+df_master['종목명'] = np.where(df_master['종목명'] == 'nan', df_master['종목코드'], df_master['종목명'])
 
 if '시장' not in df_master.columns:
     df_master['시장'] = 'US'
