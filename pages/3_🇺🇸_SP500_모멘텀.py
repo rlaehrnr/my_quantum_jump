@@ -133,15 +133,17 @@ us_main_cfg.update({
     '시가총액': st.column_config.NumberColumn('시가총액', format="%d")
 })
 
+# 💡 6-1M & 3-1M의 컬럼 순서를 '3-1개월'이 먼저 오도록 배치
 col_order_strat1 = ['순위', '통합티커_L', '종목명_L', '12-1개월(%)', '6-1개월(%)', '이번달수익률']
-col_order_strat2 = ['순위', '통합티커_L', '종목명_L', '6-1개월(%)', '3-1개월(%)', '이번달수익률']
+col_order_strat2 = ['순위', '통합티커_L', '종목명_L', '3-1개월(%)', '6-1개월(%)', '이번달수익률']
 col_order_d1 = ['순위', '통합티커_L', '종목명_L', '12-1개월(%)', '6-1개월(%)']
-col_order_d2 = ['순위', '통합티커_L', '종목명_L', '6-1개월(%)', '3-1개월(%)']
+col_order_d2 = ['순위', '통합티커_L', '종목명_L', '3-1개월(%)', '6-1개월(%)']
 
 naver_exceptions = {'CIEN': '.K', 'COHR': '.K', 'EQNR': '.K', 'DELL': '.K'}
 def get_naver_ticker(code): return f"{code}{naver_exceptions.get(code, '.O')}"
 
-def get_strategy_stocks_us_custom(df_month, top_n_12=10, top_n_6=10, top_n_3=10):
+# 💡 [핵심 해결 1] 기본 150위 추출 및 6-1&3-1은 '3-1개월' 기준 정렬
+def get_strategy_stocks_us_custom(df_month, top_n_12=150, top_n_6=150, top_n_3=150):
     df_calc = calc_us_momentum(df_month)
     
     top_12 = df_calc.sort_values('12-1개월(%)', ascending=False).head(top_n_12)
@@ -149,7 +151,8 @@ def get_strategy_stocks_us_custom(df_month, top_n_12=10, top_n_6=10, top_n_3=10)
     top_3 = df_calc.sort_values('3-1개월(%)', ascending=False).head(top_n_3)
     
     strat1 = top_12[top_12['종목코드'].isin(top_6['종목코드'])].sort_values('6-1개월(%)', ascending=False)
-    strat2 = top_6[top_6['종목코드'].isin(top_3['종목코드'])].sort_values('6-1개월(%)', ascending=False)
+    # 💡 3-1개월(%) 우선 정렬
+    strat2 = top_6[top_6['종목코드'].isin(top_3['종목코드'])].sort_values('3-1개월(%)', ascending=False)
     
     return df_calc, strat1, strat2
 
@@ -260,7 +263,8 @@ with tab1:
         df_monthly['통합티커_L'] = df_monthly.apply(lambda r: f"https://m.stock.naver.com/worldstock/stock/{get_naver_ticker(r['종목코드'])}/total#{r.get('통합티커', r['종목코드'])}", axis=1)
         df_monthly['종목명_L'] = df_monthly.apply(lambda r: f"https://m.stock.naver.com/fchart/foreign/stock/{get_naver_ticker(r['종목코드'])}#{r['종목명']}", axis=1)
 
-        df_us_t1, df_strat1_t1, df_strat2_t1 = get_strategy_stocks_us_custom(df_monthly, top_n_12=10, top_n_6=10, top_n_3=10)
+        # 💡 상위 150위 추출 교집합
+        df_us_t1, df_strat1_t1, df_strat2_t1 = get_strategy_stocks_us_custom(df_monthly, top_n_12=150, top_n_6=150, top_n_3=150)
         spx_1m, spx_3m = robust_get_us_idx_return(base_date, '^GSPC')
         ndx_1m, ndx_3m = robust_get_us_idx_return(base_date, '^IXIC')
         
@@ -297,7 +301,7 @@ with tab1:
             with col_r1:
                 avg_ret_p = df_strat1_t1.head(top_n_p)['이번달수익률'].mean() if count_p > 0 else 0
                 st.markdown(f"<div style='margin-top:8px; font-size:0.85rem; font-weight:bold;'>상위 {top_n_p}개 평균: <span style='color:{'#D32F2F' if avg_ret_p>0 else '#1976D2'};'>{avg_ret_p:+.2f}%</span></div>", unsafe_allow_html=True)
-            st.markdown('<p class="strategy-desc">12-1M & 6-1M 각각 지정위 내 교집합 (6-1M 순)</p>', unsafe_allow_html=True)
+            st.markdown('<p class="strategy-desc">12-1M & 6-1M 각각 150위 이내 교집합 종목 (6-1M 순)</p>', unsafe_allow_html=True)
             
         with c_r:
             col_t2, col_i2, col_r2 = st.columns([4, 2, 4])
@@ -306,7 +310,7 @@ with tab1:
             with col_r2:
                 avg_ret_s = df_strat2_t1.head(top_n_s)['이번달수익률'].mean() if count_s > 0 else 0
                 st.markdown(f"<div style='margin-top:8px; font-size:0.85rem; font-weight:bold;'>상위 {top_n_s}개 평균: <span style='color:{'#D32F2F' if avg_ret_s>0 else '#1976D2'};'>{avg_ret_s:+.2f}%</span></div>", unsafe_allow_html=True)
-            st.markdown('<p class="strategy-desc">6-1M & 3-1M 각각 지정위 내 교집합 (6-1M 순)</p>', unsafe_allow_html=True)
+            st.markdown('<p class="strategy-desc">6-1M & 3-1M 각각 150위 이내 교집합 종목 (3-1M 순)</p>', unsafe_allow_html=True)
 
         overlap_codes_t1 = set(df_strat1_t1.head(top_n_p)['종목코드']).intersection(set(df_strat2_t1.head(top_n_s)['종목코드']))
 
@@ -389,7 +393,8 @@ with tab2:
         df_daily['통합티커_L'] = df_daily.apply(lambda r: f"https://m.stock.naver.com/worldstock/stock/{get_naver_ticker(r['종목코드'])}/total#{r.get('통합티커', r['종목코드'])}", axis=1)
         df_daily['종목명_L'] = df_daily.apply(lambda r: f"https://m.stock.naver.com/fchart/foreign/stock/{get_naver_ticker(r['종목코드'])}#{r['종목명']}", axis=1)
 
-        df_us_d, df_strat1_d, df_strat2_d = get_strategy_stocks_us_custom(df_daily, top_n_12=10, top_n_6=10, top_n_3=10)
+        # 💡 상위 150위 추출 교집합
+        df_us_d, df_strat1_d, df_strat2_d = get_strategy_stocks_us_custom(df_daily, top_n_12=150, top_n_6=150, top_n_3=150)
         spx_1m_d, spx_3m_d = robust_get_us_idx_return(safe_date, '^GSPC')
         ndx_1m_d, ndx_3m_d = robust_get_us_idx_return(safe_date, '^IXIC')
         
@@ -463,7 +468,7 @@ with tab2:
             with col_i1: top_n_p_d = st.number_input("p_n", 1, max(1, count_p_d), val_p_d, key="calc_p_us_d", label_visibility="collapsed")
             with col_r1:
                 avg_ret_p_d = df_strat1_d.head(top_n_p_d)['이번달수익률'].mean() if count_p_d > 0 and '이번달수익률' in df_strat1_d.columns else 0
-            st.markdown('<p class="strategy-desc">12-1M & 6-1M 각각 지정위 내 교집합 (6-1M 순)</p>', unsafe_allow_html=True)
+            st.markdown('<p class="strategy-desc">12-1M & 6-1M 각각 150위 이내 교집합 종목 (6-1M 순)</p>', unsafe_allow_html=True)
             
         with c_d2:
             col_t2, col_i2, col_r2 = st.columns([4, 2, 4])
@@ -471,7 +476,7 @@ with tab2:
             with col_i2: top_n_s_d = st.number_input("s_n", 1, max(1, count_s_d), val_s_d, key="calc_s_us_d", label_visibility="collapsed")
             with col_r2:
                 avg_ret_s_d = df_strat2_d.head(top_n_s_d)['이번달수익률'].mean() if count_s_d > 0 and '이번달수익률' in df_strat2_d.columns else 0
-            st.markdown('<p class="strategy-desc">6-1M & 3-1M 각각 지정위 내 교집합 (6-1M 순)</p>', unsafe_allow_html=True)
+            st.markdown('<p class="strategy-desc">6-1M & 3-1M 각각 150위 이내 교집합 종목 (3-1M 순)</p>', unsafe_allow_html=True)
             
         overlap_codes_d = set(df_strat1_d.head(top_n_p_d)['종목코드']).intersection(set(df_strat2_d.head(top_n_s_d)['종목코드']))
 
@@ -509,7 +514,6 @@ with tab2:
 # 탭 3. 전략 백테스트
 # ==========================================
 with tab3:
-    # 💡 [해결 2] 입력 버튼 묶음용 st.form 추가 (일괄 적용 기능)
     with st.form("bt_settings_form_us", border=False):
         st.markdown("<h4 style='margin:0;'>⚙️ 시뮬레이션 설정</h4>", unsafe_allow_html=True)
         c1, c_ma_us, c_chk = st.columns([1.5, 1, 1.5])
@@ -520,27 +524,30 @@ with tab3:
             apply_timing = st.checkbox("🛑 마켓타이밍 적용 (이탈 시 현금)", value=True, key='t3_chk_us')
         
         st.markdown("<hr style='margin: 10px 0px;'>", unsafe_allow_html=True)
+        st.markdown("##### ✂️ 모멘텀 추출 및 매수 순위 설정")
         
-        st.markdown("##### ✂️ 모멘텀 추출 순위 설정 (각 기간별 N위까지 추출 후 교집합)")
-        c_ex1, c_ex2, c_ex3 = st.columns(3)
-        with c_ex1: top_n_12_t3 = st.number_input("🥇 12-1M 추출 종목수", min_value=1, max_value=500, value=10, key='t3_n12')
-        with c_ex2: top_n_6_t3 = st.number_input("🥈 6-1M 추출 종목수", min_value=1, max_value=500, value=10, key='t3_n6')
-        with c_ex3: top_n_3_t3 = st.number_input("🥉 3-1M 추출 종목수", min_value=1, max_value=500, value=10, key='t3_n3')
-
-        st.markdown("<br>", unsafe_allow_html=True)
-        c3, c5 = st.columns([1, 1])
-        with c3: rank_p_s, rank_p_e = st.slider("🔥 12-1&6-1 전략 (매수 순위)", 1, 30, (1, 5), key='t3_rnk1_us')
-        with c5: rank_s_s, rank_s_e = st.slider("🐎 6-1&3-1 전략 (매수 순위)", 1, 30, (1, 5), key='t3_rnk2_us')
-        
-        st.markdown("<div style='margin-top: 15px;'></div>", unsafe_allow_html=True)
-        run_bt_us = st.form_submit_button("✅ 백테스트 실행", use_container_width=True)
+        # 💡 [핵심 해결 2] 설정 항목들을 한 줄에 압축 배치
+        c_ex1, c_ex2, c_ex3, c_ex4 = st.columns([1, 1.2, 1.2, 0.8])
+        with c_ex1: 
+            top_n_t3 = st.number_input("🎯 교집합 추출 기준 (N위)", min_value=1, max_value=500, value=150, key='t3_n_all')
+        with c_ex2: 
+            rank_p_s, rank_p_e = st.slider("🔥 12-1&6-1 매수 순위", 1, 30, (1, 5), key='t3_rnk1_us')
+        with c_ex3: 
+            rank_s_s, rank_s_e = st.slider("🐎 6-1&3-1 매수 순위", 1, 30, (1, 5), key='t3_rnk2_us')
+        with c_ex4:
+            st.markdown("<div style='margin-top: 28px;'></div>", unsafe_allow_html=True)
+            run_bt_us = st.form_submit_button("✅ 백테스트 실행", use_container_width=True)
 
     if run_bt_us or 'run_bt_state_us' not in st.session_state:
         st.session_state['run_bt_state_us'] = True
 
     if st.session_state.get('run_bt_state_us', False):
         with st.spinner("미국 모멘텀 백테스트 구동 중..."):
-            df_res, df_trades = run_backtest_us_custom(df_master, start_year, end_year, ma_months_t3, apply_timing, (rank_p_s, rank_p_e), (rank_s_s, rank_s_e), top_n_12_t3, top_n_6_t3, top_n_3_t3)
+            df_res, df_trades = run_backtest_us_custom(
+                df_master, start_year, end_year, ma_months_t3, apply_timing, 
+                (rank_p_s, rank_p_e), (rank_s_s, rank_s_e), 
+                top_n_t3, top_n_t3, top_n_t3
+            )
             if not df_res.empty:
                 s_cols = [c for c in df_res.columns if c not in ['투자월', 'invested']]
                 df_cum = (1 + df_res.set_index('투자월')[s_cols] / 100).cumprod() * 100
