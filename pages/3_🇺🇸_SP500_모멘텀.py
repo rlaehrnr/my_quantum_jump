@@ -43,43 +43,16 @@ for col in target_cols:
     else:
         df_master[col] = 0
 
-# 💡 실시간 거래소(NASDAQ/NYSE) 및 종목명 매핑 최적화
-@st.cache_resource(ttl=86400)
-def get_us_stock_info_fast():
-    try:
-        ny = fdr.StockListing('NYSE')[['Symbol', 'Name']]
-        ny['Exchange'] = 'NYSE'
-        nq = fdr.StockListing('NASDAQ')[['Symbol', 'Name']]
-        nq['Exchange'] = 'NASDAQ'
-        am = fdr.StockListing('AMEX')[['Symbol', 'Name']]
-        am['Exchange'] = 'AMEX'
-        
-        df_exch = pd.concat([ny, nq, am])
-        df_exch['Symbol'] = df_exch['Symbol'].str.replace('.', '-', regex=False)
-        exch_map = dict(zip(df_exch['Symbol'], df_exch['Exchange']))
-        
-        df_sp = fdr.StockListing('S&P500')
-        df_sp['Symbol'] = df_sp['Symbol'].str.replace('.', '-', regex=False)
-        name_map = dict(zip(df_sp['Symbol'], df_sp['Name']))
-        
-        final_exch_map = {}
-        for sym in df_sp['Symbol']:
-            exch = exch_map.get(sym, 'US')
-            final_exch_map[sym] = f"{exch}:{sym}"
-            
-        return name_map, final_exch_map
-    except:
-        return {}, {}
-
-name_map, exch_map = get_us_stock_info_fast()
-if name_map: df_master['종목명'] = df_master['종목코드'].map(name_map).fillna(df_master['종목코드'])
-if exch_map: df_master['통합티커'] = df_master['종목코드'].map(exch_map).fillna(df_master['종목코드'])
-else: df_master['통합티커'] = df_master['종목코드']
+# 💡 [로딩 속도 혁신] 실시간 API 호출 완전 제거. 아카이브 파일의 '시장', '종목명' 즉시 활용!
+if '시장' in df_master.columns:
+    df_master['통합티커'] = df_master['시장'] + ":" + df_master['종목코드']
+else:
+    df_master['통합티커'] = "US:" + df_master['종목코드']
 
 years_list = sorted(df_master['투자연도'].unique().astype(int))
 min_y, max_y = min(years_list), max(years_list)
 
-# 💡 UI 표 설정: 시가총액 전진, 종가 소수점 2자리
+# UI 표 설정: 시가총액 전진, 종가 소수점 2자리
 us_main_cfg = main_cfg.copy()
 us_main_cfg.update({
     '12-1개월(%)': st.column_config.NumberColumn('12-1개월(%)', format="%.2f%%"),
@@ -89,7 +62,6 @@ us_main_cfg.update({
     '시가총액': st.column_config.NumberColumn('시가총액', format="%d")
 })
 
-# 💡 변수 정의 복원 (이 부분이 누락되어 NameError가 발생했었습니다!)
 col_order_strat1 = ['순위', '통합티커_L', '종목명_L', '시가총액', '종가', '12-1개월(%)', '6-1개월(%)', '이번달수익률']
 col_order_strat2 = ['순위', '통합티커_L', '종목명_L', '시가총액', '종가', '6-1개월(%)', '3-1개월(%)', '이번달수익률']
 col_order_d1 = ['순위', '통합티커_L', '종목명_L', '시가총액', '종가', '12-1개월(%)', '6-1개월(%)']
@@ -141,7 +113,6 @@ with tab1:
             return spx_curr, spx_mas, ndx_curr, ndx_mas
         spx_curr, spx_mas, ndx_curr, ndx_mas = get_ma_data(base_date)
         
-        # 💡 지수(Index) 링크 처리: 지수_L은 total로, 현재가_L은 fchart로
         ma_df = pd.DataFrame([
             {'지수_L': f"https://m.stock.naver.com/worldstock/index/.INX/total#S&P500", '현재가_L': f"https://m.stock.naver.com/fchart/foreign/index/.INX#{spx_curr:,.2f}", 'base_price': round(spx_curr, 2), '4개월선': spx_mas.get(4, 0), '5개월선': spx_mas.get(5, 0), '6개월선': spx_mas.get(6, 0), '10개월선': spx_mas.get(10, 0), '12개월선': spx_mas.get(12, 0)},
             {'지수_L': f"https://m.stock.naver.com/worldstock/index/.IXIC/total#NASDAQ", '현재가_L': f"https://m.stock.naver.com/fchart/foreign/index/.IXIC#{ndx_curr:,.2f}", 'base_price': round(ndx_curr, 2), '4개월선': ndx_mas.get(4, 0), '5개월선': ndx_mas.get(5, 0), '6개월선': ndx_mas.get(6, 0), '10개월선': ndx_mas.get(10, 0), '12개월선': ndx_mas.get(12, 0)}
@@ -174,11 +145,9 @@ with tab1:
         st.markdown("<hr style='margin: 1rem 0;'>", unsafe_allow_html=True)
 
         for df in [df_strat1_t1, df_strat2_t1, df_us_t1]:
-            # 💡 개별 종목 링크 처리: 티커_L은 total로, 종목명_L은 fchart로 (.O / .K 규칙 적용)
             df['통합티커_L'] = df.apply(lambda r: f"https://m.stock.naver.com/worldstock/stock/{get_naver_ticker(r['종목코드'])}/total#{r.get('통합티커', r['종목코드'])}", axis=1)
             df['종목명_L'] = df.apply(lambda r: f"https://m.stock.naver.com/fchart/foreign/stock/{get_naver_ticker(r['종목코드'])}#{r['종목명']}", axis=1)
 
-        # 💡 [핵심 복구] 상위 n개 평균 UI가 돌아왔습니다!
         c_l, c_r = st.columns(2)
         count_p, count_s = len(df_strat1_t1), len(df_strat2_t1)
         with c_l:
@@ -234,9 +203,12 @@ with tab2:
     if os.path.exists(f_daily):
         df_daily = pd.read_csv(f_daily)
         df_daily = map_english_columns(df_daily)
-        if name_map: df_daily['종목명'] = df_daily['종목코드'].map(name_map).fillna(df_daily['종목명'])
-        if exch_map: df_daily['통합티커'] = df_daily['종목코드'].map(exch_map).fillna(df_daily['종목코드'])
-        else: df_daily['통합티커'] = df_daily['종목코드']
+        
+        # 💡 [로딩 최적화] 데일리 파일도 미리 저장된 시장 정보 바로 적용
+        if '시장' in df_daily.columns:
+            df_daily['통합티커'] = df_daily['시장'] + ":" + df_daily['종목코드']
+        else:
+            df_daily['통합티커'] = "US:" + df_daily['종목코드']
         
         b_date_d = df_daily['기준일'].iloc[0] if '기준일' in df_daily.columns else "오늘"
         safe_date = b_date_d if b_date_d != "오늘" else datetime.today().strftime('%Y-%m-%d')
@@ -383,8 +355,9 @@ with tab3:
     with st.spinner("미국 모멘텀 백테스트 구동 중..."):
         df_res, df_trades = cached_run_backtest_us(df_master, start_year, end_year, ma_months_t3, apply_timing, (rank_p_s, rank_p_e), (rank_s_s, rank_s_e))
         if not df_res.empty:
-            s_cols_raw = [c for c in df_res.columns if c not in ['투자월', 'invested']]
-            df_cum = (1 + df_res.set_index('투자월')[s_cols_raw] / 100).cumprod() * 100
+            # 💡 [하드코딩 제거 완료] calculator.py가 던져주는 컬럼과 순서를 100% 그대로 반영
+            s_cols = [c for c in df_res.columns if c not in ['투자월', 'invested']]
+            df_cum = (1 + df_res.set_index('투자월')[s_cols] / 100).cumprod() * 100
             df_cum.loc[(pd.to_datetime(df_res['투자월'].iloc[0]) - pd.DateOffset(months=1)).strftime('%Y-%m')] = 100
             df_cum = df_cum.sort_index()
 
@@ -393,7 +366,7 @@ with tab3:
             with col_b: st.download_button("📥 상세내역 다운로드", df_trades.to_csv(index=False).encode('utf-8-sig'), "US_조합_백테스트.csv", "text/csv", use_container_width=True)
 
             stats = []
-            for col in s_cols_raw:
+            for col in s_cols:
                 final_val = df_cum[col].iloc[-1]
                 years = len(df_res)/12
                 cagr = ((final_val/100)**(1/years)-1)*100 if final_val > 0 else -100
@@ -404,7 +377,7 @@ with tab3:
             st.dataframe(get_styled_stats(pd.DataFrame(stats)), use_container_width=True, hide_index=True)
             
             st.markdown("#### 🗓️ 상세 분석 (월별 수익률 히트맵 & MDD)")
-            analysis_strat_t3 = st.radio("분석할 전략을 선택하세요", s_cols_raw, horizontal=True, index=0, key="analysis_radio_t3_us")
+            analysis_strat_t3 = st.radio("분석할 전략을 선택하세요", s_cols, horizontal=True, index=0, key="analysis_radio_t3_us")
             
             col_hm, col_mdd = st.columns([6, 4])
             with col_hm: st.dataframe(get_monthly_heatmap(df_res, analysis_strat_t3), use_container_width=True)
