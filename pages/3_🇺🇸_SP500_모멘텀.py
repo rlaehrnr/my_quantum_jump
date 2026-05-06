@@ -11,7 +11,7 @@ st.set_page_config(page_title="US S&P 500 모멘텀 터미널", layout="wide")
 from utils.data_loader import load_archive_data, get_folder_hash
 from utils.calculator import get_cycle_year, PRESIDENTIAL_DANGEROUS_MONTHS
 from utils.ui_components import inject_custom_css, apply_korea_styling, style_kospi_ma, get_styled_stats, get_mdd_history, get_monthly_heatmap, ma_cfg, main_cfg
-from utils.calculator import calc_us_momentum, get_strategy_stocks_us, map_english_columns, run_backtest_us, run_custom_backtest_us
+from utils.calculator import calc_us_momentum, get_strategy_stocks_us, run_backtest_us, run_custom_backtest_us
 
 inject_custom_css()
 
@@ -77,20 +77,22 @@ if df_master.empty:
     st.stop()
 
 # ==========================================
-# 💡 [핵심 해결] 5월 데이터 증발 완벽 차단 로직 (Pre-merging)
+# 💡 [진범 검거] 5월 데이터 증발 완벽 차단! (영어/한글 컬럼 중복 에러 해결)
 # ==========================================
-col_pairs = [
-    ('Date', '종목선정일'), ('Ticker', '종목코드'), ('Year', '투자연도_raw'), ('Close_Price', '종가'),
-    ('Past_1M_Return(%)', '1개월(%)'), ('Past_3M_Return(%)', '3개월(%)'), 
-    ('Past_6M_Return(%)', '6개월(%)'), ('Past_12M_Return(%)', '12개월(%)'), 
-    ('Forward_1M_Return(%)', '이번달수익률')
-]
-for eng, kor in col_pairs:
-    if eng in df_master.columns and kor in df_master.columns:
-        df_master[eng] = df_master[eng].fillna(df_master[kor])
-        df_master = df_master.drop(columns=[kor])
+col_mapping = {
+    'Date': '종목선정일', 'Year': '투자연도_raw', 'Ticker': '종목코드', 
+    'Close_Price': '종가', 'Past_1M_Return(%)': '1개월(%)', 
+    'Past_3M_Return(%)': '3개월(%)', 'Past_6M_Return(%)': '6개월(%)', 
+    'Past_12M_Return(%)': '12개월(%)', 'Forward_1M_Return(%)': '이번달수익률'
+}
 
-df_master = map_english_columns(df_master)
+# 두 컬럼이 모두 존재하면(4,5월 병합됨) 빈칸을 완벽하게 서로 채운 후 영어 컬럼 삭제
+for eng, kor in col_mapping.items():
+    if eng in df_master.columns and kor in df_master.columns:
+        df_master[kor] = df_master[kor].fillna(df_master[eng])
+        df_master = df_master.drop(columns=[eng])
+    elif eng in df_master.columns:
+        df_master = df_master.rename(columns={eng: kor})
 
 df_master = df_master.dropna(subset=['종목코드'])
 df_master['종목코드'] = df_master['종목코드'].astype(str).replace('nan', '')
@@ -109,15 +111,10 @@ df_master['통합티커'] = df_master['시장'] + ":" + df_master['종목코드'
 df_master['종목선정일'] = pd.to_datetime(df_master['종목선정일'], errors='coerce')
 df_master = df_master.dropna(subset=['종목선정일'])
 
-# [핵심] 기존 투자월이 있으면 살리고, 없으면 종목선정일 기준으로 만듭니다.
-if '투자월' not in df_master.columns:
-    df_master['투자월'] = (df_master['종목선정일'] + pd.Timedelta(days=15)).dt.strftime('%Y-%m')
-else:
-    missing_idx = df_master['투자월'].isnull()
-    if missing_idx.any():
-        df_master.loc[missing_idx, '투자월'] = (df_master.loc[missing_idx, '종목선정일'] + pd.Timedelta(days=15)).dt.strftime('%Y-%m')
-
-df_master['투자연도'] = df_master['투자월'].str.split('-').str[0].astype(float).fillna(0).astype(int)
+# 구출해낸 선정일을 바탕으로 투자월을 정상적으로 조립합니다.
+target_dates = df_master['종목선정일'] + pd.Timedelta(days=15)
+df_master['투자월'] = target_dates.dt.strftime('%Y-%m')
+df_master['투자연도'] = target_dates.dt.year
 
 target_cols = ['시가총액', '종가', '거래량', '1개월(%)', '3개월(%)', '6개월(%)', '12개월(%)', '이번달수익률']
 for col in target_cols:
@@ -228,8 +225,10 @@ with tab1:
         with c_l:
             col_t1, col_i1, col_r1 = st.columns([4, 2, 4])
             with col_t1: st.markdown(f"<h4 style='margin:0;'>🔥 12-1M & 6-1M <span style='font-size:13px; color:gray;'>({count_p}개)</span></h4>", unsafe_allow_html=True)
-            # 💡 [핵심 해결 2] 기본 5개 세팅 (min 값을 5로 조정)
-            with col_i1: top_n_p = st.number_input("p_n", 1, max(1, count_p), min(5, count_p) if count_p > 0 else 1, key="calc_p_us", label_visibility="collapsed")
+            
+            # 💡 [요청 반영] 기본 5개 세팅 적용
+            val_p = 5 if count_p >= 5 else max(1, count_p)
+            with col_i1: top_n_p = st.number_input("p_n", 1, max(1, count_p), val_p, key="calc_p", label_visibility="collapsed")
             with col_r1:
                 avg_ret_p = df_strat1_t1.head(top_n_p)['이번달수익률'].mean() if count_p > 0 else 0
                 st.markdown(f"<div style='margin-top:8px; font-size:0.85rem; font-weight:bold;'>상위 {top_n_p}개 평균: <span style='color:{'#D32F2F' if avg_ret_p>0 else '#1976D2'};'>{avg_ret_p:+.2f}%</span></div>", unsafe_allow_html=True)
@@ -239,8 +238,10 @@ with tab1:
         with c_r:
             col_t2, col_i2, col_r2 = st.columns([4, 2, 4])
             with col_t2: st.markdown(f"<h4 style='margin:0;'>🐎 6-1M & 3-1M <span style='font-size:13px; color:gray;'>({count_s}개)</span></h4>", unsafe_allow_html=True)
-            # 💡 [핵심 해결 2] 기본 5개 세팅 (min 값을 5로 조정)
-            with col_i2: top_n_s = st.number_input("s_n", 1, max(1, count_s), min(5, count_s) if count_s > 0 else 1, key="calc_s_us", label_visibility="collapsed")
+            
+            # 💡 [요청 반영] 기본 5개 세팅 적용
+            val_s = 5 if count_s >= 5 else max(1, count_s)
+            with col_i2: top_n_s = st.number_input("s_n", 1, max(1, count_s), val_s, key="calc_s", label_visibility="collapsed")
             with col_r2:
                 avg_ret_s = df_strat2_t1.head(top_n_s)['이번달수익률'].mean() if count_s > 0 else 0
                 st.markdown(f"<div style='margin-top:8px; font-size:0.85rem; font-weight:bold;'>상위 {top_n_s}개 평균: <span style='color:{'#D32F2F' if avg_ret_s>0 else '#1976D2'};'>{avg_ret_s:+.2f}%</span></div>", unsafe_allow_html=True)
@@ -279,13 +280,12 @@ with tab2:
     if os.path.exists(f_daily):
         df_daily = pd.read_csv(f_daily)
         
-        # 💡 [핵심 방어막] 데일리 데이터도 똑같이 번역기 충돌 방지 코드를 장착합니다.
-        for eng, kor in col_pairs:
+        for eng, kor in col_mapping.items():
             if eng in df_daily.columns and kor in df_daily.columns:
-                df_daily[eng] = df_daily[eng].fillna(df_daily[kor])
-                df_daily = df_daily.drop(columns=[kor])
-                
-        df_daily = map_english_columns(df_daily)
+                df_daily[kor] = df_daily[kor].fillna(df_daily[eng])
+                df_daily = df_daily.drop(columns=[eng])
+            elif eng in df_daily.columns:
+                df_daily = df_daily.rename(columns={eng: kor})
         
         df_daily = df_daily.dropna(subset=['종목코드'])
         df_daily['종목코드'] = df_daily['종목코드'].astype(str).replace('nan', '')
@@ -387,14 +387,33 @@ with tab2:
             df['종목명_L'] = df.apply(lambda r: f"https://m.stock.naver.com/fchart/foreign/stock/{get_naver_ticker(r['종목코드'])}#{r['종목명']}", axis=1)
 
         c_d1, c_d2 = st.columns(2)
+        count_p_d, count_s_d = len(df_strat1_d), len(df_strat2_d)
+        
         with c_d1:
-            st.markdown(f"<h4 style='margin:0;'>🔥 12-1M & 6-1M <span style='font-size:13px; color:gray;'>({len(df_strat1_d)}개)</span></h4>", unsafe_allow_html=True)
+            col_t1, col_i1, col_r1 = st.columns([4, 2, 4])
+            with col_t1: st.markdown(f"<h4 style='margin:0;'>🔥 12-1M & 6-1M <span style='font-size:13px; color:gray;'>({count_p_d}개)</span></h4>", unsafe_allow_html=True)
+            
+            # 💡 [요청 반영] 기본 5개 세팅 (데일리)
+            val_p_d = 5 if count_p_d >= 5 else max(1, count_p_d)
+            with col_i1: top_n_p_d = st.number_input("p_n", 1, max(1, count_p_d), val_p_d, key="calc_p_us_d", label_visibility="collapsed")
+            with col_r1:
+                avg_ret_p_d = df_strat1_d.head(top_n_p_d)['이번달수익률'].mean() if count_p_d > 0 and '이번달수익률' in df_strat1_d.columns else 0
+            
             st.markdown('<p class="strategy-desc">12-1M & 6-1M 모두 상위 30% 이내 & 0보다 큰 종목 (6-1M 순)</p>', unsafe_allow_html=True)
-            st.dataframe(df_strat1_d.style.apply(apply_korea_styling, highlight_codes=df_strat1_d.head(5)['종목코드'].tolist(), axis=1), use_container_width=True, hide_index=True, column_order=col_order_d1, column_config=us_main_cfg)
+            st.dataframe(df_strat1_d.style.apply(apply_korea_styling, highlight_codes=df_strat1_d.head(top_n_p_d)['종목코드'].tolist(), axis=1), use_container_width=True, hide_index=True, column_order=col_order_d1, column_config=us_main_cfg)
+        
         with c_d2:
-            st.markdown(f"<h4 style='margin:0;'>🐎 6-1M & 3-1M <span style='font-size:13px; color:gray;'>({len(df_strat2_d)}개)</span></h4>", unsafe_allow_html=True)
+            col_t2, col_i2, col_r2 = st.columns([4, 2, 4])
+            with col_t2: st.markdown(f"<h4 style='margin:0;'>🐎 6-1M & 3-1M <span style='font-size:13px; color:gray;'>({count_s_d}개)</span></h4>", unsafe_allow_html=True)
+            
+            # 💡 [요청 반영] 기본 5개 세팅 (데일리)
+            val_s_d = 5 if count_s_d >= 5 else max(1, count_s_d)
+            with col_i2: top_n_s_d = st.number_input("s_n", 1, max(1, count_s_d), val_s_d, key="calc_s_us_d", label_visibility="collapsed")
+            with col_r2:
+                avg_ret_s_d = df_strat2_d.head(top_n_s_d)['이번달수익률'].mean() if count_s_d > 0 and '이번달수익률' in df_strat2_d.columns else 0
+            
             st.markdown('<p class="strategy-desc">6-1M & 3-1M 모두 상위 30% 이내 & 0보다 큰 종목 (6-1M 순)</p>', unsafe_allow_html=True)
-            st.dataframe(df_strat2_d.style.apply(apply_korea_styling, highlight_codes=df_strat2_d.head(5)['종목코드'].tolist(), axis=1), use_container_width=True, hide_index=True, column_order=col_order_d2, column_config=us_main_cfg)
+            st.dataframe(df_strat2_d.style.apply(apply_korea_styling, highlight_codes=df_strat2_d.head(top_n_s_d)['종목코드'].tolist(), axis=1), use_container_width=True, hide_index=True, column_order=col_order_d2, column_config=us_main_cfg)
             
         st.markdown("<hr style='margin: 1.5rem 0;'>", unsafe_allow_html=True)
         st.markdown("### 🏆 기간별 모멘텀 상위 30위")
