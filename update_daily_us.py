@@ -6,18 +6,13 @@ import os
 import glob
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
-# ==========================================
-# 🇺🇸 미국 시장 유효 영업일 추출 (미국 SPY ETF 기준)
-# ==========================================
 def get_last_business_day_us():
     try:
-        # 미국 시장 영업일을 판단하기 위해 S&P500 ETF(SPY)의 거래량을 확인합니다.
         df = fdr.DataReader('SPY', datetime.today() - timedelta(days=14))
         valid_days = df[df['Volume'] > 1000] 
         if not valid_days.empty:
             return valid_days.index[-1].strftime('%Y-%m-%d')
-    except:
-        pass
+    except: pass
     return datetime.today().strftime('%Y-%m-%d')
 
 def get_end_of_month(dt, months_ago):
@@ -32,8 +27,7 @@ def calculate_return_unified(df_hist, target_date, current_price):
         base_price = past_df['Close'].iloc[-1]
         if base_price <= 0: return 0.0
         return round(((current_price / base_price) - 1) * 100, 2)
-    except:
-        return 0.0
+    except: return 0.0
 
 def process_ticker_us(row, start_date, today, dates, real_base_date_str):
     code = row['Code']
@@ -62,8 +56,7 @@ def process_ticker_us(row, start_date, today, dates, real_base_date_str):
             '12개월(%)': calculate_return_unified(df_hist, dates['12개월'], curr_price)
         }
         return code, record, df_hist
-    except:
-        return None
+    except: return None
 
 def update_daily_momentum_us():
     print("🚀 [미국 전용] 데일리 수익률 및 VIX 데이터 업데이트 시작...")
@@ -88,12 +81,27 @@ def update_daily_momentum_us():
         print("✅ VIX 지수 업데이트 성공!")
     except Exception as e: print(f"🚨 VIX 다운로드 실패: {e}")
 
+    # 💡 [해결] 여기서 실제 미국 시장(NYSE/NASDAQ) 정보를 미리 가져옵니다.
+    print("🔄 미국 거래소(NYSE/NASDAQ) 종목 마스터 데이터 매핑 중...")
+    try:
+        us_ny = fdr.StockListing('NYSE')[['Symbol']]
+        us_ny['시장'] = 'NYSE'
+        us_nq = fdr.StockListing('NASDAQ')[['Symbol']]
+        us_nq['시장'] = 'NASDAQ'
+        us_master = pd.concat([us_ny, us_nq])
+        us_master['Symbol'] = us_master['Symbol'].str.replace('.', '-', regex=False)
+        us_market_map = dict(zip(us_master['Symbol'], us_master['시장']))
+    except:
+        us_market_map = {}
+
     print("🔄 미국 S&P 500 데이터 로드 중...")
     try:
         df_sp500 = fdr.StockListing('S&P500')
         df_sp500['Code'] = df_sp500['Symbol'].str.replace('.', '-', regex=False)
         df_sp500['Name'] = df_sp500['Symbol'] if 'Name' not in df_sp500.columns else df_sp500['Name']
-        df_sp500['시장'] = 'S&P500'
+        
+        # 💡 [해결] 무식하게 'S&P500'이라 적지 않고 실제 소속을 매핑합니다.
+        df_sp500['시장'] = df_sp500['Code'].map(us_market_map).fillna('US')
         df_sp500['Marcap'] = 0
         all_target_df = df_sp500[['Code', 'Name', '시장', 'Marcap']].drop_duplicates(subset=['Code']).copy()
     except Exception as e:
@@ -125,6 +133,8 @@ def update_daily_momentum_us():
         archive_files = sorted(glob.glob(f'{archive_folder}/only_*.csv'))
         if not archive_files: return
         latest_file = archive_files[-1]
+        
+        # 💡 [에러 원천차단] 컬럼 이름에 의존하지 않고 안전하게 텍스트로 읽어옵니다.
         df_latest = pd.read_csv(latest_file, dtype=str)
         
         target_col = '종목선정일' if '종목선정일' in df_latest.columns else 'Date'
