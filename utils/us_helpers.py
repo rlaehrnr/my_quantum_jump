@@ -52,52 +52,62 @@ def preprocess_us_data(df, is_daily=False):
     return df
 
 def add_naver_links(df):
-    naver_exceptions = {'CIEN': '.K', 'COHR': '.K', 'EQNR': '.K', 'DELL': '.K', 'KEYS': '.K'}
+    naver_exceptions = {'CIEN': '.K', 'COHR': '.K', 'EQNR': '.K', 'DELL': '.K'}
     def get_naver_ticker(code): return f"{code}{naver_exceptions.get(code, '.O')}"
     
     df['통합티커_L'] = df.apply(lambda r: f"https://m.stock.naver.com/worldstock/stock/{get_naver_ticker(r['종목코드'])}/total#{r.get('통합티커', r['종목코드'])}", axis=1)
     df['종목명_L'] = df.apply(lambda r: f"https://m.stock.naver.com/fchart/foreign/stock/{get_naver_ticker(r['종목코드'])}#{r['종목명']}", axis=1)
     return df
 
+# 💡 [해결] period="2y" 대신, 선택된 기준일로부터 450일 전의 데이터를 명시적으로 호출합니다.
 @st.cache_data(ttl=3600)
 def robust_get_us_ma_all(target_date_str, ticker='^GSPC'):
     try:
         target_date = pd.to_datetime(target_date_str).normalize()
+        start_date = target_date - pd.Timedelta(days=450)
+        end_date = target_date + pd.Timedelta(days=2)
+        
         df = pd.DataFrame()
         try:
-            df = yf.Ticker(ticker).history(period="2y")
+            df = yf.Ticker(ticker).history(start=start_date.strftime('%Y-%m-%d'), end=end_date.strftime('%Y-%m-%d'))
             if not df.empty and df.index.tz is not None: df.index = df.index.tz_localize(None)
         except: pass
         if df.empty:
-            df = fdr.DataReader('US500' if ticker == '^GSPC' else 'IXIC')
+            df = fdr.DataReader('US500' if ticker == '^GSPC' else 'IXIC', start_date, end_date)
         if df.empty: return 0.0, {}
+        
         df.index = pd.to_datetime(df.index).normalize()
         df = df[df.index <= target_date]
         if df.empty: return 0.0, {}
         
         curr_p = df['Close'].iloc[-1]
         mas = {
-            4: round(df['Close'].rolling(80).mean().iloc[-1], 2),
-            5: round(df['Close'].rolling(100).mean().iloc[-1], 2),
-            6: round(df['Close'].rolling(120).mean().iloc[-1], 2),
-            10: round(df['Close'].rolling(200).mean().iloc[-1], 2),
-            12: round(df['Close'].rolling(240).mean().iloc[-1], 2)
+            4: round(df['Close'].rolling(80).mean().iloc[-1], 2) if len(df) >= 80 else None,
+            5: round(df['Close'].rolling(100).mean().iloc[-1], 2) if len(df) >= 100 else None,
+            6: round(df['Close'].rolling(120).mean().iloc[-1], 2) if len(df) >= 120 else None,
+            10: round(df['Close'].rolling(200).mean().iloc[-1], 2) if len(df) >= 200 else None,
+            12: round(df['Close'].rolling(240).mean().iloc[-1], 2) if len(df) >= 240 else None
         }
         return curr_p, mas
     except Exception: return 0.0, {}
 
+# 💡 [해결] 역시 period="2y" 대신, 선택된 기준일로부터 150일 전의 데이터를 명시적으로 호출합니다.
 @st.cache_data(ttl=3600)
 def robust_get_us_idx_return(target_date_str, ticker='^GSPC'):
     try:
         target_date = pd.to_datetime(target_date_str).normalize()
+        start_date = target_date - pd.Timedelta(days=150)
+        end_date = target_date + pd.Timedelta(days=2)
+        
         df = pd.DataFrame()
         try:
-            df = yf.Ticker(ticker).history(period="2y")
+            df = yf.Ticker(ticker).history(start=start_date.strftime('%Y-%m-%d'), end=end_date.strftime('%Y-%m-%d'))
             if not df.empty and df.index.tz is not None: df.index = df.index.tz_localize(None)
         except: pass
         if df.empty:
-            df = fdr.DataReader('US500' if ticker == '^GSPC' else 'IXIC')
+            df = fdr.DataReader('US500' if ticker == '^GSPC' else 'IXIC', start_date, end_date)
         if df.empty: return 0.0, 0.0
+        
         df.index = pd.to_datetime(df.index).normalize()
         df = df[df.index <= target_date]
         if df.empty: return 0.0, 0.0
