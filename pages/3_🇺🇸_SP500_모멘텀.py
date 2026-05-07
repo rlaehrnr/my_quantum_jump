@@ -100,10 +100,18 @@ us_main_cfg.update({
     '시가총액': st.column_config.NumberColumn('시가총액', format="%d")
 })
 
+# 💡 [해결] 탭 1 (월별 분석용) 컬럼 리스트
 col_order_strat1 = ['순위', '통합티커_L', '종목명_L', '12-1개월(%)', '6-1개월(%)', '이번달수익률']
 col_order_strat2 = ['순위', '통합티커_L', '종목명_L', '6-1개월(%)', '3-1개월(%)', '이번달수익률']
 col_order_triple = ['순위', '통합티커_L', '종목명_L', '12-1개월(%)', '6-1개월(%)', '3-1개월(%)', '이번달수익률']
 cols_m = ['순위', '통합티커_L', '종목명_L', '시가총액', '종가', '1개월(%)', '3개월(%)', '6개월(%)', '12개월(%)', '12-1개월(%)', '6-1개월(%)', '3-1개월(%)', '커스텀스코어', '이번달수익률']
+
+# 💡 [해결] 탭 2 (데일리 분석용) 컬럼 리스트 복원 완료
+col_order_d1 = ['순위', '통합티커_L', '종목명_L', '12-1개월(%)', '6-1개월(%)']
+col_order_d2 = ['순위', '통합티커_L', '종목명_L', '6-1개월(%)', '3-1개월(%)']
+col_order_triple_d = ['순위', '통합티커_L', '종목명_L', '12-1개월(%)', '6-1개월(%)', '3-1개월(%)']
+cols_d = ['순위', '통합티커_L', '종목명_L', '시가총액', '종가', '거래량', '1개월(%)', '3개월(%)', '6개월(%)', '12개월(%)', '12-1개월(%)', '6-1개월(%)', '3-1개월(%)', '커스텀스코어']
+
 
 tab1, tab2, tab3, tab4, tab5 = st.tabs(["📅 월별 상세 분석", "🕒 실시간 데일리 순위", "📈 전략 조합 백테스트", "🏅 스코어 커스텀 백테스트", "🚀 가속도 모멘텀 백테스트"])
 
@@ -274,7 +282,7 @@ with tab2:
         st.markdown('<p class="strategy-desc">3-1M, 6-1M, 12-1M 모두 상위 150위 이내인 최정예 종목 (6-1M 순 정렬)</p>', unsafe_allow_html=True)
         
         sel_codes_tr_d = df_triple_d.head(top_n_tr_d)['종목코드'].tolist()
-        st.dataframe(df_triple_d.style.apply(apply_korea_styling, highlight_codes=sel_codes_tr_d, axis=1), use_container_width=True, hide_index=True, column_order=col_order_triple, column_config=us_main_cfg)
+        st.dataframe(df_triple_d.style.apply(apply_korea_styling, highlight_codes=sel_codes_tr_d, axis=1), use_container_width=True, hide_index=True, column_order=col_order_triple_d, column_config=us_main_cfg)
 
         st.markdown("<hr>", unsafe_allow_html=True)
         c_d1, c_d2 = st.columns(2)
