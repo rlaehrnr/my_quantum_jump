@@ -1,4 +1,3 @@
-# utils/us_helpers.py
 import pandas as pd
 import numpy as np
 from datetime import datetime, timedelta
@@ -52,11 +51,9 @@ def preprocess_us_data(df, is_daily=False):
         
     return df
 
-# 💡 [해결 1] 네이버 증권 링크 로직 전면 수정 (NYSE/NASDAQ 구분 대응)
 def add_naver_links(df):
     def get_naver_global_link(row):
         code = str(row['종목코드'])
-        # 주요 뉴욕거래소 종목 예외 처리 (필요시 추가)
         nyse_tickers = ['JPM', 'V', 'MA', 'WMT', 'KO', 'DIS', 'BRK.B', 'PFE', 'NKE', 'XOM', 'CVX']
         suffix = '.N' if code in nyse_tickers else '.O'
         return f"https://m.stock.naver.com/worldstock/stock/{code}{suffix}/total"
@@ -154,7 +151,7 @@ def calc_us_momentum(df):
         else: df_calc[f'{m}-1개월(%)'] = 0.0
     return df_calc
 
-# 💡 [해결 3] 트리플 교집합(3&6&12) 종목 추출 함수
+# 💡 [핵심] 이제 무조건 4개의 데이터프레임을 반환합니다.
 def get_strategy_stocks_us_custom(df_month, top_n_12=150, top_n_6=150, top_n_3=150):
     df_calc = calc_us_momentum(df_month)
     df_12_valid = df_calc[df_calc['12-1개월(%)'] > 0]
@@ -167,13 +164,10 @@ def get_strategy_stocks_us_custom(df_month, top_n_12=150, top_n_6=150, top_n_3=1
     
     strat1 = top_12[top_12['종목코드'].isin(top_6['종목코드'])].sort_values('6-1개월(%)', ascending=False)
     strat2 = top_6[top_6['종목코드'].isin(top_3['종목코드'])].sort_values('6-1개월(%)', ascending=False)
-    
-    # 💡 신설: 12-1, 6-1, 3-1 세 기간 모두 겹치는 종목 (6-1M 기준 정렬)
     strat_triple = top_12[top_12['종목코드'].isin(top_6['종목코드']) & top_12['종목코드'].isin(top_3['종목코드'])].sort_values('6-1개월(%)', ascending=False)
     
     return df_calc, strat1, strat2, strat_triple
 
-# 💡 [해결 4] 백테스트 엔진에 트리플 전략 통합
 @st.cache_data(show_spinner=False)
 def run_backtest_us_fast(df, start_year, end_year, ma_months, apply_timing, rank_s1, rank_s2, rank_tr, top_n_12, top_n_6, top_n_3, spx):
     if not spx.empty:
@@ -214,7 +208,6 @@ def run_backtest_us_fast(df, start_year, end_year, ma_months, apply_timing, rank
         
         if mult > 0:
             for i, (_, r) in enumerate(tr.iterrows()): trade_logs.append({'투자월': m_str, '전략': '트리플', '순위': f"{i+rank_tr[0]}위", '종목명': r['종목명'], '수익률(%)': r['이번달수익률']})
-            # (기타 전략 로그 생략 가능하거나 필요시 추가)
         else:
             trade_logs.append({'투자월': m_str, '전략': '마켓타이밍', '순위': '-', '종목명': '현금보유(CASH)', '수익률(%)': 0.0})
             
@@ -255,6 +248,7 @@ def run_custom_backtest_us(df, start_year_c, end_year_c, ma_months_c, apply_timi
             
     return pd.DataFrame(records), pd.DataFrame(trade_logs)
 
+@st.cache_data(show_spinner=False)
 def run_acceleration_backtest_us(df, start_year, end_year, ma_months, apply_timing, condition_type, top_n):
     spx = get_spx_history_cached()
     if not spx.empty:
