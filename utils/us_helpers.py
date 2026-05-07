@@ -51,39 +51,23 @@ def preprocess_us_data(df, is_daily=False):
         
     return df
 
-# 💡 [핵심수정] 나스닥(.O), 예외(.K), 뉴욕시장(안붙음) 완벽 분리
+# 💡 [핵심 수정] 무식한 하드코딩 삭제 -> 데이터의 '시장' 값을 읽어서 스마트하게 분류
 def add_naver_links(df):
-    # 예외적으로 .K가 붙는 종목들을 여기에 추가하세요 (티커만 입력)
     exceptions_k = ['CIEN', 'COHR', 'EQNR', 'DELL']
     
-    # 나스닥(.O) 종목 리스트 (주요 S&P 500 나스닥 종목 포함)
-    # 여기에 없는 종목은 자동으로 뉴욕시장(아무것도 안 붙임)으로 처리됩니다.
-    nasdaq_tickers = [
-        'AAPL', 'MSFT', 'AMZN', 'GOOGL', 'GOOG', 'META', 'NVDA', 'TSLA', 'AVGO', 'PEP', 
-        'COST', 'CSCO', 'TMUS', 'TXN', 'NFLX', 'ADBE', 'CMCSA', 'INTC', 'INTU', 'AMGN', 
-        'QCOM', 'HON', 'AMAT', 'SBUX', 'ISRG', 'GILD', 'MDLZ', 'VRTX', 'BKNG', 'ADI', 
-        'REGN', 'ADP', 'PANW', 'LRCX', 'PYPL', 'MU', 'MELI', 'CSX', 'ILMN', 'KLAC', 
-        'CHTR', 'MAR', 'SNPS', 'MNST', 'ORLY', 'CDNS', 'KDP', 'FTNT', 'NXPI', 'PCAR', 
-        'LULU', 'DXCM', 'WDAY', 'CRWD', 'MCHP', 'SIRI', 'ROST', 'EA', 'CTAS', 'FAST', 
-        'VRSK', 'BIIB', 'CPRT', 'WBA', 'EXC', 'IDXX', 'ODFL', 'ON', 'CSGP', 'DLTR', 
-        'EBAY', 'BKR', 'CTSH', 'FANG', 'ALGN', 'XEL', 'DDOG', 'GFS', 'WBD', 'GEHC',
-        'SGEN', 'CEG', 'MRVL', 'KHC', 'PAYX', 'ROK', 'AEP', 'TTWO', 'BWA', 'CDW', 'CHKP',
-        'ANSS', 'VRSN', 'SWKS', 'PTC', 'NTAP', 'STX', 'HSIC', 'HOLX', 'MKTX', 
-        'TECH', 'NDSN', 'ZBRA', 'FOXA', 'TER', 'TRMB', 'POOL', 'CGNX', 'ENTG', 'FSLR', 
-        'ENPH', 'PODD', 'HBAN', 'SEDG', 'GNRC'
-    ]
-    
-    def get_naver_ticker(code):
-        code_str = str(code).strip()
+    def get_naver_ticker(row):
+        code_str = str(row['종목코드']).strip()
+        market_str = str(row.get('시장', '')).upper()
+        
         if code_str in exceptions_k:
             return f"{code_str}.K"
-        elif code_str in nasdaq_tickers:
+        elif 'NASDAQ' in market_str or '나스닥' in market_str:
             return f"{code_str}.O"
         else:
-            return code_str # 뉴욕시장 (접미사 없음)
-    
-    df['통합티커_L'] = df.apply(lambda r: f"https://m.stock.naver.com/worldstock/stock/{get_naver_ticker(r['종목코드'])}/total#{r.get('통합티커', r['종목코드'])}", axis=1)
-    df['종목명_L'] = df.apply(lambda r: f"https://m.stock.naver.com/fchart/foreign/stock/{get_naver_ticker(r['종목코드'])}#{r['종목명']}", axis=1)
+            return code_str # 뉴욕시장 (어떤 문자도 붙이지 않음)
+            
+    df['통합티커_L'] = df.apply(lambda r: f"https://m.stock.naver.com/worldstock/stock/{get_naver_ticker(r)}/total#{r.get('통합티커', r['종목코드'])}", axis=1)
+    df['종목명_L'] = df.apply(lambda r: f"https://m.stock.naver.com/fchart/foreign/stock/{get_naver_ticker(r)}#{r['종목명']}", axis=1)
     return df
 
 @st.cache_data(ttl=3600)
