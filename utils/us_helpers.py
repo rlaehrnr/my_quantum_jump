@@ -59,7 +59,6 @@ def add_naver_links(df):
     df['종목명_L'] = df.apply(lambda r: f"https://m.stock.naver.com/fchart/foreign/stock/{get_naver_ticker(r['종목코드'])}#{r['종목명']}", axis=1)
     return df
 
-# 💡 [해결] period="2y" 대신, 선택된 기준일로부터 450일 전의 데이터를 명시적으로 호출합니다.
 @st.cache_data(ttl=3600)
 def robust_get_us_ma_all(target_date_str, ticker='^GSPC'):
     try:
@@ -91,7 +90,6 @@ def robust_get_us_ma_all(target_date_str, ticker='^GSPC'):
         return curr_p, mas
     except Exception: return 0.0, {}
 
-# 💡 [해결] 역시 period="2y" 대신, 선택된 기준일로부터 150일 전의 데이터를 명시적으로 호출합니다.
 @st.cache_data(ttl=3600)
 def robust_get_us_idx_return(target_date_str, ticker='^GSPC'):
     try:
@@ -257,6 +255,55 @@ def run_custom_backtest_us(df, start_year_c, end_year_c, ma_months_c, apply_timi
         
         if mult > 0:
             for i, (_, r) in enumerate(target.iterrows()): trade_logs.append({'투자월': m_str, '전략': '커스텀', '순위': f"{i+rank_c_s}위", '종목명': r['종목명'], '수익률(%)': r['이번달수익률']})
+        else:
+            trade_logs.append({'투자월': m_str, '전략': '마켓타이밍', '순위': '-', '종목명': '현금보유(CASH)', '수익률(%)': 0.0})
+            
+    return pd.DataFrame(records), pd.DataFrame(trade_logs)
+
+# 💡 [추가 완료] 가속도 모멘텀 전용 백테스트 엔진
+@st.cache_data(show_spinner=False)
+def run_acceleration_backtest_us(df, start_year, end_year, ma_months, apply_timing, condition_type, top_n):
+    spx = get_spx_history_cached()
+    if not spx.empty:
+        spx['MA'] = spx['Close'].rolling(ma_months * 20).mean()
+        spx['Is_Below'] = spx['Close'] < spx['MA']
+        
+    records, trade_logs = [], []
+    for m_str in sorted(df['투자월'].dropna().unique()):
+        m_yr = int(m_str.split('-')[0])
+        if not (start_year <= m_yr <= end_year): continue
+        df_calc = df[df['투자월'] == m_str].copy()
+        if df_calc.empty: continue
+        
+        base_date = pd.to_datetime(m_str + '-01') - pd.Timedelta(days=5)
+        is_below = False
+        if not spx.empty:
+            past_spx = spx[spx.index <= base_date]
+            if not past_spx.empty: is_below = past_spx['Is_Below'].iloc[-1]
+                
+        mult = 0.0 if (apply_timing and is_below) else 1.0
+        df_calc = calc_us_momentum(df_calc)
+        
+        # 💡 가속도 조건 로직 적용
+        if condition_type == "1) 절대 수익률 기반 (1M > 3M/3 > 6M/6 > 12M/12)":
+            cond = (df_calc['1개월(%)'] > (df_calc['3개월(%)'] / 3)) & \
+                   ((df_calc['3개월(%)'] / 3) > (df_calc['6개월(%)'] / 6)) & \
+                   ((df_calc['6개월(%)'] / 6) > (df_calc['12개월(%)'] / 12)) & \
+                   ((df_calc['12개월(%)'] / 12) > 0)
+        else: # 상대 수익률 (최근 1개월을 뺀 수익률 기반)
+            cond = (df_calc['1개월(%)'] > (df_calc['3-1개월(%)'] / 2)) & \
+                   ((df_calc['3-1개월(%)'] / 2) > (df_calc['6-1개월(%)'] / 5)) & \
+                   ((df_calc['6-1개월(%)'] / 5) > (df_calc['12-1개월(%)'] / 11)) & \
+                   ((df_calc['12-1개월(%)'] / 11) > 0)
+            
+        target = df_calc[cond].sort_values('1개월(%)', ascending=False).head(top_n)
+        
+        avg_ret = target['이번달수익률'].mean() * mult if not target.empty else 0
+        records.append({'투자월': m_str, 'invested': mult > 0, '가속도 전략': avg_ret})
+        
+        if mult > 0:
+            for i, (_, r) in enumerate(target.iterrows()): 
+                trade_logs.append({'투자월': m_str, '전략': '가속도', '순위': f"{i+1}위", '종목명': r['종목명'], '수익률(%)': r['이번달수익률']})
         else:
             trade_logs.append({'투자월': m_str, '전략': '마켓타이밍', '순위': '-', '종목명': '현금보유(CASH)', '수익률(%)': 0.0})
             
