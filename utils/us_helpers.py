@@ -51,9 +51,9 @@ def preprocess_us_data(df, is_daily=False):
         
     return df
 
-# 💡 [핵심 수정 1] 무식한 하드코딩 삭제 -> 데이터의 '시장' 값을 읽어서 스마트하게 분류
+# 💡 [핵심 수정] 무식한 하드코딩 삭제 -> 데이터의 '시장' 값을 읽어서 스마트하게 분류
 def add_naver_links(df):
-    exceptions_k = ['CIEN', 'COHR', 'EQNR', 'DELL'] # K가 붙는 예외 종목들
+    exceptions_k = ['CIEN', 'COHR', 'EQNR', 'DELL']
     
     def get_naver_ticker(row):
         code_str = str(row['종목코드']).strip()
@@ -64,7 +64,7 @@ def add_naver_links(df):
         elif 'NASDAQ' in market_str or '나스닥' in market_str:
             return f"{code_str}.O"
         else:
-            return code_str # 뉴욕시장 등은 원본 티커 그대로
+            return code_str # 뉴욕시장 (어떤 문자도 붙이지 않음)
             
     df['통합티커_L'] = df.apply(lambda r: f"https://m.stock.naver.com/worldstock/stock/{get_naver_ticker(r)}/total#{r.get('통합티커', r['종목코드'])}", axis=1)
     df['종목명_L'] = df.apply(lambda r: f"https://m.stock.naver.com/fchart/foreign/stock/{get_naver_ticker(r)}#{r['종목명']}", axis=1)
