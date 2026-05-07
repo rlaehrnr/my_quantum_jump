@@ -18,13 +18,15 @@ from utils.us_helpers import (
 
 inject_custom_css()
 
-# 💡 [핵심 수정] 전체 순위표만을 위한 깔끔하고 눈이 편안한 인디고(연보라) 하이라이트 함수 
+# 💡 [핵심 수정 1] 전체 순위표에서 '종목명'에만 눈이 편안한 파스텔 옐로우 적용
 def apply_custom_total_styling(row, top_codes):
     styles = []
     is_top = row['종목코드'] in top_codes
-    bg = 'background-color: #E8EAF6;' if is_top else '' 
     for col, val in row.items():
-        style = bg
+        style = ''
+        if is_top and col == '종목명_L':
+            style += 'background-color: #FFF9C4; font-weight: bold;' # 파스텔 옐로우
+            
         if isinstance(col, str) and ('(%)' in col or col == '커스텀스코어' or '수익률' in col):
             try:
                 v = float(val)
@@ -121,9 +123,12 @@ us_main_cfg.update({
 
 col_order_strat1 = ['순위', '통합티커_L', '종목명_L', '12-1개월(%)', '6-1개월(%)', '이번달수익률']
 col_order_strat2 = ['순위', '통합티커_L', '종목명_L', '6-1개월(%)', '3-1개월(%)', '이번달수익률']
+col_order_triple = ['순위', '통합티커_L', '종목명_L', '12-1개월(%)', '6-1개월(%)', '3-1개월(%)', '이번달수익률']
+cols_m = ['순위', '통합티커_L', '종목명_L', '시가총액', '종가', '1개월(%)', '3개월(%)', '6개월(%)', '12개월(%)', '12-1개월(%)', '6-1개월(%)', '3-1개월(%)', '커스텀스코어', '이번달수익률']
+
 col_order_d1 = ['순위', '통합티커_L', '종목명_L', '12-1개월(%)', '6-1개월(%)']
 col_order_d2 = ['순위', '통합티커_L', '종목명_L', '6-1개월(%)', '3-1개월(%)']
-cols_m = ['순위', '통합티커_L', '종목명_L', '시가총액', '종가', '1개월(%)', '3개월(%)', '6개월(%)', '12개월(%)', '12-1개월(%)', '6-1개월(%)', '3-1개월(%)', '커스텀스코어', '이번달수익률']
+col_order_triple_d = ['순위', '통합티커_L', '종목명_L', '12-1개월(%)', '6-1개월(%)', '3-1개월(%)']
 cols_d = ['순위', '통합티커_L', '종목명_L', '시가총액', '종가', '거래량', '1개월(%)', '3개월(%)', '6개월(%)', '12개월(%)', '12-1개월(%)', '6-1개월(%)', '3-1개월(%)', '커스텀스코어']
 
 tab1, tab2, tab3, tab4 = st.tabs(["📅 월별 상세 분석", "🕒 실시간 데일리 순위", "📈 전략 백테스트", "🏅 스코어 커스텀 백테스트"])
@@ -166,17 +171,18 @@ with tab1:
         st.dataframe(style_kospi_ma(ma_df), use_container_width=True, hide_index=True, column_config=ma_cfg)
         
         df_monthly = add_naver_links(df_monthly)
-        df_us_t1, df_strat1_t1, df_strat2_t1 = get_strategy_stocks_us_custom(df_monthly, top_n_12=150, top_n_6=150, top_n_3=150)
+        df_us_t1, df_strat1_t1, df_strat2_t1, df_triple_t1 = get_strategy_stocks_us_custom(df_monthly)
         
         df_us_t1['커스텀스코어'] = (-0.1 * df_us_t1['1개월(%)']) + (0.7 * df_us_t1['3개월(%)']) + (0.4 * df_us_t1['6개월(%)'])
         df_us_t1 = df_us_t1.sort_values('커스텀스코어', ascending=False)
         df_us_t1['순위'] = range(1, len(df_us_t1) + 1)
         
-        spx_1m, spx_3m = robust_get_us_idx_return(base_date, '^GSPC')
-        ndx_1m, ndx_3m = robust_get_us_idx_return(base_date, '^IXIC')
-        
         df_strat1_t1['순위'] = range(1, len(df_strat1_t1) + 1)
         df_strat2_t1['순위'] = range(1, len(df_strat2_t1) + 1)
+        df_triple_t1['순위'] = range(1, len(df_triple_t1) + 1)
+
+        spx_1m, spx_3m = robust_get_us_idx_return(base_date, '^GSPC')
+        ndx_1m, ndx_3m = robust_get_us_idx_return(base_date, '^IXIC')
 
         cycle_year_t1 = get_cycle_year(safe_year)
         bad_m_str_t1 = ", ".join(f"{m}월" for m in PRESIDENTIAL_DANGEROUS_MONTHS.get(cycle_year_t1, [])) or "없음"
@@ -194,13 +200,27 @@ with tab1:
         with col6: st.markdown(f'<div style="background-color: {box_c}; padding: 10px; border-radius: 10px; text-align: center; border: 1px solid {text_c}; height: 95px; display: flex; flex-direction: column; justify-content: center;"><p style="margin: 0; font-size: 12px; color: {text_c}; font-weight: bold;">최종 판단 ({reason_desc})</p><div style="margin: 4px 0 0 0; font-size: 1.5rem; font-weight: 900; color: {text_c};">{status}</div></div>', unsafe_allow_html=True)
         st.markdown("<hr style='margin: 1rem 0;'>", unsafe_allow_html=True)
 
+        # 💡 [핵심 수정 2 & 3] 1줄 렌더링 박스 비율 조정 (5:2:5) -> 화면이 작아도 숫자 컨트롤러 완벽 노출
+        col_t, col_i, col_r = st.columns([5, 2, 5])
+        with col_t: st.markdown(f"<h3 style='margin:0;'>🏆 트리플 모멘텀 (3&6&12개월) <span style='font-size:15px; color:gray;'>({len(df_triple_t1)}개)</span></h3>", unsafe_allow_html=True)
+        with col_i: top_n_tr = st.number_input("tr_n", 1, max(1, len(df_triple_t1)), 5 if len(df_triple_t1) >= 5 else max(1, len(df_triple_t1)), key="calc_tr", label_visibility="collapsed")
+        with col_r:
+            avg_ret_tr = df_triple_t1.head(top_n_tr)['이번달수익률'].mean() if len(df_triple_t1) > 0 else 0
+            st.markdown(f"<div style='margin-top:8px; font-size:0.95rem; font-weight:bold;'>상위 {top_n_tr}개 평균: <span style='color:{'#D32F2F' if avg_ret_tr>0 else '#1976D2'};'>{avg_ret_tr:+.2f}%</span></div>", unsafe_allow_html=True)
+        st.markdown('<p class="strategy-desc">3-1M, 6-1M, 12-1M 모두 상위 150위 이내인 최정예 종목 (6-1M 순 정렬)</p>', unsafe_allow_html=True)
+        
+        sel_codes_tr = df_triple_t1.head(top_n_tr)['종목코드'].tolist()
+        st.dataframe(df_triple_t1.style.apply(apply_korea_styling, highlight_codes=sel_codes_tr, axis=1), use_container_width=True, hide_index=True, column_order=col_order_triple, column_config=us_main_cfg)
+
+        st.markdown("<hr>", unsafe_allow_html=True)
         c_l, c_r = st.columns(2)
         count_p, count_s = len(df_strat1_t1), len(df_strat2_t1)
         val_p = 5 if count_p >= 5 else max(1, count_p)
         val_s = 5 if count_s >= 5 else max(1, count_s)
         
         with c_l:
-            col_t1, col_i1, col_r1 = st.columns([4, 2, 4])
+            # 💡 [핵심 수정 2 & 3] 박스 비율 조정 (5:3.5:3.5)
+            col_t1, col_i1, col_r1 = st.columns([5, 3.5, 3.5])
             with col_t1: st.markdown(f"<h4 style='margin:0;'>🔥 12-1M & 6-1M <span style='font-size:13px; color:gray;'>({count_p}개)</span></h4>", unsafe_allow_html=True)
             with col_i1: top_n_p = st.number_input("p_n", 1, max(1, count_p), val_p, key="calc_p", label_visibility="collapsed")
             with col_r1:
@@ -209,7 +229,7 @@ with tab1:
             st.markdown('<p class="strategy-desc">12-1M & 6-1M 각각 150위 이내 교집합 종목 (6-1M 순)</p>', unsafe_allow_html=True)
             
         with c_r:
-            col_t2, col_i2, col_r2 = st.columns([4, 2, 4])
+            col_t2, col_i2, col_r2 = st.columns([5, 3.5, 3.5])
             with col_t2: st.markdown(f"<h4 style='margin:0;'>🐎 6-1M & 3-1M <span style='font-size:13px; color:gray;'>({count_s}개)</span></h4>", unsafe_allow_html=True)
             with col_i2: top_n_s = st.number_input("s_n", 1, max(1, count_s), val_s, key="calc_s", label_visibility="collapsed")
             with col_r2:
@@ -226,16 +246,16 @@ with tab1:
         with c_r:
             st.dataframe(df_strat2_t1.style.apply(apply_korea_styling, highlight_codes=sel_codes_s, overlap_codes=overlap_codes_t1, axis=1), use_container_width=True, hide_index=True, column_order=col_order_strat2, column_config=us_main_cfg)
 
-        # 💡 [핵심수정] 상위 30위 표 삭제 및 전체 표 독립 하이라이트 UI 반영
         st.markdown("---")
         
-        col_total_t, col_total_i, col_total_r = st.columns([4, 2, 4])
+        # 💡 [핵심 수정 4] 전체 순위표 독립 하이라이트 UI (숫자 입력 박스 추가)
+        col_total_t, col_total_i, col_total_r = st.columns([5, 2, 5])
         with col_total_t: 
-            st.markdown("### 🌐 S&P 500 전체 순위 (커스텀 스코어순)")
+            st.markdown("<h3 style='margin:0;'>🌐 S&P 500 전체 순위</h3>", unsafe_allow_html=True)
         with col_total_i:
             top_n_total_t1 = st.number_input("전체 순위 하이라이트 (N위)", 1, len(df_us_t1), 10, key="top_n_total_t1", label_visibility="collapsed")
         with col_total_r:
-            st.markdown("<div style='margin-top:8px; font-size:0.85rem; font-weight:bold; color:gray;'>선택한 순위까지 색상이 강조됩니다.</div>", unsafe_allow_html=True)
+            st.markdown("<div style='margin-top:8px; font-size:0.85rem; font-weight:bold; color:gray;'>선택한 순위의 종목명이 강조됩니다.</div>", unsafe_allow_html=True)
             
         top_codes_total_t1 = df_us_t1.head(top_n_total_t1)['종목코드'].tolist()
         st.dataframe(df_us_t1.style.apply(apply_custom_total_styling, top_codes=top_codes_total_t1, axis=1), use_container_width=True, height=600, hide_index=True, column_order=cols_m, column_config=us_main_cfg)
@@ -249,7 +269,6 @@ with tab2:
         df_daily_raw = pd.read_csv(f_daily_path)
         df_daily = preprocess_us_data(df_daily_raw, is_daily=True)
         
-        # 💡 [핵심수정] 실시간 탭 기준일 뒤 시간(00:00:00) 텍스트 포맷 제거
         b_date_d_raw = df_daily['기준일'].iloc[0] if '기준일' in df_daily.columns else "오늘"
         try:
             b_date_d = pd.to_datetime(b_date_d_raw).strftime('%Y-%m-%d') if b_date_d_raw != "오늘" else "오늘"
@@ -270,23 +289,23 @@ with tab2:
         st.dataframe(style_kospi_ma(ma_df_d), use_container_width=True, hide_index=True, column_config=ma_cfg)
         
         df_daily = add_naver_links(df_daily)
-        df_us_d, df_strat1_d, df_strat2_d = get_strategy_stocks_us_custom(df_daily, top_n_12=150, top_n_6=150, top_n_3=150)
+        df_us_d, df_strat1_d, df_strat2_d, df_triple_d = get_strategy_stocks_us_custom(df_daily, top_n_12=150, top_n_6=150, top_n_3=150)
         
         df_us_d['커스텀스코어'] = (-0.1 * df_us_d['1개월(%)']) + (0.7 * df_us_d['3개월(%)']) + (0.4 * df_us_d['6개월(%)'])
         df_us_d = df_us_d.sort_values('커스텀스코어', ascending=False)
         df_us_d['순위'] = range(1, len(df_us_d) + 1)
         
-        spx_1m_d, spx_3m_d = robust_get_us_idx_return(safe_date, '^GSPC')
-        ndx_1m_d, ndx_3m_d = robust_get_us_idx_return(safe_date, '^IXIC')
-        
         df_strat1_d['순위'] = range(1, len(df_strat1_d) + 1)
         df_strat2_d['순위'] = range(1, len(df_strat2_d) + 1)
+        df_triple_d['순위'] = range(1, len(df_triple_d) + 1)
 
         is_below_ma_d = (spx_curr_d > 0) and (spx_curr_d < spx_mas_d.get(10, 0))
         status_d, box_d, text_d = ("🛑 투자 중지", "#FFEBEE", "#C62828") if is_below_ma_d else ("✅ 투자 진행", "#E8F5E9", "#2E7D32")
         reason_desc_d = "S&P500 200일선 이탈" if is_below_ma_d else "안전"
 
         col1d, col2d, col3d, col4d, col5d, col6d = st.columns([1.0, 1.0, 1.0, 1.0, 1.4, 1.6])
+        spx_1m_d, spx_3m_d = robust_get_us_idx_return(safe_date, '^GSPC')
+        ndx_1m_d, ndx_3m_d = robust_get_us_idx_return(safe_date, '^IXIC')
         with col1d: st.metric("📈 S&P 500 1M", f"{spx_1m_d}%")
         with col2d: st.metric("📈 S&P 500 3M", f"{spx_3m_d}%")
         with col3d: st.metric("📈 NASDAQ 1M", f"{ndx_1m_d}%")
@@ -295,25 +314,33 @@ with tab2:
         with col6d: st.markdown(f'<div style="background-color: {box_d}; padding: 10px; border-radius: 10px; text-align: center; border: 1px solid {text_d}; height: 95px; display: flex; flex-direction: column; justify-content: center;"><p style="margin: 0; font-size: 12px; color: {text_d}; font-weight: bold;">오늘의 시장 상태 ({reason_desc_d})</p><div style="margin: 4px 0 0 0; font-size: 1.5rem; font-weight: 900; color: {text_d};">{status_d}</div></div>', unsafe_allow_html=True)
         st.markdown("<hr style='margin: 1rem 0;'>", unsafe_allow_html=True)
 
+        col_td, col_id, col_rd = st.columns([5, 2, 5])
+        with col_td: st.markdown(f"<h3 style='margin:0;'>🏆 트리플 모멘텀 (3&6&12개월) <span style='font-size:15px; color:gray;'>({len(df_triple_d)}개)</span></h3>", unsafe_allow_html=True)
+        with col_id: top_n_tr_d = st.number_input("tr_n_d", 1, max(1, len(df_triple_d)), 5 if len(df_triple_d) >= 5 else max(1, len(df_triple_d)), key="calc_tr_d", label_visibility="collapsed")
+        with col_rd:
+            avg_ret_tr_d = df_triple_d.head(top_n_tr_d)['이번달수익률'].mean() if len(df_triple_d) > 0 and '이번달수익률' in df_triple_d.columns else 0
+            st.markdown(f"<div style='margin-top:8px; font-size:0.95rem; font-weight:bold;'></div>", unsafe_allow_html=True)
+        st.markdown('<p class="strategy-desc">3-1M, 6-1M, 12-1M 모두 상위 150위 이내인 최정예 종목 (6-1M 순 정렬)</p>', unsafe_allow_html=True)
+        
+        sel_codes_tr_d = df_triple_d.head(top_n_tr_d)['종목코드'].tolist()
+        st.dataframe(df_triple_d.style.apply(apply_korea_styling, highlight_codes=sel_codes_tr_d, axis=1), use_container_width=True, hide_index=True, column_order=col_order_triple_d, column_config=us_main_cfg)
+
+        st.markdown("<hr>", unsafe_allow_html=True)
         c_d1, c_d2 = st.columns(2)
         count_p_d, count_s_d = len(df_strat1_d), len(df_strat2_d)
-        val_p_d = 5 if count_p_d >= 5 else max(1, count_p_d)
-        val_s_d = 5 if count_s_d >= 5 else max(1, count_s_d)
         
         with c_d1:
-            col_t1, col_i1, col_r1 = st.columns([4, 2, 4])
+            col_t1, col_i1, col_r1 = st.columns([5, 3.5, 3.5])
             with col_t1: st.markdown(f"<h4 style='margin:0;'>🔥 12-1M & 6-1M <span style='font-size:13px; color:gray;'>({count_p_d}개)</span></h4>", unsafe_allow_html=True)
-            with col_i1: top_n_p_d = st.number_input("p_n", 1, max(1, count_p_d), val_p_d, key="calc_p_us_d", label_visibility="collapsed")
-            with col_r1:
-                avg_ret_p_d = df_strat1_d.head(top_n_p_d)['이번달수익률'].mean() if count_p_d > 0 and '이번달수익률' in df_strat1_d.columns else 0
+            with col_i1: top_n_p_d = st.number_input("p_n", 1, max(1, count_p_d), 5 if count_p_d >= 5 else max(1, count_p_d), key="calc_p_us_d", label_visibility="collapsed")
+            with col_r1: st.markdown("<div></div>", unsafe_allow_html=True)
             st.markdown('<p class="strategy-desc">12-1M & 6-1M 각각 150위 이내 교집합 종목 (6-1M 순)</p>', unsafe_allow_html=True)
             
         with c_d2:
-            col_t2, col_i2, col_r2 = st.columns([4, 2, 4])
+            col_t2, col_i2, col_r2 = st.columns([5, 3.5, 3.5])
             with col_t2: st.markdown(f"<h4 style='margin:0;'>🐎 6-1M & 3-1M <span style='font-size:13px; color:gray;'>({count_s_d}개)</span></h4>", unsafe_allow_html=True)
-            with col_i2: top_n_s_d = st.number_input("s_n", 1, max(1, count_s_d), val_s_d, key="calc_s_us_d", label_visibility="collapsed")
-            with col_r2:
-                avg_ret_s_d = df_strat2_d.head(top_n_s_d)['이번달수익률'].mean() if count_s_d > 0 and '이번달수익률' in df_strat2_d.columns else 0
+            with col_i2: top_n_s_d = st.number_input("s_n", 1, max(1, count_s_d), 5 if count_s_d >= 5 else max(1, count_s_d), key="calc_s_us_d", label_visibility="collapsed")
+            with col_r2: st.markdown("<div></div>", unsafe_allow_html=True)
             st.markdown('<p class="strategy-desc">6-1M & 3-1M 각각 150위 이내 교집합 종목 (6-1M 순)</p>', unsafe_allow_html=True)
             
         sel_codes_p_d = df_strat1_d.head(top_n_p_d)['종목코드'].tolist()
@@ -325,13 +352,17 @@ with tab2:
         with c_d2:
             st.dataframe(df_strat2_d.style.apply(apply_korea_styling, highlight_codes=sel_codes_s_d, overlap_codes=overlap_codes_d, axis=1), use_container_width=True, hide_index=True, column_order=col_order_d2, column_config=us_main_cfg)
             
-        # 💡 [핵심 수정] 탭 2에서도 상위 30위 삭제 및 하이라이트 UI 반영
         st.markdown("---")
         
-        # 탭 1에서 설정한 하이라이트 개수를 그대로 가져옴 (설정 안 했으면 기본 10)
-        top_n_total_d = st.session_state.get("top_n_total_t1", 10)
-        st.markdown(f"### 🌐 S&P 500 전체 순위 (커스텀 스코어순) <span style='font-size: 0.85rem; color: #9ca3af; font-weight:normal;'>&nbsp;&nbsp;💡 기준일: {b_date_d} (상위 {top_n_total_d}위 하이라이트 연동됨)</span>", unsafe_allow_html=True)
-        
+        # 💡 [핵심 수정 4] 탭 2에서도 전체 순위 독립 하이라이트 UI 연동 (탭 1의 세션 스테이트 기본값 사용)
+        col_total_td, col_total_id, col_total_rd = st.columns([5, 2, 5])
+        with col_total_td: 
+            st.markdown("<h3 style='margin:0;'>🌐 S&P 500 전체 순위</h3>", unsafe_allow_html=True)
+        with col_total_id:
+            top_n_total_d = st.number_input("전체 순위 하이라이트 (N위)", 1, len(df_us_d), st.session_state.get("top_n_total_t1", 10), key="top_n_total_t2", label_visibility="collapsed")
+        with col_total_rd:
+            st.markdown("<div style='margin-top:8px; font-size:0.85rem; font-weight:bold; color:gray;'>선택한 순위의 종목명이 강조됩니다.</div>", unsafe_allow_html=True)
+            
         top_codes_total_d = df_us_d.head(top_n_total_d)['종목코드'].tolist()
         st.dataframe(df_us_d.style.apply(apply_custom_total_styling, top_codes=top_codes_total_d, axis=1), use_container_width=True, height=600, hide_index=True, column_order=cols_d, column_config=us_main_cfg)
 
@@ -349,15 +380,12 @@ with tab3:
             apply_timing = st.checkbox("🛑 마켓타이밍 적용 (이탈 시 현금)", value=True, key='t3_chk_us')
         
         st.markdown("<hr style='margin: 10px 0px;'>", unsafe_allow_html=True)
-        st.markdown("##### ✂️ 모멘텀 추출 및 매수 순위 설정")
+        st.markdown("##### ✂️ 매수 순위 설정")
         
-        c_ex1, c_ex2, c_ex3, c_ex4 = st.columns([1, 1.2, 1.2, 0.8])
-        with c_ex1: 
-            top_n_t3 = st.number_input("🎯 교집합 추출 기준 (N위)", min_value=1, max_value=500, value=150, key='t3_n_all')
-        with c_ex2: 
-            rank_p_s, rank_p_e = st.slider("🔥 12-1&6-1 매수 순위", 1, 30, (1, 5), key='t3_rnk1_us')
-        with c_ex3: 
-            rank_s_s, rank_s_e = st.slider("🐎 6-1&3-1 매수 순위", 1, 30, (1, 5), key='t3_rnk2_us')
+        c_ex1, c_ex2, c_ex3, c_ex4 = st.columns([1, 1, 1, 0.8])
+        with c_ex1: rank_p_s, rank_p_e = st.slider("🔥 12-1&6-1 순위", 1, 30, (1, 5), key='t3_rnk1_us')
+        with c_ex2: rank_s_s, rank_s_e = st.slider("🐎 6-1&3-1 순위", 1, 30, (1, 5), key='t3_rnk2_us')
+        with c_ex3: rank_tr_s, rank_tr_e = st.slider("🏆 트리플 순위", 1, 30, (1, 10), key='t3_rnk3_us')
         with c_ex4:
             st.markdown("<div style='margin-top: 28px;'></div>", unsafe_allow_html=True)
             run_bt_us = st.form_submit_button("✅ 백테스트 실행", use_container_width=True)
@@ -371,8 +399,8 @@ with tab3:
         with st.spinner("미국 모멘텀 백테스트 구동 중... (동일 조건일 경우 0.1초 렌더링)"):
             df_res, df_trades = run_backtest_us_fast(
                 df_master, start_year, end_year, ma_months_t3, apply_timing, 
-                (rank_p_s, rank_p_e), (rank_s_s, rank_s_e), 
-                top_n_t3, top_n_t3, top_n_t3, spx_hist
+                (rank_p_s, rank_p_e), (rank_s_s, rank_s_e), (rank_tr_s, rank_tr_e),
+                150, 150, 150, spx_hist
             )
             if not df_res.empty:
                 s_cols = [c for c in df_res.columns if c not in ['투자월', 'invested']]
@@ -396,9 +424,9 @@ with tab3:
                     '테스트 종료 연도': f"{end_year}년",
                     '마켓타이밍 (개월선)': f"{ma_months_t3}개월선",
                     '마켓타이밍 적용': "적용(현금)" if apply_timing else "미적용",
-                    '교집합 추출 기준': f"상위 {top_n_t3}위 이내",
                     '12-1&6-1 매수 순위': f"{rank_p_s}위 ~ {rank_p_e}위",
-                    '6-1&3-1 매수 순위': f"{rank_s_s}위 ~ {rank_s_e}위"
+                    '6-1&3-1 매수 순위': f"{rank_s_s}위 ~ {rank_s_e}위",
+                    '트리플 모멘텀 매수 순위': f"{rank_tr_s}위 ~ {rank_tr_e}위"
                 }
 
                 excel_data = generate_excel_report_cached(tuple(settings_dict.items()), stats_df, df_res, df_cum, df_trades)
@@ -465,21 +493,7 @@ with tab4:
                 cagr_c = ((final_val_c/100)**(1/years_c)-1)*100 if final_val_c > 0 else -100
                 mdd_c = ((df_cum_c['커스텀 전략']/df_cum_c['커스텀 전략'].cummax())-1).min()*100
                 stats_c = [{"전략명": "커스텀 스코어", "CAGR (연평균)": f"{cagr_c:.1f}%", "총 누적수익률": f"{final_val_c-100:,.1f}%", "MDD (최대낙폭)": f"{mdd_c:.1f}%", "투자월 비율": f"{(df_res_c['invested'].sum()/len(df_res_c))*100:.1f}%", "월별 승률": f"{(df_res_c.loc[df_res_c['invested'], '커스텀 전략']>0).mean()*100:.1f}%" if df_res_c['invested'].any() else "0.0%", "평균 수익률": f"{df_res_c.loc[df_res_c['invested'], '커스텀 전략'].mean():.2f}%" if df_res_c['invested'].any() else "0.00%"}]
-                
-                stats_df_t4 = pd.DataFrame(stats_c)
-                settings_dict_t4 = {
-                    '테스트 시작 연도': f"{start_year_c}년",
-                    '테스트 종료 연도': f"{end_year_c}년",
-                    '마켓타이밍 (개월선)': f"{ma_months_t4}개월선",
-                    '마켓타이밍 적용': "적용(현금)" if apply_timing_c else "미적용",
-                    '가중치 설정': f"{w1}, {w3}, {w6}, {w12}",
-                    '교집합 추출 기준': f"상위 {custom_pct}% 이내",
-                    '매수 순위': f"{rank_c_s}위 ~ {rank_c_e}위"
-                }
-                
-                excel_data_t4 = generate_excel_report_cached(tuple(settings_dict_t4.items()), stats_df_t4, df_res_c, df_cum_c, df_trades_c)
-
-                st.dataframe(get_styled_stats(stats_df_t4), use_container_width=True, hide_index=True)
+                st.dataframe(get_styled_stats(pd.DataFrame(stats_c)), use_container_width=True, hide_index=True)
                 
                 col_hm_c, col_mdd_c = st.columns([6, 4])
                 with col_hm_c: st.dataframe(get_monthly_heatmap(df_res_c, '커스텀 전략'), use_container_width=True)
