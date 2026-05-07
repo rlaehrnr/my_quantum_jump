@@ -4,6 +4,7 @@ import plotly.express as px
 from datetime import datetime, timedelta
 import os
 import FinanceDataReader as fdr
+import io
 
 st.set_page_config(page_title="KOSPI 200 모멘텀", layout="wide")
 
@@ -30,6 +31,25 @@ def get_kosdaq_ma_all(target_date_str):
         }
         return curr_p, mas
     except: return 0, {}
+
+# 💡 [업그레이드] 종합 엑셀 리포트 생성기 캐시 함수 추가
+@st.cache_data(show_spinner=False)
+def generate_excel_report_cached(settings_tuple, df_stats, df_monthly, df_cum_ret, df_trade):
+    output = io.BytesIO()
+    with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
+        df_set = pd.DataFrame(list(settings_tuple), columns=['설정 항목', '값'])
+        df_set.to_excel(writer, sheet_name='요약_및_통계', index=False, startrow=0)
+        df_stats.to_excel(writer, sheet_name='요약_및_통계', index=False, startrow=len(df_set) + 2)
+        df_monthly.to_excel(writer, sheet_name='월별_수익률', index=False)
+        
+        df_mdd = ((df_cum_ret / df_cum_ret.cummax()) - 1) * 100
+        df_mdd.reset_index().to_excel(writer, sheet_name='전략별_MDD', index=False)
+        df_cum_ret.reset_index().to_excel(writer, sheet_name='누적_수익률', index=False)
+        
+        if not df_trade.empty:
+            df_trade.to_excel(writer, sheet_name='상세_매매내역', index=False)
+    return output.getvalue()
+
 
 st.markdown('''
     <div style="margin-bottom: 20px;">
@@ -134,7 +154,6 @@ with tab1:
             df_korea_t1 = df_korea_t1.sort_values('시가총액', ascending=False)
         df_korea_t1['순위'] = range(1, len(df_korea_t1) + 1)
 
-        # 💡 [복구] 월별 상세 분석 탭은 미국 대통령 주기로 고정
         cycle_year_t1 = get_cycle_year(int(selected_year))
         bad_m_str_t1 = ", ".join(f"{m}월" for m in PRESIDENTIAL_DANGEROUS_MONTHS.get(cycle_year_t1, [])) or "없음"
         
@@ -231,10 +250,9 @@ with tab2:
         reason_desc_d = ("하락장" if is_bad_market_d else "") + (" + " if is_bad_market_d and is_below_ma_d else "") + ("6개월선 이탈" if is_below_ma_d else "")
         if not is_bad_market_d and not is_below_ma_d: reason_desc_d = "안전"
 
-        # 💡 [교체 시작] VIX 파일 읽기부터 화면 출력 부분까지
         vix_file = 'data/vix data.csv'
         vix_latest_high = "데이터없음"
-        vix_latest_date_str = ""  # 💡 정확한 날짜 표시를 위한 변수
+        vix_latest_date_str = "" 
         vix_35_date_str = "-"
         vix_35_high = "-"
         days_diff_str = "-"
@@ -246,7 +264,6 @@ with tab2:
                 vix_df['날짜'] = pd.to_datetime(vix_df['날짜'])
                 vix_df = vix_df.sort_values('날짜')
                 if not vix_df.empty:
-                    # 💡 최신 데이터의 고가 및 날짜(월/일) 추출
                     latest_row = vix_df.iloc[-1]
                     vix_latest_high = f"{latest_row['고가']:.2f}"
                     vix_latest_date = latest_row['날짜']
@@ -269,14 +286,12 @@ with tab2:
         with col3d: st.metric("📉 1개월 하락", f"{neg_1m_d}개")
         with col4d: st.metric("📉 3개월 하락", f"{neg_3m_d}개")
         
-        # 💡 [VIX 박스 렌더링] 링크 추가 및 "전일 (X/X일) 고가:" 텍스트 적용
         vix_bg = "#FFF0F0" if is_vix_warning else "#FFFFFF"
         vix_border = "#FFCDD2" if is_vix_warning else "#d1d5db"
         vix_title_color = "#C62828" if is_vix_warning else "#64748b"
         vix_val_color = "#D84315" if is_vix_warning else "#333333"
         vix_icon = "🚨" if is_vix_warning else "📊"
         
-        # 날짜 데이터가 있으면 "전일 (4/29일) 고가:" 형식으로, 없으면 "전일 고가:" 출력
         vix_label = f"전일 ({vix_latest_date_str}일) 고가:" if vix_latest_date_str else "전일 고가:"
         
         vix_html = f'''
@@ -291,7 +306,6 @@ with tab2:
         with col5d: st.markdown(vix_html, unsafe_allow_html=True)
         with col6d: st.markdown(f'<div style="background-color: {box_d}; padding: 10px; border-radius: 10px; text-align: center; border: 1px solid {text_d}; height: 95px; display: flex; flex-direction: column; justify-content: center;"><p style="margin: 0; font-size: 12px; color: {text_d}; font-weight: bold;">오늘의 시장 상태 ({reason_desc_d})</p><div style="margin: 4px 0 0 0; font-size: 1.5rem; font-weight: 900; color: {text_d};">{status_d}</div></div>', unsafe_allow_html=True)
         st.markdown("<hr style='margin: 1rem 0;'>", unsafe_allow_html=True)
-        # 💡 [교체 끝]
 
         for df in [df_perf_d, df_spec_d, df_korea_d]:
             df['통합티커_L'] = df.apply(lambda r: f"https://finance.naver.com/item/main.naver?code={r['종목코드']}#KOSPI:{r['종목코드']}", axis=1)
@@ -316,6 +330,9 @@ with tab2:
     else:
         st.info("데일리 데이터 파일이 아직 생성되지 않았습니다.")
 
+# ==========================================
+# 탭 3. 전략 조합 백테스트
+# ==========================================
 with tab3:
     st.markdown("<h4 style='margin:0;'>⚙️ 시뮬레이션 설정</h4>", unsafe_allow_html=True)
     c1, c_ma, c_chk = st.columns([1, 1, 1.5])
@@ -328,9 +345,9 @@ with tab3:
     st.markdown("<hr style='margin: 10px 0px;'>", unsafe_allow_html=True)
     c2, c3, c4, c5 = st.columns([1, 1, 1, 1])
     with c2: perf_pct_t3 = st.slider("🔥 퍼펙트 상위 %", 5, 50, 30, step=5)
-    with c3: rank_p_s, rank_p_e = st.slider("🔥 퍼펙트 순위", 1, 30, (1, 6))
+    with c3: rank_p_s, rank_p_e = st.slider("🔥 퍼펙트 매수 순위", 1, 30, (1, 6))
     with c4: spec_12m_pct_t3 = st.slider("🐎 달리는말 상위 %", 5, 50, 30, step=5)
-    with c5: rank_s_s, rank_s_e = st.slider("🐎 달리는말 순위", 1, 30, (1, 2))
+    with c5: rank_s_s, rank_s_e = st.slider("🐎 달리는말 매수 순위", 1, 30, (1, 2))
 
     with st.spinner("엔진 구동 중..."):
         df_res, df_trades = cached_run_backtest_korea(df_master, start_year, end_year, ma_months_t3, apply_timing, (rank_p_s, rank_p_e), (rank_s_s, rank_s_e), perf_pct_t3, spec_12m_pct_t3)
@@ -340,10 +357,6 @@ with tab3:
             df_cum.loc[(pd.to_datetime(df_res['투자월'].iloc[0]) - pd.DateOffset(months=1)).strftime('%Y-%m')] = 100
             df_cum = df_cum.sort_index()
 
-            col_t, col_b = st.columns([7.5, 2.5])
-            with col_t: st.markdown("#### 📊 전략 핵심 통계 (초기 자본 100 기준)")
-            with col_b: st.download_button("📥 상세내역 다운로드", df_trades.to_csv(index=False).encode('utf-8-sig'), "조합_백테스트.csv", "text/csv", use_container_width=True)
-
             stats = []
             for col in s_cols:
                 final_val = df_cum[col].iloc[-1]
@@ -352,7 +365,29 @@ with tab3:
                 win_rate = (df_res.loc[df_res['invested'], col]>0).mean()*100 if df_res['invested'].any() else 0
                 mdd = ((df_cum[col]/df_cum[col].cummax())-1).min()*100
                 stats.append({"전략명": col, "CAGR (연평균)": f"{cagr:.1f}%", "총 누적수익률": f"{final_val-100:,.1f}%", "MDD (최대낙폭)": f"{mdd:.1f}%", "투자월 비율": f"{(df_res['invested'].sum()/len(df_res))*100:.1f}%", "월별 승률": f"{win_rate:.1f}%", "평균 수익률": f"{df_res.loc[df_res['invested'], col].mean():.2f}%" if df_res['invested'].any() else "0.00%"})
-            st.dataframe(get_styled_stats(pd.DataFrame(stats)), use_container_width=True, hide_index=True)
+            
+            stats_df_t3 = pd.DataFrame(stats)
+            
+            # 💡 [업그레이드] 전략 조합 백테스트 종합 엑셀 리포트 데이터 생성
+            settings_dict_t3 = {
+                '테스트 시작 연도': f"{start_year}년",
+                '테스트 종료 연도': f"{end_year}년",
+                '마켓타이밍 (개월선)': f"{ma_months_t3}개월선",
+                '마켓타이밍 적용': "적용(현금)" if apply_timing else "미적용",
+                '퍼펙트 상위 %': f"상위 {perf_pct_t3}% 이내",
+                '퍼펙트 매수 순위': f"{rank_p_s}위 ~ {rank_p_e}위",
+                '달리는말 상위 %': f"상위 {spec_12m_pct_t3}% 이내",
+                '달리는말 매수 순위': f"{rank_s_s}위 ~ {rank_s_e}위"
+            }
+            
+            excel_data_t3 = generate_excel_report_cached(tuple(settings_dict_t3.items()), stats_df_t3, df_res, df_cum, df_trades)
+
+            col_t, col_b = st.columns([7.5, 2.5])
+            with col_t: st.markdown("#### 📊 전략 핵심 통계 (초기 자본 100 기준)")
+            with col_b: 
+                st.download_button("📥 종합 엑셀 리포트 다운로드", data=excel_data_t3, file_name="KOSPI_조합_백테스트.xlsx", mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", use_container_width=True)
+
+            st.dataframe(get_styled_stats(stats_df_t3), use_container_width=True, hide_index=True)
             
             st.markdown("#### 🗓️ 상세 분석 (월별 수익률 히트맵 & MDD)")
             analysis_strat_t3 = st.radio("분석할 전략을 선택하세요", s_cols, horizontal=True, index=0, key="analysis_radio_t3")
@@ -362,6 +397,9 @@ with tab3:
             st.plotly_chart(px.line(df_cum.reset_index().melt(id_vars='투자월'), x='투자월', y='value', color='variable', log_y=True, title="누적 자산 성장 곡선 (Log Scale)"), use_container_width=True)
             with st.expander("📝 월별 전체 상세 기록 보기"): st.dataframe(df_res.drop(columns=['invested']).set_index('투자월').style.format("{:.2f}%"), use_container_width=True)
 
+# ==========================================
+# 탭 4. 스코어 커스텀 백테스트
+# ==========================================
 with tab4:
     current_ma_c = st.session_state.get('t4_ma', 6)
     col_title_c, col_check_c = st.columns([1, 4])
@@ -396,16 +434,33 @@ with tab4:
                 df_cum_c.loc[(pd.to_datetime(df_res_c['투자월'].iloc[0]) - pd.DateOffset(months=1)).strftime('%Y-%m')] = 100
                 df_cum_c = df_cum_c.sort_index()
 
-                col_tc, col_bc = st.columns([7.5, 2.5])
-                with col_tc: st.markdown("#### 📊 전략 핵심 통계")
-                with col_bc: st.download_button("📥 상세내역 다운로드", df_trades_c.to_csv(index=False).encode('utf-8-sig'), "커스텀_백테스트.csv", "text/csv", use_container_width=True)
-
                 final_val_c = df_cum_c['커스텀 전략'].iloc[-1]
                 years_c = len(df_res_c) / 12
                 cagr_c = ((final_val_c/100)**(1/years_c)-1)*100 if final_val_c > 0 else -100
                 mdd_c = ((df_cum_c['커스텀 전략']/df_cum_c['커스텀 전략'].cummax())-1).min()*100
                 stats_c = [{"전략명": "커스텀 스코어", "CAGR (연평균)": f"{cagr_c:.1f}%", "총 누적수익률": f"{final_val_c-100:,.1f}%", "MDD (최대낙폭)": f"{mdd_c:.1f}%", "투자월 비율": f"{(df_res_c['invested'].sum()/len(df_res_c))*100:.1f}%", "월별 승률": f"{(df_res_c.loc[df_res_c['invested'], '커스텀 전략']>0).mean()*100:.1f}%" if df_res_c['invested'].any() else "0.0%", "평균 수익률": f"{df_res_c.loc[df_res_c['invested'], '커스텀 전략'].mean():.2f}%" if df_res_c['invested'].any() else "0.00%"}]
-                st.dataframe(get_styled_stats(pd.DataFrame(stats_c)), use_container_width=True, hide_index=True)
+                
+                stats_df_t4 = pd.DataFrame(stats_c)
+                
+                # 💡 [업그레이드] 커스텀 백테스트 종합 엑셀 리포트 데이터 생성
+                settings_dict_t4 = {
+                    '테스트 시작 연도': f"{start_year_c}년",
+                    '테스트 종료 연도': f"{end_year_c}년",
+                    '마켓타이밍 (개월선)': f"{ma_months_t4}개월선",
+                    '마켓타이밍 적용': "적용(현금)" if apply_timing_c else "미적용",
+                    '가중치 설정 (1M, 3M, 6M, 12M)': f"{w1}, {w3}, {w6}, {w12}",
+                    '교집합 추출 기준': f"상위 {custom_pct}% 이내",
+                    '매수 순위': f"{rank_c_s}위 ~ {rank_c_e}위"
+                }
+                
+                excel_data_t4 = generate_excel_report_cached(tuple(settings_dict_t4.items()), stats_df_t4, df_res_c, df_cum_c, df_trades_c)
+
+                col_tc, col_bc = st.columns([7.5, 2.5])
+                with col_tc: st.markdown("#### 📊 전략 핵심 통계")
+                with col_bc: 
+                    st.download_button("📥 종합 엑셀 리포트 다운로드", data=excel_data_t4, file_name="KOSPI_커스텀_백테스트.xlsx", mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", use_container_width=True)
+
+                st.dataframe(get_styled_stats(stats_df_t4), use_container_width=True, hide_index=True)
                 
                 col_hm_c, col_mdd_c = st.columns([6, 4])
                 with col_hm_c: st.dataframe(get_monthly_heatmap(df_res_c, '커스텀 전략'), use_container_width=True)
