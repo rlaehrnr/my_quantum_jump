@@ -18,6 +18,25 @@ from utils.us_helpers import (
 
 inject_custom_css()
 
+# 💡 [핵심 수정] 전체 순위표만을 위한 깔끔하고 눈이 편안한 인디고(연보라) 하이라이트 함수 
+def apply_custom_total_styling(row, top_codes):
+    styles = []
+    is_top = row['종목코드'] in top_codes
+    bg = 'background-color: #E8EAF6;' if is_top else '' 
+    for col, val in row.items():
+        style = bg
+        if isinstance(col, str) and ('(%)' in col or col == '커스텀스코어' or '수익률' in col):
+            try:
+                v = float(val)
+                if v > 0:
+                    style += 'color: #D32F2F;'
+                elif v < 0:
+                    style += 'color: #1976D2;'
+            except:
+                pass
+        styles.append(style)
+    return styles
+
 @st.cache_data(show_spinner=False)
 def cached_run_custom_backtest_us(df, start_year_c, end_year_c, ma_months_c, apply_timing_c, w1, w3, w6, w12, custom_pct, rank_c_s, rank_c_e):
     return run_custom_backtest_us(df, start_year_c, end_year_c, ma_months_c, apply_timing_c, w1, w3, w6, w12, custom_pct, rank_c_s, rank_c_e)
@@ -201,16 +220,25 @@ with tab1:
         sel_codes_p = df_strat1_t1.head(top_n_p)['종목코드'].tolist()
         sel_codes_s = df_strat2_t1.head(top_n_s)['종목코드'].tolist()
         overlap_codes_t1 = set(sel_codes_p).intersection(set(sel_codes_s))
-        highlight_codes_all_t1 = list(set(sel_codes_p + sel_codes_s))
 
         with c_l:
             st.dataframe(df_strat1_t1.style.apply(apply_korea_styling, highlight_codes=sel_codes_p, overlap_codes=overlap_codes_t1, axis=1), use_container_width=True, hide_index=True, column_order=col_order_strat1, column_config=us_main_cfg)
         with c_r:
             st.dataframe(df_strat2_t1.style.apply(apply_korea_styling, highlight_codes=sel_codes_s, overlap_codes=overlap_codes_t1, axis=1), use_container_width=True, hide_index=True, column_order=col_order_strat2, column_config=us_main_cfg)
 
+        # 💡 [핵심수정] 상위 30위 표 삭제 및 전체 표 독립 하이라이트 UI 반영
         st.markdown("---")
-        st.markdown(f"### 🌐 S&P 500 전체 순위 <span style='font-size: 0.85rem; color: #9ca3af; font-weight:normal;'>&nbsp;&nbsp;💡 선정일: {base_date.strftime('%Y-%m-%d') if isinstance(base_date, pd.Timestamp) else base_date}</span>", unsafe_allow_html=True)
-        st.dataframe(df_us_t1.style.apply(apply_korea_styling, highlight_codes=highlight_codes_all_t1, overlap_codes=overlap_codes_t1, axis=1), use_container_width=True, height=600, hide_index=True, column_order=cols_m, column_config=us_main_cfg)
+        
+        col_total_t, col_total_i, col_total_r = st.columns([4, 2, 4])
+        with col_total_t: 
+            st.markdown("### 🌐 S&P 500 전체 순위 (커스텀 스코어순)")
+        with col_total_i:
+            top_n_total_t1 = st.number_input("전체 순위 하이라이트 (N위)", 1, len(df_us_t1), 10, key="top_n_total_t1", label_visibility="collapsed")
+        with col_total_r:
+            st.markdown("<div style='margin-top:8px; font-size:0.85rem; font-weight:bold; color:gray;'>선택한 순위까지 색상이 강조됩니다.</div>", unsafe_allow_html=True)
+            
+        top_codes_total_t1 = df_us_t1.head(top_n_total_t1)['종목코드'].tolist()
+        st.dataframe(df_us_t1.style.apply(apply_custom_total_styling, top_codes=top_codes_total_t1, axis=1), use_container_width=True, height=600, hide_index=True, column_order=cols_m, column_config=us_main_cfg)
 
 # ==========================================
 # 탭 2. 실시간 데일리 순위
@@ -221,7 +249,7 @@ with tab2:
         df_daily_raw = pd.read_csv(f_daily_path)
         df_daily = preprocess_us_data(df_daily_raw, is_daily=True)
         
-        # 💡 [핵심수정] 00:00:00 시간 제거 로직
+        # 💡 [핵심수정] 실시간 탭 기준일 뒤 시간(00:00:00) 텍스트 포맷 제거
         b_date_d_raw = df_daily['기준일'].iloc[0] if '기준일' in df_daily.columns else "오늘"
         try:
             b_date_d = pd.to_datetime(b_date_d_raw).strftime('%Y-%m-%d') if b_date_d_raw != "오늘" else "오늘"
@@ -291,16 +319,21 @@ with tab2:
         sel_codes_p_d = df_strat1_d.head(top_n_p_d)['종목코드'].tolist()
         sel_codes_s_d = df_strat2_d.head(top_n_s_d)['종목코드'].tolist()
         overlap_codes_d = set(sel_codes_p_d).intersection(set(sel_codes_s_d))
-        highlight_codes_all_d = list(set(sel_codes_p_d + sel_codes_s_d))
 
         with c_d1:
             st.dataframe(df_strat1_d.style.apply(apply_korea_styling, highlight_codes=sel_codes_p_d, overlap_codes=overlap_codes_d, axis=1), use_container_width=True, hide_index=True, column_order=col_order_d1, column_config=us_main_cfg)
         with c_d2:
             st.dataframe(df_strat2_d.style.apply(apply_korea_styling, highlight_codes=sel_codes_s_d, overlap_codes=overlap_codes_d, axis=1), use_container_width=True, hide_index=True, column_order=col_order_d2, column_config=us_main_cfg)
             
+        # 💡 [핵심 수정] 탭 2에서도 상위 30위 삭제 및 하이라이트 UI 반영
         st.markdown("---")
-        st.markdown(f"### 🌐 S&P 500 전체 순위 <span style='font-size: 0.85rem; color: #9ca3af; font-weight:normal;'>&nbsp;&nbsp;💡 기준일: {b_date_d}</span>", unsafe_allow_html=True)
-        st.dataframe(df_us_d.style.apply(apply_korea_styling, highlight_codes=highlight_codes_all_d, overlap_codes=overlap_codes_d, axis=1), use_container_width=True, height=600, hide_index=True, column_order=cols_d, column_config=us_main_cfg)
+        
+        # 탭 1에서 설정한 하이라이트 개수를 그대로 가져옴 (설정 안 했으면 기본 10)
+        top_n_total_d = st.session_state.get("top_n_total_t1", 10)
+        st.markdown(f"### 🌐 S&P 500 전체 순위 (커스텀 스코어순) <span style='font-size: 0.85rem; color: #9ca3af; font-weight:normal;'>&nbsp;&nbsp;💡 기준일: {b_date_d} (상위 {top_n_total_d}위 하이라이트 연동됨)</span>", unsafe_allow_html=True)
+        
+        top_codes_total_d = df_us_d.head(top_n_total_d)['종목코드'].tolist()
+        st.dataframe(df_us_d.style.apply(apply_custom_total_styling, top_codes=top_codes_total_d, axis=1), use_container_width=True, height=600, hide_index=True, column_order=cols_d, column_config=us_main_cfg)
 
 # ==========================================
 # 탭 3. 전략 백테스트
