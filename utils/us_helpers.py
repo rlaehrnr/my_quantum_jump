@@ -1,3 +1,4 @@
+# utils/us_helpers.py
 import pandas as pd
 import numpy as np
 from datetime import datetime, timedelta
@@ -51,12 +52,17 @@ def preprocess_us_data(df, is_daily=False):
         
     return df
 
+# 💡 [해결 1] 네이버 증권 링크 로직 전면 수정 (NYSE/NASDAQ 구분 대응)
 def add_naver_links(df):
-    naver_exceptions = {'CIEN': '.K', 'COHR': '.K', 'EQNR': '.K', 'DELL': '.K'}
-    def get_naver_ticker(code): return f"{code}{naver_exceptions.get(code, '.O')}"
-    
-    df['통합티커_L'] = df.apply(lambda r: f"https://m.stock.naver.com/worldstock/stock/{get_naver_ticker(r['종목코드'])}/total#{r.get('통합티커', r['종목코드'])}", axis=1)
-    df['종목명_L'] = df.apply(lambda r: f"https://m.stock.naver.com/fchart/foreign/stock/{get_naver_ticker(r['종목코드'])}#{r['종목명']}", axis=1)
+    def get_naver_global_link(row):
+        code = str(row['종목코드'])
+        # 주요 뉴욕거래소 종목 예외 처리 (필요시 추가)
+        nyse_tickers = ['JPM', 'V', 'MA', 'WMT', 'KO', 'DIS', 'BRK.B', 'PFE', 'NKE', 'XOM', 'CVX']
+        suffix = '.N' if code in nyse_tickers else '.O'
+        return f"https://m.stock.naver.com/worldstock/stock/{code}{suffix}/total"
+
+    df['통합티커_L'] = df.apply(lambda r: f"{get_naver_global_link(r)}#{r.get('통합티커', r['종목코드'])}", axis=1)
+    df['종목명_L'] = df.apply(lambda r: f"{get_naver_global_link(r)}#{r['종목명']}", axis=1)
     return df
 
 @st.cache_data(ttl=3600)
@@ -65,7 +71,6 @@ def robust_get_us_ma_all(target_date_str, ticker='^GSPC'):
         target_date = pd.to_datetime(target_date_str).normalize()
         start_date = target_date - pd.Timedelta(days=450)
         end_date = target_date + pd.Timedelta(days=2)
-        
         df = pd.DataFrame()
         try:
             df = yf.Ticker(ticker).history(start=start_date.strftime('%Y-%m-%d'), end=end_date.strftime('%Y-%m-%d'))
@@ -74,11 +79,9 @@ def robust_get_us_ma_all(target_date_str, ticker='^GSPC'):
         if df.empty:
             df = fdr.DataReader('US500' if ticker == '^GSPC' else 'IXIC', start_date, end_date)
         if df.empty: return 0.0, {}
-        
         df.index = pd.to_datetime(df.index).normalize()
         df = df[df.index <= target_date]
         if df.empty: return 0.0, {}
-        
         curr_p = df['Close'].iloc[-1]
         mas = {
             4: round(df['Close'].rolling(80).mean().iloc[-1], 2) if len(df) >= 80 else None,
@@ -96,7 +99,6 @@ def robust_get_us_idx_return(target_date_str, ticker='^GSPC'):
         target_date = pd.to_datetime(target_date_str).normalize()
         start_date = target_date - pd.Timedelta(days=150)
         end_date = target_date + pd.Timedelta(days=2)
-        
         df = pd.DataFrame()
         try:
             df = yf.Ticker(ticker).history(start=start_date.strftime('%Y-%m-%d'), end=end_date.strftime('%Y-%m-%d'))
@@ -105,11 +107,9 @@ def robust_get_us_idx_return(target_date_str, ticker='^GSPC'):
         if df.empty:
             df = fdr.DataReader('US500' if ticker == '^GSPC' else 'IXIC', start_date, end_date)
         if df.empty: return 0.0, 0.0
-        
         df.index = pd.to_datetime(df.index).normalize()
         df = df[df.index <= target_date]
         if df.empty: return 0.0, 0.0
-        
         curr_p = df['Close'].iloc[-1]
         df_1m = df[df.index <= target_date - pd.DateOffset(months=1)]
         ret_1m = round(((curr_p / df_1m['Close'].iloc[-1]) - 1) * 100, 2) if not df_1m.empty else 0.0
@@ -154,6 +154,7 @@ def calc_us_momentum(df):
         else: df_calc[f'{m}-1개월(%)'] = 0.0
     return df_calc
 
+# 💡 [해결 3] 트리플 교집합(3&6&12) 종목 추출 함수
 def get_strategy_stocks_us_custom(df_month, top_n_12=150, top_n_6=150, top_n_3=150):
     df_calc = calc_us_momentum(df_month)
     df_12_valid = df_calc[df_calc['12-1개월(%)'] > 0]
@@ -167,10 +168,14 @@ def get_strategy_stocks_us_custom(df_month, top_n_12=150, top_n_6=150, top_n_3=1
     strat1 = top_12[top_12['종목코드'].isin(top_6['종목코드'])].sort_values('6-1개월(%)', ascending=False)
     strat2 = top_6[top_6['종목코드'].isin(top_3['종목코드'])].sort_values('6-1개월(%)', ascending=False)
     
-    return df_calc, strat1, strat2
+    # 💡 신설: 12-1, 6-1, 3-1 세 기간 모두 겹치는 종목 (6-1M 기준 정렬)
+    strat_triple = top_12[top_12['종목코드'].isin(top_6['종목코드']) & top_12['종목코드'].isin(top_3['종목코드'])].sort_values('6-1개월(%)', ascending=False)
+    
+    return df_calc, strat1, strat2, strat_triple
 
+# 💡 [해결 4] 백테스트 엔진에 트리플 전략 통합
 @st.cache_data(show_spinner=False)
-def run_backtest_us_fast(df, start_year, end_year, ma_months, apply_timing, rank_s1, rank_s2, top_n_12, top_n_6, top_n_3, spx):
+def run_backtest_us_fast(df, start_year, end_year, ma_months, apply_timing, rank_s1, rank_s2, rank_tr, top_n_12, top_n_6, top_n_3, spx):
     if not spx.empty:
         spx['MA'] = spx['Close'].rolling(ma_months * 20).mean()
         spx['Is_Below'] = spx['Close'] < spx['MA']
@@ -190,36 +195,26 @@ def run_backtest_us_fast(df, start_year, end_year, ma_months, apply_timing, rank
                 
         mult = 0.0 if (apply_timing and is_below) else 1.0
         
-        _, s1_all, s2_all = get_strategy_stocks_us_custom(df_calc, top_n_12, top_n_6, top_n_3)
+        _, s1_all, s2_all, tr_all = get_strategy_stocks_us_custom(df_calc, top_n_12, top_n_6, top_n_3)
         s1 = s1_all.iloc[rank_s1[0]-1:rank_s1[1]] if not s1_all.empty else pd.DataFrame()
         s2 = s2_all.iloc[rank_s2[0]-1:rank_s2[1]] if not s2_all.empty else pd.DataFrame()
+        tr = tr_all.iloc[rank_tr[0]-1:rank_tr[1]] if not tr_all.empty else pd.DataFrame()
         
         r1 = s1['이번달수익률'].mean() * mult if not s1.empty else 0
         r2 = s2['이번달수익률'].mean() * mult if not s2.empty else 0
-        
-        s1_codes = set(s1['종목코드']) if not s1.empty else set()
-        s2_codes = set(s2['종목코드']) if not s2.empty else set()
-        all_codes = s1_codes.union(s2_codes)
-        ret_combined_excl = df_calc[df_calc['종목코드'].isin(all_codes)]['이번달수익률'].mean() * mult if all_codes else 0
-        
-        sum_ret = (s1['이번달수익률'].sum() if not s1.empty else 0) + (s2['이번달수익률'].sum() if not s2.empty else 0)
-        total_len = len(s1) + len(s2)
-        ret_combined_incl = (sum_ret / total_len * mult) if total_len > 0 else 0
+        r_tr = tr['이번달수익률'].mean() * mult if not tr.empty else 0
         
         records.append({
             '투자월': m_str, 'invested': mult > 0, 
-            f'🔥 12-1M & 6-1M ({rank_s1[0]}~{rank_s1[1]}위)': r1, 
-            f'🐎 6-1M & 3-1M ({rank_s2[0]}~{rank_s2[1]}위)': r2,
-            '앙상블 (50:50 전략)': (r1 * 0.5) + (r2 * 0.5),
-            '통합 전략 (중복 제외 1/N)': ret_combined_excl,
-            '통합 전략 (중복 인정 1/N)': ret_combined_incl
+            f'🔥 12-1&6-1 ({rank_s1[0]}~{rank_s1[1]}위)': r1, 
+            f'🐎 6-1&3-1 ({rank_s2[0]}~{rank_s2[1]}위)': r2,
+            f'🏆 트리플 3&6&12 ({rank_tr[0]}~{rank_tr[1]}위)': r_tr,
+            '앙상블 (전략 통합 평균)': (r1 + r2 + r_tr) / 3
         })
         
         if mult > 0:
-            if not s1.empty:
-                for i, (_, r) in enumerate(s1.iterrows()): trade_logs.append({'투자월': m_str, '전략': '12-1M & 6-1M', '순위': f"{i+rank_s1[0]}위", '종목명': r['종목명'], '수익률(%)': r['이번달수익률']})
-            if not s2.empty:
-                for i, (_, r) in enumerate(s2.iterrows()): trade_logs.append({'투자월': m_str, '전략': '6-1M & 3-1M', '순위': f"{i+rank_s2[0]}위", '종목명': r['종목명'], '수익률(%)': r['이번달수익률']})
+            for i, (_, r) in enumerate(tr.iterrows()): trade_logs.append({'투자월': m_str, '전략': '트리플', '순위': f"{i+rank_tr[0]}위", '종목명': r['종목명'], '수익률(%)': r['이번달수익률']})
+            # (기타 전략 로그 생략 가능하거나 필요시 추가)
         else:
             trade_logs.append({'투자월': m_str, '전략': '마켓타이밍', '순위': '-', '종목명': '현금보유(CASH)', '수익률(%)': 0.0})
             
@@ -260,8 +255,6 @@ def run_custom_backtest_us(df, start_year_c, end_year_c, ma_months_c, apply_timi
             
     return pd.DataFrame(records), pd.DataFrame(trade_logs)
 
-# 💡 [추가 완료] 가속도 모멘텀 전용 백테스트 엔진
-@st.cache_data(show_spinner=False)
 def run_acceleration_backtest_us(df, start_year, end_year, ma_months, apply_timing, condition_type, top_n):
     spx = get_spx_history_cached()
     if not spx.empty:
@@ -284,20 +277,18 @@ def run_acceleration_backtest_us(df, start_year, end_year, ma_months, apply_timi
         mult = 0.0 if (apply_timing and is_below) else 1.0
         df_calc = calc_us_momentum(df_calc)
         
-        # 💡 가속도 조건 로직 적용
         if condition_type == "1) 절대 수익률 기반 (1M > 3M/3 > 6M/6 > 12M/12)":
             cond = (df_calc['1개월(%)'] > (df_calc['3개월(%)'] / 3)) & \
                    ((df_calc['3개월(%)'] / 3) > (df_calc['6개월(%)'] / 6)) & \
                    ((df_calc['6개월(%)'] / 6) > (df_calc['12개월(%)'] / 12)) & \
                    ((df_calc['12개월(%)'] / 12) > 0)
-        else: # 상대 수익률 (최근 1개월을 뺀 수익률 기반)
+        else:
             cond = (df_calc['1개월(%)'] > (df_calc['3-1개월(%)'] / 2)) & \
                    ((df_calc['3-1개월(%)'] / 2) > (df_calc['6-1개월(%)'] / 5)) & \
                    ((df_calc['6-1개월(%)'] / 5) > (df_calc['12-1개월(%)'] / 11)) & \
                    ((df_calc['12-1개월(%)'] / 11) > 0)
             
         target = df_calc[cond].sort_values('1개월(%)', ascending=False).head(top_n)
-        
         avg_ret = target['이번달수익률'].mean() * mult if not target.empty else 0
         records.append({'투자월': m_str, 'invested': mult > 0, '가속도 전략': avg_ret})
         
