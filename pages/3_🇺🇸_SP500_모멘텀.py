@@ -18,7 +18,6 @@ from utils.us_helpers import (
 
 inject_custom_css()
 
-# 💡 [해결] 탭 4 커스텀 백테스트용 캐시 래퍼 함수 추가
 @st.cache_data(show_spinner=False)
 def cached_run_custom_backtest_us(df, start_year_c, end_year_c, ma_months_c, apply_timing_c, w1, w3, w6, w12, custom_pct, rank_c_s, rank_c_e):
     return run_custom_backtest_us(df, start_year_c, end_year_c, ma_months_c, apply_timing_c, w1, w3, w6, w12, custom_pct, rank_c_s, rank_c_e)
@@ -209,26 +208,6 @@ with tab1:
         with c_r:
             st.dataframe(df_strat2_t1.style.apply(apply_korea_styling, highlight_codes=sel_codes_s, overlap_codes=overlap_codes_t1, axis=1), use_container_width=True, hide_index=True, column_order=col_order_strat2, column_config=us_main_cfg)
 
-        st.markdown("<hr style='margin: 1.5rem 0;'>", unsafe_allow_html=True)
-        st.markdown("### 🏆 기간별 모멘텀 상위 30위")
-        
-        df_12_1 = df_us_t1.sort_values('12-1개월(%)', ascending=False).head(30)
-        df_6_1 = df_us_t1.sort_values('6-1개월(%)', ascending=False).head(30)
-        df_3_1 = df_us_t1.sort_values('3-1개월(%)', ascending=False).head(30)
-        
-        for df in [df_12_1, df_6_1, df_3_1]: df['순위'] = range(1, 31)
-            
-        col_m1, col_m2, col_m3 = st.columns(3)
-        with col_m1:
-            st.markdown("#### 🥇 12-1개월 모멘텀")
-            st.dataframe(df_12_1.style.apply(apply_korea_styling, highlight_codes=highlight_codes_all_t1, overlap_codes=overlap_codes_t1, axis=1), use_container_width=True, hide_index=True, column_order=['순위', '통합티커_L', '종목명_L', '12-1개월(%)'], column_config=us_main_cfg)
-        with col_m2:
-            st.markdown("#### 🥈 6-1개월 모멘텀")
-            st.dataframe(df_6_1.style.apply(apply_korea_styling, highlight_codes=highlight_codes_all_t1, overlap_codes=overlap_codes_t1, axis=1), use_container_width=True, hide_index=True, column_order=['순위', '통합티커_L', '종목명_L', '6-1개월(%)'], column_config=us_main_cfg)
-        with col_m3:
-            st.markdown("#### 🥉 3-1개월 모멘텀")
-            st.dataframe(df_3_1.style.apply(apply_korea_styling, highlight_codes=highlight_codes_all_t1, overlap_codes=overlap_codes_t1, axis=1), use_container_width=True, hide_index=True, column_order=['순위', '통합티커_L', '종목명_L', '3-1개월(%)'], column_config=us_main_cfg)
-
         st.markdown("---")
         st.markdown(f"### 🌐 S&P 500 전체 순위 <span style='font-size: 0.85rem; color: #9ca3af; font-weight:normal;'>&nbsp;&nbsp;💡 선정일: {base_date.strftime('%Y-%m-%d') if isinstance(base_date, pd.Timestamp) else base_date}</span>", unsafe_allow_html=True)
         st.dataframe(df_us_t1.style.apply(apply_korea_styling, highlight_codes=highlight_codes_all_t1, overlap_codes=overlap_codes_t1, axis=1), use_container_width=True, height=600, hide_index=True, column_order=cols_m, column_config=us_main_cfg)
@@ -242,7 +221,13 @@ with tab2:
         df_daily_raw = pd.read_csv(f_daily_path)
         df_daily = preprocess_us_data(df_daily_raw, is_daily=True)
         
-        b_date_d = df_daily['기준일'].iloc[0] if '기준일' in df_daily.columns else "오늘"
+        # 💡 [핵심수정] 00:00:00 시간 제거 로직
+        b_date_d_raw = df_daily['기준일'].iloc[0] if '기준일' in df_daily.columns else "오늘"
+        try:
+            b_date_d = pd.to_datetime(b_date_d_raw).strftime('%Y-%m-%d') if b_date_d_raw != "오늘" else "오늘"
+        except:
+            b_date_d = str(b_date_d_raw)
+            
         safe_date = b_date_d if b_date_d != "오늘" else datetime.today().strftime('%Y-%m-%d')
         
         st.markdown(f"<div style='margin-bottom: 5px; font-size:0.95rem; font-weight:600;'><b>🕒 실시간 데일리 순위</b> <span style='font-size: 0.85rem; color: #9ca3af; font-weight:normal;'>&nbsp;&nbsp;💡 기준일: {b_date_d}</span></div>", unsafe_allow_html=True)
@@ -313,26 +298,6 @@ with tab2:
         with c_d2:
             st.dataframe(df_strat2_d.style.apply(apply_korea_styling, highlight_codes=sel_codes_s_d, overlap_codes=overlap_codes_d, axis=1), use_container_width=True, hide_index=True, column_order=col_order_d2, column_config=us_main_cfg)
             
-        st.markdown("<hr style='margin: 1.5rem 0;'>", unsafe_allow_html=True)
-        st.markdown("### 🏆 기간별 모멘텀 상위 30위")
-        
-        df_12_1_d = df_us_d.sort_values('12-1개월(%)', ascending=False).head(30)
-        df_6_1_d = df_us_d.sort_values('6-1개월(%)', ascending=False).head(30)
-        df_3_1_d = df_us_d.sort_values('3-1개월(%)', ascending=False).head(30)
-        
-        for df in [df_12_1_d, df_6_1_d, df_3_1_d]: df['순위'] = range(1, 31)
-            
-        col_d1, col_d2, col_d3 = st.columns(3)
-        with col_d1:
-            st.markdown("#### 🥇 12-1개월 모멘텀")
-            st.dataframe(df_12_1_d.style.apply(apply_korea_styling, highlight_codes=highlight_codes_all_d, overlap_codes=overlap_codes_d, axis=1), use_container_width=True, hide_index=True, column_order=['순위', '통합티커_L', '종목명_L', '12-1개월(%)'], column_config=us_main_cfg)
-        with col_d2:
-            st.markdown("#### 🥈 6-1개월 모멘텀")
-            st.dataframe(df_6_1_d.style.apply(apply_korea_styling, highlight_codes=highlight_codes_all_d, overlap_codes=overlap_codes_d, axis=1), use_container_width=True, hide_index=True, column_order=['순위', '통합티커_L', '종목명_L', '6-1개월(%)'], column_config=us_main_cfg)
-        with col_d3:
-            st.markdown("#### 🥉 3-1개월 모멘텀")
-            st.dataframe(df_3_1_d.style.apply(apply_korea_styling, highlight_codes=highlight_codes_all_d, overlap_codes=overlap_codes_d, axis=1), use_container_width=True, hide_index=True, column_order=['순위', '통합티커_L', '종목명_L', '3-1개월(%)'], column_config=us_main_cfg)
-
         st.markdown("---")
         st.markdown(f"### 🌐 S&P 500 전체 순위 <span style='font-size: 0.85rem; color: #9ca3af; font-weight:normal;'>&nbsp;&nbsp;💡 기준일: {b_date_d}</span>", unsafe_allow_html=True)
         st.dataframe(df_us_d.style.apply(apply_korea_styling, highlight_codes=highlight_codes_all_d, overlap_codes=overlap_codes_d, axis=1), use_container_width=True, height=600, hide_index=True, column_order=cols_d, column_config=us_main_cfg)
@@ -467,7 +432,21 @@ with tab4:
                 cagr_c = ((final_val_c/100)**(1/years_c)-1)*100 if final_val_c > 0 else -100
                 mdd_c = ((df_cum_c['커스텀 전략']/df_cum_c['커스텀 전략'].cummax())-1).min()*100
                 stats_c = [{"전략명": "커스텀 스코어", "CAGR (연평균)": f"{cagr_c:.1f}%", "총 누적수익률": f"{final_val_c-100:,.1f}%", "MDD (최대낙폭)": f"{mdd_c:.1f}%", "투자월 비율": f"{(df_res_c['invested'].sum()/len(df_res_c))*100:.1f}%", "월별 승률": f"{(df_res_c.loc[df_res_c['invested'], '커스텀 전략']>0).mean()*100:.1f}%" if df_res_c['invested'].any() else "0.0%", "평균 수익률": f"{df_res_c.loc[df_res_c['invested'], '커스텀 전략'].mean():.2f}%" if df_res_c['invested'].any() else "0.00%"}]
-                st.dataframe(get_styled_stats(pd.DataFrame(stats_c)), use_container_width=True, hide_index=True)
+                
+                stats_df_t4 = pd.DataFrame(stats_c)
+                settings_dict_t4 = {
+                    '테스트 시작 연도': f"{start_year_c}년",
+                    '테스트 종료 연도': f"{end_year_c}년",
+                    '마켓타이밍 (개월선)': f"{ma_months_t4}개월선",
+                    '마켓타이밍 적용': "적용(현금)" if apply_timing_c else "미적용",
+                    '가중치 설정': f"{w1}, {w3}, {w6}, {w12}",
+                    '교집합 추출 기준': f"상위 {custom_pct}% 이내",
+                    '매수 순위': f"{rank_c_s}위 ~ {rank_c_e}위"
+                }
+                
+                excel_data_t4 = generate_excel_report_cached(tuple(settings_dict_t4.items()), stats_df_t4, df_res_c, df_cum_c, df_trades_c)
+
+                st.dataframe(get_styled_stats(stats_df_t4), use_container_width=True, hide_index=True)
                 
                 col_hm_c, col_mdd_c = st.columns([6, 4])
                 with col_hm_c: st.dataframe(get_monthly_heatmap(df_res_c, '커스텀 전략'), use_container_width=True)
