@@ -51,15 +51,41 @@ def preprocess_us_data(df, is_daily=False):
         
     return df
 
+# 💡 [핵심수정] 나스닥(.O), 예외(.K), 뉴욕시장(안붙음) 완벽 분리
 def add_naver_links(df):
-    naver_exceptions = {'CIEN': '.K', 'COHR': '.K', 'EQNR': '.K', 'DELL': '.K'}
-    def get_naver_ticker(code): return f"{code}{naver_exceptions.get(code, '.O')}"
+    # 예외적으로 .K가 붙는 종목들을 여기에 추가하세요 (티커만 입력)
+    exceptions_k = ['CIEN', 'COHR', 'EQNR', 'DELL']
+    
+    # 나스닥(.O) 종목 리스트 (주요 S&P 500 나스닥 종목 포함)
+    # 여기에 없는 종목은 자동으로 뉴욕시장(아무것도 안 붙임)으로 처리됩니다.
+    nasdaq_tickers = [
+        'AAPL', 'MSFT', 'AMZN', 'GOOGL', 'GOOG', 'META', 'NVDA', 'TSLA', 'AVGO', 'PEP', 
+        'COST', 'CSCO', 'TMUS', 'TXN', 'NFLX', 'ADBE', 'CMCSA', 'INTC', 'INTU', 'AMGN', 
+        'QCOM', 'HON', 'AMAT', 'SBUX', 'ISRG', 'GILD', 'MDLZ', 'VRTX', 'BKNG', 'ADI', 
+        'REGN', 'ADP', 'PANW', 'LRCX', 'PYPL', 'MU', 'MELI', 'CSX', 'ILMN', 'KLAC', 
+        'CHTR', 'MAR', 'SNPS', 'MNST', 'ORLY', 'CDNS', 'KDP', 'FTNT', 'NXPI', 'PCAR', 
+        'LULU', 'DXCM', 'WDAY', 'CRWD', 'MCHP', 'SIRI', 'ROST', 'EA', 'CTAS', 'FAST', 
+        'VRSK', 'BIIB', 'CPRT', 'WBA', 'EXC', 'IDXX', 'ODFL', 'ON', 'CSGP', 'DLTR', 
+        'EBAY', 'BKR', 'CTSH', 'FANG', 'ALGN', 'XEL', 'DDOG', 'GFS', 'WBD', 'GEHC',
+        'SGEN', 'CEG', 'MRVL', 'KHC', 'PAYX', 'ROK', 'AEP', 'TTWO', 'BWA', 'CDW', 'CHKP',
+        'ANSS', 'VRSN', 'SWKS', 'PTC', 'NTAP', 'STX', 'HSIC', 'HOLX', 'MKTX', 
+        'TECH', 'NDSN', 'ZBRA', 'FOXA', 'TER', 'TRMB', 'POOL', 'CGNX', 'ENTG', 'FSLR', 
+        'ENPH', 'PODD', 'HBAN', 'SEDG', 'GNRC'
+    ]
+    
+    def get_naver_ticker(code):
+        code_str = str(code).strip()
+        if code_str in exceptions_k:
+            return f"{code_str}.K"
+        elif code_str in nasdaq_tickers:
+            return f"{code_str}.O"
+        else:
+            return code_str # 뉴욕시장 (접미사 없음)
     
     df['통합티커_L'] = df.apply(lambda r: f"https://m.stock.naver.com/worldstock/stock/{get_naver_ticker(r['종목코드'])}/total#{r.get('통합티커', r['종목코드'])}", axis=1)
     df['종목명_L'] = df.apply(lambda r: f"https://m.stock.naver.com/fchart/foreign/stock/{get_naver_ticker(r['종목코드'])}#{r['종목명']}", axis=1)
     return df
 
-# 💡 [해결] period="2y" 대신, 선택된 기준일로부터 450일 전의 데이터를 명시적으로 호출합니다.
 @st.cache_data(ttl=3600)
 def robust_get_us_ma_all(target_date_str, ticker='^GSPC'):
     try:
@@ -91,7 +117,6 @@ def robust_get_us_ma_all(target_date_str, ticker='^GSPC'):
         return curr_p, mas
     except Exception: return 0.0, {}
 
-# 💡 [해결] 역시 period="2y" 대신, 선택된 기준일로부터 150일 전의 데이터를 명시적으로 호출합니다.
 @st.cache_data(ttl=3600)
 def robust_get_us_idx_return(target_date_str, ticker='^GSPC'):
     try:
