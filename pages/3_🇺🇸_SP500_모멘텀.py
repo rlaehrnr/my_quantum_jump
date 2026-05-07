@@ -204,7 +204,7 @@ with tab1:
         
         with c_l:
             # 💡 [요청 2, 3] 컬럼 간격 비율 5:3:4 로 확장하여 두줄 꺾임 방지 및 숫자 선택 박스 여유 확보
-            col_t1, col_i1, col_r1 = st.columns([5, 3, 4])
+            col_t1, col_i1, col_r1 = st.columns([5.5, 2.5, 4])
             with col_t1: st.markdown(f"<h4 style='margin:0;'>🔥 12-1M & 6-1M <span style='font-size:13px; color:gray;'>({count_p}개)</span></h4>", unsafe_allow_html=True)
             with col_i1: top_n_p = st.number_input("p_n", 1, max(1, count_p), val_p, key="calc_p", label_visibility="collapsed")
             with col_r1:
@@ -214,7 +214,7 @@ with tab1:
             
         with c_r:
             # 💡 [요청 2, 3] 컬럼 간격 비율 5:3:4 로 확장
-            col_t2, col_i2, col_r2 = st.columns([5, 3, 4])
+            col_t2, col_i2, col_r2 = st.columns([5.5, 2.5, 4])
             with col_t2: st.markdown(f"<h4 style='margin:0;'>🐎 6-1M & 3-1M <span style='font-size:13px; color:gray;'>({count_s}개)</span></h4>", unsafe_allow_html=True)
             with col_i2: top_n_s = st.number_input("s_n", 1, max(1, count_s), val_s, key="calc_s", label_visibility="collapsed")
             with col_r2:
