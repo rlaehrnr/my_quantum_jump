@@ -18,7 +18,6 @@ from utils.us_helpers import (
 
 inject_custom_css()
 
-# [종목명에만 파스텔 옐로우 적용]
 def apply_custom_total_styling(row, top_codes):
     styles = []
     is_top = row['종목코드'] in top_codes
@@ -30,9 +29,12 @@ def apply_custom_total_styling(row, top_codes):
         if isinstance(col, str) and ('(%)' in col or col == '커스텀스코어' or '수익률' in col):
             try:
                 v = float(val)
-                if v > 0: style += 'color: #D32F2F;'
-                elif v < 0: style += 'color: #1976D2;'
-            except: pass
+                if v > 0:
+                    style += 'color: #D32F2F;'
+                elif v < 0:
+                    style += 'color: #1976D2;'
+            except:
+                pass
         styles.append(style)
     return styles
 
@@ -165,7 +167,6 @@ with tab1:
         st.dataframe(style_kospi_ma(ma_df), use_container_width=True, hide_index=True, column_config=ma_cfg)
         
         df_monthly = add_naver_links(df_monthly)
-        # 💡 [핵심] 트리플 잔재 완벽 삭제 - 3개 변수만 받습니다.
         df_us_t1, df_strat1_t1, df_strat2_t1 = get_strategy_stocks_us_custom(df_monthly, top_n_12=150, top_n_6=150, top_n_3=150)
         
         df_us_t1['커스텀스코어'] = (-0.1 * df_us_t1['1개월(%)']) + (0.7 * df_us_t1['3개월(%)']) + (0.4 * df_us_t1['6개월(%)'])
@@ -227,8 +228,7 @@ with tab1:
             st.dataframe(df_strat2_t1.style.apply(apply_korea_styling, highlight_codes=sel_codes_s, overlap_codes=overlap_codes_t1, axis=1), use_container_width=True, hide_index=True, column_order=col_order_strat2, column_config=us_main_cfg)
 
         st.markdown("---")
-        
-        col_total_t, col_total_i, col_total_r = st.columns([5.5, 2.5, 4.0])
+        col_total_t, col_total_i, col_total_r = st.columns([5.5, 2.8, 3.7])
         with col_total_t: 
             st.markdown("<h3 style='margin:0;'>🌐 S&P 500 전체 순위</h3>", unsafe_allow_html=True)
         with col_total_i:
@@ -334,7 +334,7 @@ with tab2:
         st.markdown("---")
         
         top_n_total_d = st.session_state.get("top_n_total_t1", 10)
-        col_total_td, col_total_id, col_total_rd = st.columns([5.5, 2.5, 4.0])
+        col_total_td, col_total_id, col_total_rd = st.columns([5.5, 2.8, 3.7])
         with col_total_td: 
             st.markdown(f"<h3 style='margin:0;'>🌐 S&P 500 전체 순위</h3>", unsafe_allow_html=True)
         with col_total_id:
