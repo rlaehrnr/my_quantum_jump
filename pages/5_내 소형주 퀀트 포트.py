@@ -10,12 +10,9 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 # --- [1. 설정 및 경로] ---
 st.set_page_config(page_title="내 퀀트 포트폴리오", layout="wide")
 
-# 💡 포트폴리오 전용 폴더 설정
 PORT_DIR = 'port'
-if not os.path.exists(PORT_DIR):
-    os.makedirs(PORT_DIR)
-if not os.path.exists('data'):
-    os.makedirs('data')
+if not os.path.exists(PORT_DIR): os.makedirs(PORT_DIR)
+if not os.path.exists('data'): os.makedirs('data')
 
 PORT_PATHS = {
     "ddo": f'{PORT_DIR}/port_ddo.csv',
@@ -36,24 +33,17 @@ st.markdown("""
     
     @media (max-width: 768px) {
         div[data-testid="stHorizontalBlock"] { flex-wrap: wrap !important; }
-        div[data-testid="stHorizontalBlock"] > div[data-testid="column"] {
-            min-width: 45% !important; flex: 1 1 45% !important; margin-bottom: 10px !important;
-        }
+        div[data-testid="stHorizontalBlock"] > div[data-testid="column"] { min-width: 45% !important; flex: 1 1 45% !important; margin-bottom: 10px !important; }
     }
     
-    /* 📊 종합 요약 표 디자인 */
     .summary-table { width: 100%; border-collapse: collapse; text-align: center; font-size: 1.15rem; background-color: #1a1c24; border-radius: 12px; overflow: hidden; margin-top: 10px; }
     .summary-table th { background-color: #2d313e; padding: 15px; color: #9ca3af; font-size: 0.9rem; text-transform: uppercase; letter-spacing: 1px; }
     .summary-table td { padding: 16px; border-bottom: 1px solid #2d313e; color: #e5e7eb; }
     .highlight-cell { background-color: rgba(255, 255, 255, 0.03); font-size: 1.2rem; }
     .summary-total { background-color: #242834; font-size: 1.3rem; }
     
-    /* 설정 저장 버튼 완벽 맞춤 */
-    div[data-testid="stForm"] [data-testid="stFormSubmitButton"] button {
-        height: 73px !important; margin-top: 0px !important; white-space: pre-wrap; line-height: 1.4; font-size: 1.05rem;
-    }
+    div[data-testid="stForm"] [data-testid="stFormSubmitButton"] button { height: 73px !important; margin-top: 0px !important; white-space: pre-wrap; line-height: 1.4; font-size: 1.05rem; }
     
-    /* 숫자 색상 */
     .val-red-thin { color: #FF3333 !important; font-weight: 500; }
     .val-blue-thin { color: #3399FF !important; font-weight: 500; }
     .val-red { color: #FF3333 !important; font-weight: bold; }
@@ -129,22 +119,17 @@ def fetch_multi_prices(tickers):
             price_map[t] = {'curr': curr, 'prev': prev}
     return price_map
 
-# 💡 CSV에서 포트폴리오와 시작금을 로드 (특수문자, 빈줄, 인코딩 완벽 방어)
+# 💡 [핵심] CSV에서 포트폴리오, '시작금', '시작일' 모두 완벽 로드
 def load_portfolio(path):
-    df_empty = pd.DataFrame(columns=["종목명", "종목코드", "매수단가", "수량", "시작금"])
+    df_empty = pd.DataFrame(columns=["종목명", "종목코드", "매수단가", "수량", "시작금", "시작일"])
     if os.path.exists(path):
         try:
-            # 1. 인코딩 방어
-            try:
-                df = pd.read_csv(path, dtype={'종목코드': str}, encoding='utf-8-sig')
-            except UnicodeDecodeError:
-                df = pd.read_csv(path, dtype={'종목코드': str}, encoding='cp949')
+            try: df = pd.read_csv(path, dtype={'종목코드': str}, encoding='utf-8-sig')
+            except UnicodeDecodeError: df = pd.read_csv(path, dtype={'종목코드': str}, encoding='cp949')
                 
-            # 2. 유령 데이터(빈 줄, NaN) 제거
             df = df.dropna(subset=['종목코드'])
             df = df[df['종목코드'].astype(str).str.strip() != '']
             df = df[df['종목코드'].astype(str).str.lower() != 'nan']
-            
             df['종목코드'] = df['종목코드'].astype(str).str.replace(r'\.0$', '', regex=True).str.zfill(6)
             
             if '종목명' not in df.columns:
@@ -152,31 +137,30 @@ def load_portfolio(path):
                 df['종목명'] = df['종목코드'].map(name_map).fillna('이름없음')
                 
             for c in ['매수단가', '수량', '시작금']:
-                if c in df.columns: 
-                    # 💡 특수기호(\, 쉼표 등) 제거
-                    df[c] = pd.to_numeric(df[c].astype(str).str.replace(r'[^0-9.-]', '', regex=True), errors='coerce').fillna(0).astype(int)
+                if c in df.columns: df[c] = pd.to_numeric(df[c].astype(str).str.replace(r'[^0-9.-]', '', regex=True), errors='coerce').fillna(0).astype(int)
                 else: df[c] = 0
-            return df[["종목명", "종목코드", "매수단가", "수량", "시작금"]]
-        except Exception as e: 
-            print(f"포트폴리오 로드 에러 ({path}): {e}")
-            pass
+                
+            if '시작일' not in df.columns: df['시작일'] = str(datetime.today().date())
+            
+            return df[["종목명", "종목코드", "매수단가", "수량", "시작금", "시작일"]]
+        except Exception as e: pass
     return df_empty
 
-# 상태 초기화 및 CSV 시작금 덮어쓰기 로직
+# 상태 초기화
 default_config = {"start_date": str(datetime.today().date()), "start_ddo": 0, "start_sso": 0, "start_mom": 0}
 if os.path.exists(CONFIG_PATH):
     try:
-        with open(CONFIG_PATH, 'r', encoding='utf-8') as f:
-            default_config.update(json.load(f))
+        with open(CONFIG_PATH, 'r', encoding='utf-8') as f: default_config.update(json.load(f))
     except: pass
 
-# CSV에서 최신 시작금 읽어오기 (CSV 우선 적용)
+# 💡 [핵심] CSV에서 최신 '시작금' 및 '시작일' 우선 읽어오기
 for p_key, path in [("ddo", PORT_PATHS["ddo"]), ("sso", PORT_PATHS["sso"]), ("mom", PORT_PATHS["mom"])]:
     if f'df_{p_key}' not in st.session_state:
         df_loaded = load_portfolio(path)
         st.session_state[f'df_{p_key}'] = df_loaded
-        if not df_loaded.empty and '시작금' in df_loaded.columns:
-            default_config[f'start_{p_key}'] = int(df_loaded['시작금'].iloc[0])
+        if not df_loaded.empty:
+            if '시작금' in df_loaded.columns: default_config[f'start_{p_key}'] = int(df_loaded['시작금'].iloc[0])
+            if '시작일' in df_loaded.columns: default_config['start_date'] = str(df_loaded['시작일'].iloc[0])
 
 if 'portfolio_config' not in st.session_state:
     st.session_state['portfolio_config'] = default_config
@@ -199,9 +183,10 @@ def render_portfolio_tab(port_name, port_key, path, prices):
                 q = c2.number_input("수량", min_value=1, step=1)
                 if st.form_submit_button("추가") and sel != search_options[0]:
                     code, name = sel[1:7], sel[9:]
-                    current_start_money = st.session_state['portfolio_config'].get(f'start_{port_key}', 0)
-                    new_row = pd.DataFrame([{"종목명": name, "종목코드": code, "매수단가": int(p), "수량": int(q), "시작금": current_start_money}])
+                    c_money = st.session_state['portfolio_config'].get(f'start_{port_key}', 0)
+                    c_date = st.session_state['portfolio_config'].get('start_date', str(datetime.today().date()))
                     
+                    new_row = pd.DataFrame([{"종목명": name, "종목코드": code, "매수단가": int(p), "수량": int(q), "시작금": c_money, "시작일": c_date}])
                     st.session_state[f'df_{port_key}'] = pd.concat([st.session_state[f'df_{port_key}'], new_row], ignore_index=True)
                     st.session_state[f'df_{port_key}'].to_csv(path, index=False, encoding='utf-8-sig')
                     st.rerun()
@@ -211,27 +196,17 @@ def render_portfolio_tab(port_name, port_key, path, prices):
             up_file = st.file_uploader("CSV/XLSX", type=['csv', 'xlsx'], key=f"up_{port_key}")
             if up_file and st.button("반영", key=f"btn_{port_key}"):
                 try:
-                    # 1. 인코딩 방어
                     if up_file.name.endswith('csv'):
-                        try:
-                            up_df = pd.read_csv(up_file, encoding='utf-8-sig')
-                        except UnicodeDecodeError:
-                            up_file.seek(0)
-                            up_df = pd.read_csv(up_file, encoding='cp949')
-                    else:
-                        up_df = pd.read_excel(up_file)
+                        try: up_df = pd.read_csv(up_file, encoding='utf-8-sig')
+                        except UnicodeDecodeError: up_file.seek(0); up_df = pd.read_csv(up_file, encoding='cp949')
+                    else: up_df = pd.read_excel(up_file)
                         
                     up_df.columns = up_df.columns.str.strip()
-                    
-                    # 2. 필수 열 확인 및 빈자리 자동 채우기
-                    if '종목코드' not in up_df.columns:
-                        st.error("🚨 업로드한 파일에 '종목코드' 열이 없습니다!")
+                    if '종목코드' not in up_df.columns: st.error("🚨 업로드한 파일에 '종목코드' 열이 없습니다!")
                     else:
-                        # 빈 줄 제거
                         up_df = up_df.dropna(subset=['종목코드'])
                         up_df = up_df[up_df['종목코드'].astype(str).str.strip() != '']
                         up_df = up_df[up_df['종목코드'].astype(str).str.lower() != 'nan']
-                        
                         up_df['종목코드'] = up_df['종목코드'].astype(str).str.replace(r'\.0$', '', regex=True).str.zfill(6)
                         
                         if '종목명' not in up_df.columns:
@@ -242,27 +217,24 @@ def render_portfolio_tab(port_name, port_key, path, prices):
                         if '수량' not in up_df.columns: up_df['수량'] = 0
                         
                         for col in ['매수단가', '수량']:
-                            # 특수기호(\, 콤마 등) 제거
                             up_df[col] = pd.to_numeric(up_df[col].astype(str).str.replace(r'[^0-9.-]', '', regex=True), errors='coerce').fillna(0).astype(int)
                             
                         up_df['시작금'] = st.session_state['portfolio_config'].get(f'start_{port_key}', 0)
+                        up_df['시작일'] = st.session_state['portfolio_config'].get('start_date', str(datetime.today().date()))
                         
-                        # 3. 덮어쓰기 및 리로드
-                        st.session_state[f'df_{port_key}'] = up_df[["종목명", "종목코드", "매수단가", "수량", "시작금"]]
+                        st.session_state[f'df_{port_key}'] = up_df[["종목명", "종목코드", "매수단가", "수량", "시작금", "시작일"]]
                         st.session_state[f'df_{port_key}'].to_csv(path, index=False, encoding='utf-8-sig')
                         st.rerun()
-                except Exception as e: 
-                    st.error(f"파일 오류가 발생했습니다: {e}")
+                except Exception as e: st.error(f"오류 발생: {e}")
 
     st.markdown(f"### 📝 {port_name} 편집")
     clean_df = st.session_state[f'df_{port_key}'][["종목명", "종목코드", "매수단가", "수량"]]
     clean_df.index = range(1, len(clean_df) + 1)
 
-    # 💡 데이터 에디터 중복 에러 해결 (key 추가)
     df_editor = st.data_editor(clean_df, num_rows="dynamic", use_container_width=True, key=f"ed_{port_key}")
-    
     if st.button("저장", key=f"sv_{port_key}"):
         df_editor['시작금'] = st.session_state['portfolio_config'].get(f'start_{port_key}', 0)
+        df_editor['시작일'] = st.session_state['portfolio_config'].get('start_date', str(datetime.today().date()))
         st.session_state[f'df_{port_key}'] = df_editor
         st.session_state[f'df_{port_key}'].to_csv(path, index=False, encoding='utf-8-sig')
         st.rerun()
@@ -349,10 +321,12 @@ with tabs[0]:
             st.session_state['portfolio_config'] = new_config
             with open(CONFIG_PATH, 'w', encoding='utf-8') as f: json.dump(new_config, f)
             
-            # 💡 입력된 시작금을 각각의 CSV 파일 열에 덮어쓰기하여 저장
+            # 💡 [핵심] 입력된 '시작일'과 '시작금'을 각각의 CSV 파일 열에 덮어쓰기하여 동기화
             for p_key, start_val in [("ddo", new_ddo), ("sso", new_sso), ("mom", new_mom)]:
                 df = st.session_state[f'df_{p_key}']
                 df['시작금'] = start_val
+                df['시작일'] = str(new_date)
+                st.session_state[f'df_{p_key}'] = df # 갱신
                 df.to_csv(PORT_PATHS[p_key], index=False, encoding='utf-8-sig')
             
             st.rerun()
