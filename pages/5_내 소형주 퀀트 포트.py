@@ -198,13 +198,43 @@ def render_portfolio_tab(port_name, port_key, path, prices):
             up_file = st.file_uploader("CSV/XLSX", type=['csv', 'xlsx'], key=f"up_{port_key}")
             if up_file and st.button("반영", key=f"btn_{port_key}"):
                 try:
-                    up_df = pd.read_csv(up_file) if up_file.name.endswith('csv') else pd.read_excel(up_file)
-                    up_df['종목코드'] = up_df['종목코드'].astype(str).str.zfill(6)
-                    up_df['시작금'] = st.session_state['portfolio_config'].get(f'start_{port_key}', 0)
-                    st.session_state[f'df_{port_key}'] = up_df[["종목명", "종목코드", "매수단가", "수량", "시작금"]]
-                    st.session_state[f'df_{port_key}'].to_csv(path, index=False, encoding='utf-8-sig')
-                    st.rerun()
-                except: st.error("파일 오류")
+                    # 1. 한글 인코딩 방어
+                    if up_file.name.endswith('csv'):
+                        try:
+                            up_df = pd.read_csv(up_file, encoding='utf-8-sig')
+                        except UnicodeDecodeError:
+                            up_file.seek(0)
+                            up_df = pd.read_csv(up_file, encoding='cp949')
+                    else:
+                        up_df = pd.read_excel(up_file)
+                        
+                    up_df.columns = up_df.columns.str.strip()
+                    
+                    # 2. 필수 열 확인 및 빈자리 자동 채우기
+                    if '종목코드' not in up_df.columns:
+                        st.error("🚨 업로드한 파일에 '종목코드' 열이 없습니다!")
+                    else:
+                        up_df['종목코드'] = up_df['종목코드'].astype(str).str.replace(r'\.0$', '', regex=True).str.zfill(6)
+                        
+                        if '종목명' not in up_df.columns:
+                            name_map = master_df.set_index('종목코드')['종목명'].to_dict() if not master_df.empty else {}
+                            up_df['종목명'] = up_df['종목코드'].map(name_map).fillna('이름없음')
+                            
+                        if '매수단가' not in up_df.columns: up_df['매수단가'] = 0
+                        if '수량' not in up_df.columns: up_df['수량'] = 0
+                        
+                        for col in ['매수단가', '수량']:
+                            up_df[col] = pd.to_numeric(up_df[col].astype(str).replace(r'[^0-9.-]', '', regex=True), errors='coerce').fillna(0).astype(int)
+                            
+                        # 누락된 시작금을 설정에서 가져와서 자동으로 꽉 채움
+                        up_df['시작금'] = st.session_state['portfolio_config'].get(f'start_{port_key}', 0)
+                        
+                        # 3. 덮어쓰기 및 리로드
+                        st.session_state[f'df_{port_key}'] = up_df[["종목명", "종목코드", "매수단가", "수량", "시작금"]]
+                        st.session_state[f'df_{port_key}'].to_csv(path, index=False, encoding='utf-8-sig')
+                        st.rerun()
+                except Exception as e: 
+                    st.error(f"파일 오류가 발생했습니다: {e}")
 
     st.markdown(f"### 📝 {port_name} 편집")
     clean_df = st.session_state[f'df_{port_key}'][["종목명", "종목코드", "매수단가", "수량"]]
