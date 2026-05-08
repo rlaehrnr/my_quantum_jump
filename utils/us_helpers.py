@@ -14,8 +14,13 @@ def preprocess_us_data(df, is_daily=False):
         'Past_12M_Return(%)': '12개월(%)', 'Forward_1M_Return(%)': '이번달수익률',
         '기준일(월말)': '종목선정일', '기준가': '종가', '다음달수익률(%)': '이번달수익률'
     }
+    
+    # 💡 [핵심 복구] 과거 SP500 데이터가 증발하지 않도록 데이터를 안전하게 병합하는 로직 원상복구
     for eng, kor in col_mapping.items():
-        if eng in df.columns and kor not in df.columns:
+        if eng in df.columns and kor in df.columns:
+            df[kor] = df[kor].fillna(df[eng])
+            df = df.drop(columns=[eng])
+        elif eng in df.columns:
             df = df.rename(columns={eng: kor})
             
     df = df.dropna(subset=['종목코드'])
@@ -24,9 +29,12 @@ def preprocess_us_data(df, is_daily=False):
     
     if '종목명' not in df.columns: df['종목명'] = df['종목코드']
     df['종목명'] = df['종목명'].fillna(df['종목코드'])
+    df['종목명'] = np.where(df['종목명'].astype(str).str.lower() == 'nan', df['종목코드'], df['종목명'])
     
     if '시장' not in df.columns: df['시장'] = 'US'
     df['시장'] = df['시장'].fillna('US')
+    df['시장'] = np.where(df['시장'].astype(str).str.lower() == 'nan', 'US', df['시장'])
+    
     df['통합티커'] = df['시장'] + ":" + df['종목코드']
 
     if not is_daily:
@@ -39,20 +47,26 @@ def preprocess_us_data(df, is_daily=False):
         if '기준일' in df.columns:
             df['기준일'] = pd.to_datetime(df['기준일'], errors='coerce')
 
-    target_cols = ['시가총액', '종가', '1개월(%)', '3개월(%)', '6개월(%)', '12개월(%)', '이번달수익률']
+    target_cols = ['시가총액', '종가', '거래량', '1개월(%)', '3개월(%)', '6개월(%)', '12개월(%)', '이번달수익률']
     for col in target_cols:
         if col in df.columns: df[col] = pd.to_numeric(df[col], errors='coerce').fillna(0)
+        else: df[col] = 0
         
     return df
 
 def add_naver_links(df):
-    exceptions_k = ['CIEN', 'COHR', 'EQNR', 'DELL']
+    exceptions_k = ['CIEN', 'COHR', 'EQNR', 'DELL', 'HSBC']
+    
     def get_naver_ticker(row):
         code_str = str(row['종목코드']).strip()
         market_str = str(row.get('시장', '')).upper()
-        if code_str in exceptions_k: return f"{code_str}.K"
-        elif 'NASDAQ' in market_str or '나스닥' in market_str: return f"{code_str}.O"
-        else: return code_str 
+        
+        if code_str in exceptions_k:
+            return f"{code_str}.K"
+        elif 'NASDAQ' in market_str or '나스닥' in market_str:
+            return f"{code_str}.O"
+        else:
+            return code_str 
             
     df['통합티커_L'] = df.apply(lambda r: f"https://m.stock.naver.com/worldstock/stock/{get_naver_ticker(r)}/total#{r.get('통합티커', r['종목코드'])}", axis=1)
     df['종목명_L'] = df.apply(lambda r: f"https://m.stock.naver.com/fchart/foreign/stock/{get_naver_ticker(r)}#{r['종목명']}", axis=1)
@@ -64,6 +78,7 @@ def robust_get_us_ma_all(target_date_str, ticker='^GSPC'):
         target_date = pd.to_datetime(target_date_str).normalize()
         start_date = target_date - pd.Timedelta(days=450)
         end_date = target_date + pd.Timedelta(days=2)
+        
         df = pd.DataFrame()
         try:
             df = yf.Ticker(ticker).history(start=start_date.strftime('%Y-%m-%d'), end=end_date.strftime('%Y-%m-%d'))
@@ -72,9 +87,11 @@ def robust_get_us_ma_all(target_date_str, ticker='^GSPC'):
         if df.empty:
             df = fdr.DataReader('US500' if ticker == '^GSPC' else 'IXIC', start_date, end_date)
         if df.empty: return 0.0, {}
+        
         df.index = pd.to_datetime(df.index).normalize()
         df = df[df.index <= target_date]
         if df.empty: return 0.0, {}
+        
         curr_p = df['Close'].iloc[-1]
         mas = {
             4: round(df['Close'].rolling(80).mean().iloc[-1], 2) if len(df) >= 80 else None,
@@ -92,6 +109,7 @@ def robust_get_us_idx_return(target_date_str, ticker='^GSPC'):
         target_date = pd.to_datetime(target_date_str).normalize()
         start_date = target_date - pd.Timedelta(days=150)
         end_date = target_date + pd.Timedelta(days=2)
+        
         df = pd.DataFrame()
         try:
             df = yf.Ticker(ticker).history(start=start_date.strftime('%Y-%m-%d'), end=end_date.strftime('%Y-%m-%d'))
@@ -100,9 +118,11 @@ def robust_get_us_idx_return(target_date_str, ticker='^GSPC'):
         if df.empty:
             df = fdr.DataReader('US500' if ticker == '^GSPC' else 'IXIC', start_date, end_date)
         if df.empty: return 0.0, 0.0
+        
         df.index = pd.to_datetime(df.index).normalize()
         df = df[df.index <= target_date]
         if df.empty: return 0.0, 0.0
+        
         curr_p = df['Close'].iloc[-1]
         df_1m = df[df.index <= target_date - pd.DateOffset(months=1)]
         ret_1m = round(((curr_p / df_1m['Close'].iloc[-1]) - 1) * 100, 2) if not df_1m.empty else 0.0
@@ -147,7 +167,6 @@ def calc_us_momentum(df):
         else: df_calc[f'{m}-1개월(%)'] = 0.0
     return df_calc
 
-# 💡 [트리플 삭제 완료] 3개의 DF만 반환합니다.
 def get_strategy_stocks_us_custom(df_month, top_n_12=150, top_n_6=150, top_n_3=150):
     df_calc = calc_us_momentum(df_month)
     df_12_valid = df_calc[df_calc['12-1개월(%)'] > 0]
@@ -161,6 +180,7 @@ def get_strategy_stocks_us_custom(df_month, top_n_12=150, top_n_6=150, top_n_3=1
     strat1 = top_12[top_12['종목코드'].isin(top_6['종목코드'])].sort_values('6-1개월(%)', ascending=False)
     strat2 = top_6[top_6['종목코드'].isin(top_3['종목코드'])].sort_values('6-1개월(%)', ascending=False)
     
+    # 💡 완벽하게 3개(원본, 12-1&6-1, 6-1&3-1)만 리턴합니다.
     return df_calc, strat1, strat2
 
 @st.cache_data(show_spinner=False)
