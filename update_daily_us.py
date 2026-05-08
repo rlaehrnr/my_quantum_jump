@@ -1,4 +1,3 @@
-import requests
 import pandas as pd
 import FinanceDataReader as fdr
 from datetime import datetime, timedelta
@@ -30,135 +29,106 @@ def calculate_return_unified(df_hist, target_date, current_price):
     except: return 0.0
 
 def process_ticker_us(row, start_date, today, dates, real_base_date_str):
-    code = row['Code']
-    name = row['Name']
+    code = str(row['종목코드']).strip()
+    name = row['종목명']
     market = row['시장']
-    marcap = row['Marcap']
     
     try:
         df_hist = fdr.DataReader(code, start_date, today)
         if df_hist.empty: return None
         
-        curr_price = df_hist['Close'].iloc[-1]
-        curr_vol = df_hist['Volume'].iloc[-1] if 'Volume' in df_hist.columns else 0
+        if df_hist.index.tz is not None: df_hist.index = df_hist.index.tz_localize(None)
         
-        record = {
-            '종목코드': code, 
-            '종목명': name, 
+        curr_p = df_hist['Close'].iloc[-1]
+        
+        ret_1m = calculate_return_unified(df_hist, dates[1], curr_p)
+        ret_3m = calculate_return_unified(df_hist, dates[3], curr_p)
+        ret_6m = calculate_return_unified(df_hist, dates[6], curr_p)
+        ret_12m = calculate_return_unified(df_hist, dates[12], curr_p)
+        
+        return {
+            '기준일': real_base_date_str,
             '시장': market,
-            '기준일': real_base_date_str, 
-            '시가총액': marcap, 
-            '종가': curr_price, 
-            '거래량': curr_vol,
-            '1개월(%)': calculate_return_unified(df_hist, dates['1개월'], curr_price),
-            '3개월(%)': calculate_return_unified(df_hist, dates['3개월'], curr_price),
-            '6개월(%)': calculate_return_unified(df_hist, dates['6개월'], curr_price),
-            '12개월(%)': calculate_return_unified(df_hist, dates['12개월'], curr_price)
+            '종목명': name,
+            '종목코드': code,
+            '시가총액': 0,
+            '종가': curr_p,
+            '1개월(%)': ret_1m,
+            '3개월(%)': ret_3m,
+            '6개월(%)': ret_6m,
+            '12개월(%)': ret_12m,
         }
-        return code, record, df_hist
     except: return None
 
-def update_daily_momentum_us():
-    print("🚀 [미국 전용] 데일리 수익률 및 VIX 데이터 업데이트 시작...")
-    today = datetime.today()
-    real_base_date_str = get_last_business_day_us()
-    print(f"✅ 정확한 미국 영업일 기준: {real_base_date_str}")
+def sync_archive_returns_us(archive_folder):
+    archive_files = sorted(glob.glob(f'{archive_folder}/usa300_*.csv'))
+    if not archive_files: return
+    latest_file = archive_files[-1]
     
-    os.makedirs('data', exist_ok=True)
-
-    print("📈 미국 VIX 지수 데이터 업데이트 중...")
-    try:
-        url = "https://query2.finance.yahoo.com/v8/finance/chart/^VIX?interval=1d&range=5y"
-        headers = {'User-Agent': 'Mozilla/5.0'}
-        res = requests.get(url, headers=headers)
-        data = res.json()
-        timestamps = data['chart']['result'][0]['timestamp']
-        quote = data['chart']['result'][0]['indicators']['quote'][0]
-        df_vix = pd.DataFrame({'날짜': pd.to_datetime(timestamps, unit='s'), '시가': quote['open'], '고가': quote['high'], '저가': quote['low'], '종가': quote['close']}).dropna()
-        df_vix['날짜'] = df_vix['날짜'].dt.strftime('%Y-%m-%d')
-        df_vix['변동 %'] = df_vix['종가'].pct_change().multiply(100).round(2).astype(str) + '%'
-        df_vix[['날짜', '종가', '시가', '고가', '저가', '변동 %']].to_csv('data/vix data.csv', index=False, encoding='utf-8-sig')
-        print("✅ VIX 지수 업데이트 성공!")
-    except Exception as e: print(f"🚨 VIX 다운로드 실패: {e}")
-
-    # 💡 [해결] 여기서 실제 미국 시장(NYSE/NASDAQ) 정보를 미리 가져옵니다.
-    print("🔄 미국 거래소(NYSE/NASDAQ) 종목 마스터 데이터 매핑 중...")
-    try:
-        us_ny = fdr.StockListing('NYSE')[['Symbol']]
-        us_ny['시장'] = 'NYSE'
-        us_nq = fdr.StockListing('NASDAQ')[['Symbol']]
-        us_nq['시장'] = 'NASDAQ'
-        us_master = pd.concat([us_ny, us_nq])
-        us_master['Symbol'] = us_master['Symbol'].str.replace('.', '-', regex=False)
-        us_market_map = dict(zip(us_master['Symbol'], us_master['시장']))
-    except:
-        us_market_map = {}
-
-    print("🔄 미국 S&P 500 데이터 로드 중...")
-    try:
-        df_sp500 = fdr.StockListing('S&P500')
-        df_sp500['Code'] = df_sp500['Symbol'].str.replace('.', '-', regex=False)
-        df_sp500['Name'] = df_sp500['Symbol'] if 'Name' not in df_sp500.columns else df_sp500['Name']
+    df_latest = pd.read_csv(latest_file)
+    if '종목선정일' in df_latest.columns:
+        csv_base_date = pd.to_datetime(df_latest['종목선정일'].iloc[0])
+        today = datetime.today()
         
-        # 💡 [해결] 무식하게 'S&P500'이라 적지 않고 실제 소속을 매핑합니다.
-        df_sp500['시장'] = df_sp500['Code'].map(us_market_map).fillna('US')
-        df_sp500['Marcap'] = 0
-        all_target_df = df_sp500[['Code', 'Name', '시장', 'Marcap']].drop_duplicates(subset=['Code']).copy()
-    except Exception as e:
-        print(f"⚠️ S&P 500 목록 로드 실패: {e}")
-        return
-
-    last_month_end = get_end_of_month(today, 1)
-    dates = { '1개월': last_month_end, '3개월': get_end_of_month(today, 3), '6개월': get_end_of_month(today, 6), '12개월': get_end_of_month(today, 12) }
-    start_date = dates['12개월'] - timedelta(days=15)
-    
-    print(f"📊 총 {len(all_target_df)}개 미국 종목 주가 다운로드 중...")
-    price_cache = {}
-    daily_records_dict = {}
-    
-    with ThreadPoolExecutor(max_workers=20) as executor:
-        futures = [executor.submit(process_ticker_us, row, start_date, today, dates, real_base_date_str) for _, row in all_target_df.iterrows()]
-        for future in as_completed(futures):
-            result = future.result()
-            if result:
-                code, record, df_hist = result
-                daily_records_dict[code] = record
-                price_cache[code] = df_hist
-
-    sp500_records = [daily_records_dict[c] for c in df_sp500['Code'] if c in daily_records_dict]
-    pd.DataFrame(sp500_records).to_csv('data/momentum_data_daily_sp500.csv', index=False, encoding='utf-8-sig')
-    print("✅ 미국 데일리 모멘텀 저장 완료!")
-
-    def sync_archive_returns_us(archive_folder):
-        archive_files = sorted(glob.glob(f'{archive_folder}/only_*.csv'))
-        if not archive_files: return
-        latest_file = archive_files[-1]
-        
-        # 💡 [에러 원천차단] 컬럼 이름에 의존하지 않고 안전하게 텍스트로 읽어옵니다.
-        df_latest = pd.read_csv(latest_file, dtype=str)
-        
-        target_col = '종목선정일' if '종목선정일' in df_latest.columns else 'Date'
-        code_col = '종목코드' if '종목코드' in df_latest.columns else 'Ticker'
-        ret_col = '이번달수익률' if '이번달수익률' in df_latest.columns else 'Forward_1M_Return(%)'
-        
-        if target_col in df_latest.columns:
-            csv_base_date = df_latest[target_col].iloc[0]
-            for idx, row in df_latest.iterrows():
-                code = str(row[code_col])
-                df_h = price_cache.get(code, pd.DataFrame())
-                if df_h.empty:
-                    try: df_h = fdr.DataReader(code, csv_base_date, today)
-                    except: pass
-                
+        updates = 0
+        for idx, row in df_latest.iterrows():
+            code = str(row['종목코드'])
+            try:
+                df_h = fdr.DataReader(code, csv_base_date, today)
                 if not df_h.empty:
                     curr_p = df_h['Close'].iloc[-1]
-                    df_latest.at[idx, ret_col] = calculate_return_unified(df_h, csv_base_date, curr_p)
+                    base_p = df_h['Close'].iloc[0]
+                    if base_p > 0:
+                        df_latest.at[idx, '이번달수익률'] = round(((curr_p / base_p) - 1) * 100, 2)
+                        updates += 1
+            except: pass
             
+        if updates > 0:
             df_latest.to_csv(latest_file, index=False, encoding='utf-8-sig')
-            print(f"✅ {archive_folder} 월별 아카이브 동기화 완료!")
+            print(f"✅ {latest_file} 이번달수익률 최신화 완료!")
 
-    sync_archive_returns_us('archive_sp500') 
-    print("🎉 🇺🇸 미국 업데이트 완벽 종료!")
+def main():
+    archive_folder = 'archive_usa'
+    output_file = 'data/momentum_data_daily_usa300.csv'
+    os.makedirs('data', exist_ok=True)
+    
+    archive_files = sorted(glob.glob(f'{archive_folder}/usa300_*.csv'))
+    if not archive_files:
+        print(f"🚨 {archive_folder} 폴더에 아카이브 파일이 없습니다.")
+        return
+        
+    latest_file = archive_files[-1]
+    print(f"📌 USA 300 유니버스 로드: {latest_file}")
+    
+    df_latest = pd.read_csv(latest_file)
+    universe = df_latest[['종목코드', '종목명', '시장']].drop_duplicates()
+    
+    today = datetime.today()
+    real_base_date_str = get_last_business_day_us()
+    real_base_date = pd.to_datetime(real_base_date_str)
+    
+    dates = {
+        1: get_end_of_month(real_base_date, 1),
+        3: get_end_of_month(real_base_date, 3),
+        6: get_end_of_month(real_base_date, 6),
+        12: get_end_of_month(real_base_date, 12)
+    }
+    start_date = get_end_of_month(real_base_date, 13)
+    
+    results = []
+    print(f"🚀 데일리 데이터 생성 중... ({real_base_date_str} 기준)")
+    with ThreadPoolExecutor(max_workers=20) as executor:
+        futures = [executor.submit(process_ticker_us, row, start_date, today, dates, real_base_date_str) for _, row in universe.iterrows()]
+        for future in as_completed(futures):
+            res = future.result()
+            if res: results.append(res)
+            
+    if results:
+        pd.DataFrame(results).to_csv(output_file, index=False, encoding='utf-8-sig')
+        print(f"✅ 데일리 데이터 저장 완료: {output_file}")
+        sync_archive_returns_us(archive_folder)
+    else:
+        print("🚨 데일리 데이터 수집 실패")
 
 if __name__ == "__main__":
-    update_daily_momentum_us()
+    main()
