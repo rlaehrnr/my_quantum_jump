@@ -32,6 +32,7 @@ def process_ticker_us(row, start_date, today, dates, real_base_date_str):
     code = str(row['종목코드']).strip()
     name = row['종목명']
     market = row['시장']
+    marcap = row['시가총액_raw'] if '시가총액_raw' in row else row.get('시가총액', 0)
     
     try:
         df_hist = fdr.DataReader(code, start_date, today)
@@ -51,7 +52,7 @@ def process_ticker_us(row, start_date, today, dates, real_base_date_str):
             '시장': market,
             '종목명': name,
             '종목코드': code,
-            '시가총액': 0,
+            '시가총액': marcap,
             '종가': curr_p,
             '1개월(%)': ret_1m,
             '3개월(%)': ret_3m,
@@ -85,7 +86,7 @@ def sync_archive_returns_us(archive_folder):
             
         if updates > 0:
             df_latest.to_csv(latest_file, index=False, encoding='utf-8-sig')
-            print(f"✅ {latest_file} 이번달수익률 최신화 완료!")
+            print(f"✅ 월간 파일({latest_file})의 '이번달수익률' 실시간 동기화 완료!")
 
 def main():
     archive_folder = 'archive_usa'
@@ -101,7 +102,12 @@ def main():
     print(f"📌 USA 300 유니버스 로드: {latest_file}")
     
     df_latest = pd.read_csv(latest_file)
-    universe = df_latest[['종목코드', '종목명', '시장']].drop_duplicates()
+    
+    # 💡 유니버스 추출 시 시가총액 유지
+    cols_to_extract = ['종목코드', '종목명', '시장']
+    if '시가총액_raw' in df_latest.columns: cols_to_extract.append('시가총액_raw')
+    elif '시가총액' in df_latest.columns: cols_to_extract.append('시가총액')
+    universe = df_latest[cols_to_extract].drop_duplicates(subset=['종목코드'])
     
     today = datetime.today()
     real_base_date_str = get_last_business_day_us()
@@ -125,7 +131,7 @@ def main():
             
     if results:
         pd.DataFrame(results).to_csv(output_file, index=False, encoding='utf-8-sig')
-        print(f"✅ 데일리 데이터 저장 완료: {output_file}")
+        print(f"🎉 데일리 데이터 저장 완료: {output_file}")
         sync_archive_returns_us(archive_folder)
     else:
         print("🚨 데일리 데이터 수집 실패")
