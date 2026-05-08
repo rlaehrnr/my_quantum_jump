@@ -37,18 +37,39 @@ def get_kospi_ma_all(target_date_str):
 
 def get_idx_kr(target_date_str):
     import FinanceDataReader as fdr
+    import pandas as pd
+    from datetime import timedelta
+    
     target_date = pd.to_datetime(target_date_str)
-    start_date = target_date - timedelta(days=120)
+    # MTD 계산을 위해 넉넉하게 120일 이상 데이터를 가져옵니다.
+    start_date = target_date - timedelta(days=150)
     try:
         df = fdr.DataReader('KS11', start_date, target_date)
         if df.empty: return 0.0, 0.0
+        
         curr_p = df['Close'].iloc[-1]
-        df_1m = df[df.index <= target_date - pd.DateOffset(months=1)]
-        ret_1m = round(((curr_p / df_1m['Close'].iloc[-1]) - 1) * 100, 2) if not df_1m.empty else 0.0
-        df_3m = df[df.index <= target_date - pd.DateOffset(months=3)]
-        ret_3m = round(((curr_p / df_3m['Close'].iloc[-1]) - 1) * 100, 2) if not df_3m.empty else 0.0
+        
+        # 💡 [MTD 로직] 이번 달의 시작일(1일)을 기준으로 잡습니다.
+        first_day_of_this_month = target_date.replace(day=1)
+        
+        # 1M (이번 달) 기준: 전월 말일 (이번 달 1일보다 이전 날짜 중 가장 마지막 거래일)
+        df_1m_ref = df[df.index < first_day_of_this_month]
+        if not df_1m_ref.empty:
+            ret_1m = round(((curr_p / df_1m_ref['Close'].iloc[-1]) - 1) * 100, 2)
+        else:
+            ret_1m = 0.0
+            
+        # 3M 기준: 3개월 전 말일 (예: 5월이면 2월 말일 대비)
+        three_months_ago_ref_date = first_day_of_this_month - pd.DateOffset(months=2)
+        df_3m_ref = df[df.index < three_months_ago_ref_date]
+        if not df_3m_ref.empty:
+            ret_3m = round(((curr_p / df_3m_ref['Close'].iloc[-1]) - 1) * 100, 2)
+        else:
+            ret_3m = 0.0
+            
         return ret_1m, ret_3m
-    except: return 0.0, 0.0
+    except: 
+        return 0.0, 0.0
 
 def get_kospi_timing_for_backtest(ma_months):
     import FinanceDataReader as fdr
