@@ -18,7 +18,6 @@ from utils.us_helpers import (
 
 inject_custom_css()
 
-# [종목명에만 파스텔 옐로우 적용]
 def apply_custom_total_styling(row, top_codes):
     styles = []
     is_top = row['종목코드'] in top_codes
@@ -30,9 +29,12 @@ def apply_custom_total_styling(row, top_codes):
         if isinstance(col, str) and ('(%)' in col or col == '커스텀스코어' or '수익률' in col):
             try:
                 v = float(val)
-                if v > 0: style += 'color: #D32F2F;'
-                elif v < 0: style += 'color: #1976D2;'
-            except: pass
+                if v > 0:
+                    style += 'color: #D32F2F;'
+                elif v < 0:
+                    style += 'color: #1976D2;'
+            except:
+                pass
         styles.append(style)
     return styles
 
@@ -92,7 +94,6 @@ st.markdown('''
     </div>
 ''', unsafe_allow_html=True)
 
-# 💡 [핵심] 폴더만 usa로 바뀜
 archive_path = "archive_usa"
 f_hash = get_folder_hash(archive_path) 
 df_master_raw = load_archive_data(archive_path, f_hash) 
@@ -230,7 +231,7 @@ with tab1:
 
         st.markdown("---")
         
-        col_total_t, col_total_i, col_total_r = st.columns([5.5, 2.5, 4.0])
+        col_total_t, col_total_i, col_total_r = st.columns([5.5, 2.8, 3.7])
         with col_total_t: 
             st.markdown("<h3 style='margin:0;'>🌐 USA 300 전체 순위</h3>", unsafe_allow_html=True)
         with col_total_i:
@@ -249,7 +250,6 @@ with tab1:
 # 탭 2. 실시간 데일리 순위
 # ==========================================
 with tab2:
-    # 💡 USA300 전용 데일리 파일 읽기
     f_daily_path = 'data/momentum_data_daily_usa300.csv'
     if os.path.exists(f_daily_path):
         df_daily_raw = pd.read_csv(f_daily_path)
@@ -337,7 +337,7 @@ with tab2:
         st.markdown("---")
         
         top_n_total_d = st.session_state.get("top_n_total_t1_usa", 10)
-        col_total_td, col_total_id, col_total_rd = st.columns([5.5, 2.5, 4.0])
+        col_total_td, col_total_id, col_total_rd = st.columns([5.5, 2.8, 3.7])
         with col_total_td: 
             st.markdown(f"<h3 style='margin:0;'>🌐 USA 300 전체 순위</h3>", unsafe_allow_html=True)
         with col_total_id:
@@ -409,6 +409,7 @@ with tab3:
                     stats.append({"전략명": col, "CAGR (연평균)": f"{cagr:.1f}%", "총 누적수익률": f"{final_val-100:,.1f}%", "MDD (최대낙폭)": f"{mdd:.1f}%", "투자월 비율": f"{(df_res['invested'].sum()/len(df_res))*100:.1f}%", "월별 승률": f"{win_rate:.1f}%", "평균 수익률": f"{df_res.loc[df_res['invested'], col].mean():.2f}%" if df_res['invested'].any() else "0.00%"})
                 
                 stats_df = pd.DataFrame(stats)
+                
                 settings_dict = {
                     '테스트 시작 연도': f"{start_year}년",
                     '테스트 종료 연도': f"{end_year}년",
