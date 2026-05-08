@@ -209,8 +209,8 @@ def render_portfolio_tab(port_name, port_key, path, prices):
     st.markdown(f"### 📝 {port_name} 편집")
     clean_df = st.session_state[f'df_{port_key}'][["종목명", "종목코드", "매수단가", "수량"]]
     clean_df.index = range(1, len(clean_df) + 1)
-    
-    df_editor = st.data_editor(clean_df, num_rows="dynamic", use_container_width=True)
+
+    df_editor = st.data_editor(clean_df, num_rows="dynamic", use_container_width=True, key=f"ed_{port_key}")
     if st.button("저장", key=f"sv_{port_key}"):
         df_editor['시작금'] = st.session_state['portfolio_config'].get(f'start_{port_key}', 0)
         st.session_state[f'df_{port_key}'] = df_editor
