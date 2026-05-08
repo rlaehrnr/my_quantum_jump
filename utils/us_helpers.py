@@ -107,6 +107,7 @@ def robust_get_us_ma_all(target_date_str, ticker='^GSPC'):
 def robust_get_us_idx_return(target_date_str, ticker='^GSPC'):
     try:
         target_date = pd.to_datetime(target_date_str).normalize()
+        # 데이터 여유있게 수집 (MTD 계산을 위해 최소 40일 이상 필요)
         start_date = target_date - pd.Timedelta(days=150)
         end_date = target_date + pd.Timedelta(days=2)
         
@@ -124,11 +125,21 @@ def robust_get_us_idx_return(target_date_str, ticker='^GSPC'):
         if df.empty: return 0.0, 0.0
         
         curr_p = df['Close'].iloc[-1]
-        df_1m = df[df.index <= target_date - pd.DateOffset(months=1)]
-        ret_1m = round(((curr_p / df_1m['Close'].iloc[-1]) - 1) * 100, 2) if not df_1m.empty else 0.0
+        
+        # 💡 [핵심 수정: MTD 로직] 이번 달 1일보다 이전 날짜 중 가장 마지막 거래일(즉, 전월 말일) 찾기
+        first_day_of_month = target_date.replace(day=1)
+        prev_month_end_df = df[df.index < first_day_of_month]
+        
+        ret_mtd = 0.0
+        if not prev_month_end_df.empty:
+            prev_month_end_price = prev_month_end_df['Close'].iloc[-1]
+            ret_mtd = round(((curr_p / prev_month_end_price) - 1) * 100, 2)
+            
+        # 3개월 수익률은 기존의 Rolling 방식을 유지 (필요 시 수정 가능)
         df_3m = df[df.index <= target_date - pd.DateOffset(months=3)]
         ret_3m = round(((curr_p / df_3m['Close'].iloc[-1]) - 1) * 100, 2) if not df_3m.empty else 0.0
-        return ret_1m, ret_3m
+        
+        return ret_mtd, ret_3m
     except Exception: return 0.0, 0.0
 
 @st.cache_data(ttl=86400, show_spinner=False)
