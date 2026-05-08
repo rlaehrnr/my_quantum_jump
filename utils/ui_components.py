@@ -1,5 +1,6 @@
 import pandas as pd
 import streamlit as st
+import os
 
 def inject_custom_css():
     st.markdown("""
@@ -141,3 +142,86 @@ main_cfg = {
     "12개월(%)": st.column_config.NumberColumn(format="%.1f"),
     "이번달수익률": st.column_config.NumberColumn("이번달 수익률(%)", format="%.2f") 
 }
+
+
+
+
+
+# 1. 전체 순위 하이라이트 스타일 (파스텔 옐로우 - 종목명만)
+def apply_custom_total_styling(row, top_codes):
+    styles = []
+    is_top = row['종목코드'] in top_codes
+    for col, val in row.items():
+        style = ''
+        if is_top and col == '종목명_L':
+            style += 'background-color: #FFF9C4; font-weight: bold; color: #333;' 
+        if isinstance(col, str) and ('(%)' in col or col == '커스텀스코어' or '수익률' in col):
+            try:
+                v = float(val)
+                if v > 0: style += 'color: #D32F2F;'
+                elif v < 0: style += 'color: #1976D2;'
+            except: pass
+        styles.append(style)
+    return styles
+
+# 2. VIX 공포지수 위젯 렌더링
+def render_vix_widget(safe_date):
+    vix_file = 'data/vix data.csv'
+    vix_latest_high, vix_latest_date_str = "데이터없음", ""
+    vix_35_date_str, vix_35_high, days_diff_str = "-", "-", "-"
+    is_vix_warning = False
+
+    if os.path.exists(vix_file):
+        try:
+            vix_df = pd.read_csv(vix_file)
+            vix_df['날짜'] = pd.to_datetime(vix_df['날짜'])
+            vix_df = vix_df.sort_values('날짜')
+            if not vix_df.empty:
+                latest_row = vix_df.iloc[-1]
+                vix_latest_high = f"{latest_row['고가']:.2f}"
+                vix_latest_date = latest_row['날짜']
+                vix_latest_date_str = f"{vix_latest_date.month}/{vix_latest_date.day}"
+                
+                high_35_df = vix_df[vix_df['고가'] >= 35.0]
+                if not high_35_df.empty:
+                    last_35_row = high_35_df.iloc[-1]
+                    vix_35_date_str = last_35_row['날짜'].strftime('%y/%m/%d')
+                    vix_35_high = f"{last_35_row['고가']:.2f}"
+                    days_diff = (pd.to_datetime(safe_date) - last_35_row['날짜']).days
+                    days_diff_str = f"{days_diff}일 경과"
+                    if 0 <= days_diff <= 20: is_vix_warning = True
+        except: pass
+        
+    vix_bg = "#FFF0F0" if is_vix_warning else "#FFFFFF"
+    vix_border = "#FFCDD2" if is_vix_warning else "#d1d5db"
+    vix_title_color = "#C62828" if is_vix_warning else "#64748b"
+    vix_val_color = "#D84315" if is_vix_warning else "#333333"
+    vix_icon = "🚨" if is_vix_warning else "📊"
+    vix_label = f"전일 ({vix_latest_date_str}일) 고가:" if vix_latest_date_str else "전일 고가:"
+    
+    return f'''<a href="https://m.stock.naver.com/worldstock/index/.VIX/total" target="_blank" style="text-decoration: none; color: inherit;">
+        <div class="title-link" style="background-color: {vix_bg}; padding: 10px; border-radius: 10px; text-align: center; border: 1px solid {vix_border}; height: 95px; display: flex; flex-direction: column; justify-content: center;">
+            <div style="font-size: 12px; font-weight: bold; color: {vix_title_color}; margin-bottom: 2px;">{vix_icon} VIX 35 돌파</div>
+            <div style="font-size: 11px; font-weight: bold; color: {vix_title_color}; margin-bottom: 4px;">VIX {vix_35_high} - {vix_35_date_str}돌파 ({days_diff_str})</div>
+            <div style="font-size: 15px; color: {vix_val_color}; font-weight:900;">{vix_label} {vix_latest_high}</div>
+        </div></a>'''
+
+# 3. 미국 전용 데이터프레임 컬럼 및 순서 설정
+us_main_cfg = main_cfg.copy()
+us_main_cfg.update({
+    '12-1개월(%)': st.column_config.NumberColumn('12-1개월(%)', format="%.2f%%"),
+    '6-1개월(%)': st.column_config.NumberColumn('6-1개월(%)', format="%.2f%%"),
+    '3-1개월(%)': st.column_config.NumberColumn('3-1개월(%)', format="%.2f%%"),
+    '커스텀스코어': st.column_config.NumberColumn('커스텀스코어', format="%.2f"),
+    '종가': st.column_config.NumberColumn('종가', format="%.2f"),
+    '시가총액': st.column_config.NumberColumn('시가총액', format="%d")
+})
+
+col_order_strat1 = ['순위', '통합티커_L', '종목명_L', '12-1개월(%)', '6-1개월(%)', '이번달수익률']
+col_order_strat2 = ['순위', '통합티커_L', '종목명_L', '6-1개월(%)', '3-1개월(%)', '이번달수익률']
+col_order_d1 = ['순위', '통합티커_L', '종목명_L', '12-1개월(%)', '6-1개월(%)']
+col_order_d2 = ['순위', '통합티커_L', '종목명_L', '6-1개월(%)', '3-1개월(%)']
+cols_m = ['순위', '통합티커_L', '종목명_L', '시가총액', '종가', '1개월(%)', '3개월(%)', '6개월(%)', '12개월(%)', '12-1개월(%)', '6-1개월(%)', '3-1개월(%)', '커스텀스코어', '이번달수익률']
+cols_d = ['순위', '통합티커_L', '종목명_L', '시가총액', '종가', '거래량', '1개월(%)', '3개월(%)', '6개월(%)', '12개월(%)', '12-1개월(%)', '6-1개월(%)', '3-1개월(%)', '커스텀스코어']
+
+
