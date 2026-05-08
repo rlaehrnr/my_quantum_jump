@@ -8,7 +8,13 @@ st.set_page_config(page_title="USA 300 통합 모멘텀", layout="wide")
 
 from utils.data_loader import load_archive_data, get_folder_hash
 from utils.calculator import get_cycle_year, PRESIDENTIAL_DANGEROUS_MONTHS
-from utils.ui_components import inject_custom_css, apply_korea_styling, style_kospi_ma, get_styled_stats, get_mdd_history, get_monthly_heatmap, ma_cfg, main_cfg
+# 💡 핵심: ui_components에서 앞서 정의한 공통 설정들을 똑같이 가져옵니다.
+from utils.ui_components import (
+    inject_custom_css, apply_korea_styling, style_kospi_ma, get_styled_stats, 
+    get_mdd_history, get_monthly_heatmap, ma_cfg, apply_custom_total_styling, 
+    render_vix_widget, us_main_cfg, col_order_strat1, col_order_strat2, 
+    col_order_d1, col_order_d2, cols_m, cols_d
+)
 
 from utils.us_helpers import (
     preprocess_us_data, add_naver_links, robust_get_us_ma_all, robust_get_us_idx_return, 
@@ -18,70 +24,9 @@ from utils.us_helpers import (
 
 inject_custom_css()
 
-def apply_custom_total_styling(row, top_codes):
-    styles = []
-    is_top = row['종목코드'] in top_codes
-    for col, val in row.items():
-        style = ''
-        if is_top and col == '종목명_L':
-            style += 'background-color: #FFF9C4; font-weight: bold; color: #333;' 
-            
-        if isinstance(col, str) and ('(%)' in col or col == '커스텀스코어' or '수익률' in col):
-            try:
-                v = float(val)
-                if v > 0:
-                    style += 'color: #D32F2F;'
-                elif v < 0:
-                    style += 'color: #1976D2;'
-            except:
-                pass
-        styles.append(style)
-    return styles
-
 @st.cache_data(show_spinner=False)
 def cached_run_custom_backtest_us(df, start_year_c, end_year_c, ma_months_c, apply_timing_c, w1, w3, w6, w12, custom_pct, rank_c_s, rank_c_e):
     return run_custom_backtest_us(df, start_year_c, end_year_c, ma_months_c, apply_timing_c, w1, w3, w6, w12, custom_pct, rank_c_s, rank_c_e)
-
-def render_vix_widget(safe_date):
-    vix_file = 'data/vix data.csv'
-    vix_latest_high, vix_latest_date_str = "데이터없음", ""
-    vix_35_date_str, vix_35_high, days_diff_str = "-", "-", "-"
-    is_vix_warning = False
-
-    if os.path.exists(vix_file):
-        try:
-            vix_df = pd.read_csv(vix_file)
-            vix_df['날짜'] = pd.to_datetime(vix_df['날짜'])
-            vix_df = vix_df.sort_values('날짜')
-            if not vix_df.empty:
-                latest_row = vix_df.iloc[-1]
-                vix_latest_high = f"{latest_row['고가']:.2f}"
-                vix_latest_date = latest_row['날짜']
-                vix_latest_date_str = f"{vix_latest_date.month}/{vix_latest_date.day}"
-                
-                high_35_df = vix_df[vix_df['고가'] >= 35.0]
-                if not high_35_df.empty:
-                    last_35_row = high_35_df.iloc[-1]
-                    vix_35_date_str = last_35_row['날짜'].strftime('%y/%m/%d')
-                    vix_35_high = f"{last_35_row['고가']:.2f}"
-                    days_diff = (pd.to_datetime(safe_date) - last_35_row['날짜']).days
-                    days_diff_str = f"{days_diff}일 경과"
-                    if 0 <= days_diff <= 20: is_vix_warning = True
-        except: pass
-        
-    vix_bg = "#FFF0F0" if is_vix_warning else "#FFFFFF"
-    vix_border = "#FFCDD2" if is_vix_warning else "#d1d5db"
-    vix_title_color = "#C62828" if is_vix_warning else "#64748b"
-    vix_val_color = "#D84315" if is_vix_warning else "#333333"
-    vix_icon = "🚨" if is_vix_warning else "📊"
-    vix_label = f"전일 ({vix_latest_date_str}일) 고가:" if vix_latest_date_str else "전일 고가:"
-    
-    return f'''<a href="https://m.stock.naver.com/worldstock/index/.VIX/total" target="_blank" style="text-decoration: none; color: inherit;">
-        <div class="title-link" style="background-color: {vix_bg}; padding: 10px; border-radius: 10px; text-align: center; border: 1px solid {vix_border}; height: 95px; display: flex; flex-direction: column; justify-content: center;">
-            <div style="font-size: 12px; font-weight: bold; color: {vix_title_color}; margin-bottom: 2px;">{vix_icon} VIX 35 돌파</div>
-            <div style="font-size: 11px; font-weight: bold; color: {vix_title_color}; margin-bottom: 4px;">VIX {vix_35_high} - {vix_35_date_str}돌파 ({days_diff_str})</div>
-            <div style="font-size: 15px; color: {vix_val_color}; font-weight:900;">{vix_label} {vix_latest_high}</div>
-        </div></a>'''
 
 st.markdown('''
     <div style="margin-bottom: 20px;">
@@ -103,29 +48,11 @@ if df_master_raw.empty:
     st.stop()
 
 df_master = preprocess_us_data(df_master_raw, is_daily=False)
-
 valid_years = df_master['투자연도'].dropna().unique().astype(int).tolist()
 if not valid_years: valid_years = [datetime.today().year]
 years_list = sorted(valid_years)
 min_y, max_y = min(years_list), max(years_list)
 if min_y >= max_y: min_y = max_y - 1 
-
-us_main_cfg = main_cfg.copy()
-us_main_cfg.update({
-    '12-1개월(%)': st.column_config.NumberColumn('12-1개월(%)', format="%.2f%%"),
-    '6-1개월(%)': st.column_config.NumberColumn('6-1개월(%)', format="%.2f%%"),
-    '3-1개월(%)': st.column_config.NumberColumn('3-1개월(%)', format="%.2f%%"),
-    '커스텀스코어': st.column_config.NumberColumn('커스텀스코어', format="%.2f"),
-    '종가': st.column_config.NumberColumn('종가', format="%.2f"),
-    '시가총액': st.column_config.NumberColumn('시가총액', format="%d")
-})
-
-col_order_strat1 = ['순위', '통합티커_L', '종목명_L', '12-1개월(%)', '6-1개월(%)', '이번달수익률']
-col_order_strat2 = ['순위', '통합티커_L', '종목명_L', '6-1개월(%)', '3-1개월(%)', '이번달수익률']
-col_order_d1 = ['순위', '통합티커_L', '종목명_L', '12-1개월(%)', '6-1개월(%)']
-col_order_d2 = ['순위', '통합티커_L', '종목명_L', '6-1개월(%)', '3-1개월(%)']
-cols_m = ['순위', '통합티커_L', '종목명_L', '시가총액', '종가', '1개월(%)', '3개월(%)', '6개월(%)', '12개월(%)', '12-1개월(%)', '6-1개월(%)', '3-1개월(%)', '커스텀스코어', '이번달수익률']
-cols_d = ['순위', '통합티커_L', '종목명_L', '시가총액', '종가', '거래량', '1개월(%)', '3개월(%)', '6개월(%)', '12개월(%)', '12-1개월(%)', '6-1개월(%)', '3-1개월(%)', '커스텀스코어']
 
 tab1, tab2, tab3, tab4 = st.tabs(["📅 월별 상세 분석", "🕒 실시간 데일리 순위", "📈 전략 백테스트", "🏅 스코어 커스텀 백테스트"])
 
@@ -231,7 +158,7 @@ with tab1:
 
         st.markdown("---")
         
-        col_total_t, col_total_i, col_total_r = st.columns([5.5, 2.8, 3.7])
+        col_total_t, col_total_i, col_total_r = st.columns([5.5, 2.5, 4.0])
         with col_total_t: 
             st.markdown("<h3 style='margin:0;'>🌐 USA 300 전체 순위</h3>", unsafe_allow_html=True)
         with col_total_i:
@@ -308,7 +235,7 @@ with tab2:
         with c_d1:
             col_t1, col_i1, col_r1 = st.columns([5.3, 2.8, 3.9])
             with col_t1: st.markdown(f"<h4 style='margin:0;'>🔥 12-1M & 6-1M <span style='font-size:13px; color:gray;'>({count_p_d}개)</span></h4>", unsafe_allow_html=True)
-            with col_i1: top_n_p_d = st.number_input("p_n", 1, max(1, count_p_d), val_p_d, key="calc_p_usa_d", label_visibility="collapsed")
+            with col_i1: top_n_p_d = st.number_input("p_n", 1, max(1, count_p_d), val_p_d, key="calc_p_us_d", label_visibility="collapsed")
             with col_r1:
                 avg_ret_p_d = df_strat1_d.head(top_n_p_d)['이번달수익률'].mean() if count_p_d > 0 and '이번달수익률' in df_strat1_d.columns else 0
                 if avg_ret_p_d != 0:
@@ -318,7 +245,7 @@ with tab2:
         with c_d2:
             col_t2, col_i2, col_r2 = st.columns([5.3, 2.8, 3.9])
             with col_t2: st.markdown(f"<h4 style='margin:0;'>🐎 6-1M & 3-1M <span style='font-size:13px; color:gray;'>({count_s_d}개)</span></h4>", unsafe_allow_html=True)
-            with col_i2: top_n_s_d = st.number_input("s_n", 1, max(1, count_s_d), val_s_d, key="calc_s_usa_d", label_visibility="collapsed")
+            with col_i2: top_n_s_d = st.number_input("s_n", 1, max(1, count_s_d), val_s_d, key="calc_s_us_d", label_visibility="collapsed")
             with col_r2:
                 avg_ret_s_d = df_strat2_d.head(top_n_s_d)['이번달수익률'].mean() if count_s_d > 0 and '이번달수익률' in df_strat2_d.columns else 0
                 if avg_ret_s_d != 0:
@@ -337,7 +264,7 @@ with tab2:
         st.markdown("---")
         
         top_n_total_d = st.session_state.get("top_n_total_t1_usa", 10)
-        col_total_td, col_total_id, col_total_rd = st.columns([5.5, 2.8, 3.7])
+        col_total_td, col_total_id, col_total_rd = st.columns([5.5, 2.5, 4.0])
         with col_total_td: 
             st.markdown(f"<h3 style='margin:0;'>🌐 USA 300 전체 순위</h3>", unsafe_allow_html=True)
         with col_total_id:
