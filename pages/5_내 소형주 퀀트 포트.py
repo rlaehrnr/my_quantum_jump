@@ -129,13 +129,22 @@ def fetch_multi_prices(tickers):
             price_map[t] = {'curr': curr, 'prev': prev}
     return price_map
 
-# 💡 CSV에서 포트폴리오와 시작금을 로드 (시작금 열 추가 연동)
+# 💡 CSV에서 포트폴리오와 시작금을 로드 (특수문자, 빈줄, 인코딩 완벽 방어)
 def load_portfolio(path):
     df_empty = pd.DataFrame(columns=["종목명", "종목코드", "매수단가", "수량", "시작금"])
     if os.path.exists(path):
         try:
-            df = pd.read_csv(path, dtype={'종목코드': str}, encoding='utf-8-sig')
+            # 1. 인코딩 방어
+            try:
+                df = pd.read_csv(path, dtype={'종목코드': str}, encoding='utf-8-sig')
+            except UnicodeDecodeError:
+                df = pd.read_csv(path, dtype={'종목코드': str}, encoding='cp949')
+                
+            # 2. 유령 데이터(빈 줄, NaN) 제거
             df = df.dropna(subset=['종목코드'])
+            df = df[df['종목코드'].astype(str).str.strip() != '']
+            df = df[df['종목코드'].astype(str).str.lower() != 'nan']
+            
             df['종목코드'] = df['종목코드'].astype(str).str.replace(r'\.0$', '', regex=True).str.zfill(6)
             
             if '종목명' not in df.columns:
@@ -143,10 +152,14 @@ def load_portfolio(path):
                 df['종목명'] = df['종목코드'].map(name_map).fillna('이름없음')
                 
             for c in ['매수단가', '수량', '시작금']:
-                if c in df.columns: df[c] = pd.to_numeric(df[c].astype(str).replace(r'[^0-9.-]', '', regex=True), errors='coerce').fillna(0).astype(int)
+                if c in df.columns: 
+                    # 💡 특수기호(\, 쉼표 등) 제거
+                    df[c] = pd.to_numeric(df[c].astype(str).str.replace(r'[^0-9.-]', '', regex=True), errors='coerce').fillna(0).astype(int)
                 else: df[c] = 0
             return df[["종목명", "종목코드", "매수단가", "수량", "시작금"]]
-        except: pass
+        except Exception as e: 
+            print(f"포트폴리오 로드 에러 ({path}): {e}")
+            pass
     return df_empty
 
 # 상태 초기화 및 CSV 시작금 덮어쓰기 로직
@@ -198,7 +211,7 @@ def render_portfolio_tab(port_name, port_key, path, prices):
             up_file = st.file_uploader("CSV/XLSX", type=['csv', 'xlsx'], key=f"up_{port_key}")
             if up_file and st.button("반영", key=f"btn_{port_key}"):
                 try:
-                    # 1. 한글 인코딩 방어
+                    # 1. 인코딩 방어
                     if up_file.name.endswith('csv'):
                         try:
                             up_df = pd.read_csv(up_file, encoding='utf-8-sig')
@@ -214,6 +227,11 @@ def render_portfolio_tab(port_name, port_key, path, prices):
                     if '종목코드' not in up_df.columns:
                         st.error("🚨 업로드한 파일에 '종목코드' 열이 없습니다!")
                     else:
+                        # 빈 줄 제거
+                        up_df = up_df.dropna(subset=['종목코드'])
+                        up_df = up_df[up_df['종목코드'].astype(str).str.strip() != '']
+                        up_df = up_df[up_df['종목코드'].astype(str).str.lower() != 'nan']
+                        
                         up_df['종목코드'] = up_df['종목코드'].astype(str).str.replace(r'\.0$', '', regex=True).str.zfill(6)
                         
                         if '종목명' not in up_df.columns:
@@ -224,9 +242,9 @@ def render_portfolio_tab(port_name, port_key, path, prices):
                         if '수량' not in up_df.columns: up_df['수량'] = 0
                         
                         for col in ['매수단가', '수량']:
-                            up_df[col] = pd.to_numeric(up_df[col].astype(str).replace(r'[^0-9.-]', '', regex=True), errors='coerce').fillna(0).astype(int)
+                            # 특수기호(\, 콤마 등) 제거
+                            up_df[col] = pd.to_numeric(up_df[col].astype(str).str.replace(r'[^0-9.-]', '', regex=True), errors='coerce').fillna(0).astype(int)
                             
-                        # 누락된 시작금을 설정에서 가져와서 자동으로 꽉 채움
                         up_df['시작금'] = st.session_state['portfolio_config'].get(f'start_{port_key}', 0)
                         
                         # 3. 덮어쓰기 및 리로드
@@ -240,7 +258,9 @@ def render_portfolio_tab(port_name, port_key, path, prices):
     clean_df = st.session_state[f'df_{port_key}'][["종목명", "종목코드", "매수단가", "수량"]]
     clean_df.index = range(1, len(clean_df) + 1)
 
+    # 💡 데이터 에디터 중복 에러 해결 (key 추가)
     df_editor = st.data_editor(clean_df, num_rows="dynamic", use_container_width=True, key=f"ed_{port_key}")
+    
     if st.button("저장", key=f"sv_{port_key}"):
         df_editor['시작금'] = st.session_state['portfolio_config'].get(f'start_{port_key}', 0)
         st.session_state[f'df_{port_key}'] = df_editor
@@ -329,7 +349,7 @@ with tabs[0]:
             st.session_state['portfolio_config'] = new_config
             with open(CONFIG_PATH, 'w', encoding='utf-8') as f: json.dump(new_config, f)
             
-            # 💡 [핵심] 입력된 시작금을 각각의 CSV 파일 열에 덮어쓰기하여 저장
+            # 💡 입력된 시작금을 각각의 CSV 파일 열에 덮어쓰기하여 저장
             for p_key, start_val in [("ddo", new_ddo), ("sso", new_sso), ("mom", new_mom)]:
                 df = st.session_state[f'df_{p_key}']
                 df['시작금'] = start_val
