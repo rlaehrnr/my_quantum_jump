@@ -140,12 +140,17 @@ def load_portfolio(path):
         except: pass
     return df_empty
 
-# 상태 초기화
+# 상태 및 '강제 초기화 키(ed_key)' 설정
 default_config = {"start_date": str(datetime.today().date()), "start_ddo": 0, "start_sso": 0, "start_mom": 0}
 if os.path.exists(CONFIG_PATH):
     try:
         with open(CONFIG_PATH, 'r', encoding='utf-8') as f: default_config.update(json.load(f))
     except: pass
+
+# 💡 각 표(data_editor)의 상태를 강제로 파괴하기 위한 고유 키 생성
+for p_key in ["ddo", "sso", "mom"]:
+    if f'ed_key_{p_key}' not in st.session_state:
+        st.session_state[f'ed_key_{p_key}'] = 0
 
 for p_key, path in [("ddo", PORT_PATHS["ddo"]), ("sso", PORT_PATHS["sso"]), ("mom", PORT_PATHS["mom"])]:
     if f'df_{p_key}' not in st.session_state:
@@ -181,6 +186,9 @@ def render_portfolio_tab(port_name, port_key, path, prices):
                     new_row = pd.DataFrame([{"종목명": name, "종목코드": code, "매수단가": int(p), "수량": int(q), "시작금": c_money, "시작일": c_date}])
                     st.session_state[f'df_{port_key}'] = pd.concat([st.session_state[f'df_{port_key}'], new_row], ignore_index=True)
                     st.session_state[f'df_{port_key}'].to_csv(path, index=False, encoding='utf-8-sig')
+                    
+                    # 🔥 [해결] 종목 추가 시 표 강제 리렌더링
+                    st.session_state[f'ed_key_{port_key}'] += 1
                     st.rerun()
 
     with col_file:
@@ -193,8 +201,18 @@ def render_portfolio_tab(port_name, port_key, path, prices):
                         except UnicodeDecodeError: up_file.seek(0); up_df = pd.read_csv(up_file, encoding='cp949')
                     else: up_df = pd.read_excel(up_file)
                     
-                    up_df.columns = up_df.columns.str.strip()
-                    if '종목코드' in up_df.columns:
+                    # 💡 보이지 않는 특수문자 완벽 제거
+                    up_df.columns = up_df.columns.str.replace('\ufeff', '', regex=False).str.strip()
+                    
+                    # HTS마다 다른 컬럼명 자동 매핑
+                    if '종목코드' not in up_df.columns:
+                        if '코드' in up_df.columns: up_df = up_df.rename(columns={'코드': '종목코드'})
+                        elif '단축코드' in up_df.columns: up_df = up_df.rename(columns={'단축코드': '종목코드'})
+                    
+                    # 💡 파일에 진짜 종목코드가 있는지 검사
+                    if '종목코드' not in up_df.columns:
+                        st.error(f"🚨 엑셀 파일에 '종목코드' 열이 없습니다! (현재 열 이름: {', '.join(up_df.columns)})")
+                    else:
                         up_df = up_df.dropna(subset=['종목코드'])
                         up_df = up_df[up_df['종목코드'].astype(str).str.strip() != '']
                         up_df = up_df[up_df['종목코드'].astype(str).str.lower() != 'nan']
@@ -212,9 +230,8 @@ def render_portfolio_tab(port_name, port_key, path, prices):
                         st.session_state[f'df_{port_key}'] = up_df[["종목명", "종목코드", "매수단가", "수량", "시작금", "시작일"]]
                         st.session_state[f'df_{port_key}'].to_csv(path, index=False, encoding='utf-8-sig')
                         
-                        # 💡 [핵심 버그 해결] 파일 반영 시 기존 표 에디터의 메모리를 날려버려서 새 파일을 강제 적용
-                        if f"ed_{port_key}" in st.session_state:
-                            del st.session_state[f"ed_{port_key}"]
+                        # 🔥 [해결] 파일 업로드 완료 시 표를 100% 강제로 새로 그리게 만듦
+                        st.session_state[f'ed_key_{port_key}'] += 1
                         st.rerun()
                 except Exception as e: st.error(f"오류: {e}")
 
@@ -222,8 +239,9 @@ def render_portfolio_tab(port_name, port_key, path, prices):
     clean_df = st.session_state[f'df_{port_key}'][["종목명", "종목코드", "매수단가", "수량"]].copy()
     clean_df.index = range(1, len(clean_df) + 1)
     
-    # 여기서 key 값을 유지하여 편집기를 띄웁니다. (업로드 시 이 key가 날아가면서 새로 그려집니다)
-    df_editor = st.data_editor(clean_df, num_rows="dynamic", use_container_width=True, key=f"ed_{port_key}")
+    # 💡 [핵심] ed_key 번호가 바뀌면 스트림릿은 "아, 완전히 새로운 표구나!" 하고 기존 똥고집을 버립니다.
+    dynamic_editor_key = f"ed_{port_key}_{st.session_state[f'ed_key_{port_key}']}"
+    df_editor = st.data_editor(clean_df, num_rows="dynamic", use_container_width=True, key=dynamic_editor_key)
     
     c_save, c_dn = st.columns([1, 4])
     with c_save:
@@ -232,6 +250,9 @@ def render_portfolio_tab(port_name, port_key, path, prices):
             df_editor['시작일'] = st.session_state['portfolio_config'].get('start_date', str(datetime.today().date()))
             st.session_state[f'df_{port_key}'] = df_editor
             df_editor.to_csv(path, index=False, encoding='utf-8-sig')
+            
+            # 🔥 [해결] 수동 저장 시에도 표를 강제로 한 번 씻어줌
+            st.session_state[f'ed_key_{port_key}'] += 1
             st.success(f"저장 완료!")
             st.rerun()
     with c_dn:
@@ -316,6 +337,10 @@ with tabs[0]:
                 df['시작금'] = start_val; df['시작일'] = str(new_date)
                 st.session_state[f'df_{p_key}'] = df
                 df.to_csv(PORT_PATHS[p_key], index=False, encoding='utf-8-sig')
+                
+                # 🔥 [해결] 종합 설정 저장 시에도 표를 강제로 새로 그림
+                st.session_state[f'ed_key_{p_key}'] += 1
+                
             st.session_state['config_saved_msg'] = True
             st.rerun()
 
