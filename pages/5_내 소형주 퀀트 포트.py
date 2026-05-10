@@ -140,17 +140,11 @@ def load_portfolio(path):
         except: pass
     return df_empty
 
-# 상태 및 '강제 초기화 키(ed_key)' 설정
 default_config = {"start_date": str(datetime.today().date()), "start_ddo": 0, "start_sso": 0, "start_mom": 0}
 if os.path.exists(CONFIG_PATH):
     try:
         with open(CONFIG_PATH, 'r', encoding='utf-8') as f: default_config.update(json.load(f))
     except: pass
-
-# 💡 각 표(data_editor)의 상태를 강제로 파괴하기 위한 고유 키 생성
-for p_key in ["ddo", "sso", "mom"]:
-    if f'ed_key_{p_key}' not in st.session_state:
-        st.session_state[f'ed_key_{p_key}'] = 0
 
 for p_key, path in [("ddo", PORT_PATHS["ddo"]), ("sso", PORT_PATHS["sso"]), ("mom", PORT_PATHS["mom"])]:
     if f'df_{p_key}' not in st.session_state:
@@ -170,6 +164,7 @@ global_prices = fetch_multi_prices(tuple(sorted(all_tickers)))
 def render_portfolio_tab(port_name, port_key, path, prices):
     scoreboard_placeholder = st.container()
     st.markdown("---")
+    editor_key = f"ed_{port_key}"
     
     col_add, col_file = st.columns([1.5, 1])
     with col_add:
@@ -187,61 +182,62 @@ def render_portfolio_tab(port_name, port_key, path, prices):
                     st.session_state[f'df_{port_key}'] = pd.concat([st.session_state[f'df_{port_key}'], new_row], ignore_index=True)
                     st.session_state[f'df_{port_key}'].to_csv(path, index=False, encoding='utf-8-sig')
                     
-                    # 🔥 [해결] 종목 추가 시 표 강제 리렌더링
-                    st.session_state[f'ed_key_{port_key}'] += 1
+                    if editor_key in st.session_state: del st.session_state[editor_key]
                     st.rerun()
 
     with col_file:
         with st.expander("📂 엑셀 업로드", expanded=False):
-            up_file = st.file_uploader("CSV/XLSX", type=['csv', 'xlsx'], key=f"up_{port_key}")
-            if up_file and st.button("반영", key=f"btn_{port_key}"):
-                try:
-                    if up_file.name.endswith('csv'):
-                        try: up_df = pd.read_csv(up_file, encoding='utf-8-sig')
-                        except UnicodeDecodeError: up_file.seek(0); up_df = pd.read_csv(up_file, encoding='cp949')
-                    else: up_df = pd.read_excel(up_file)
-                    
-                    # 💡 보이지 않는 특수문자 완벽 제거
-                    up_df.columns = up_df.columns.str.replace('\ufeff', '', regex=False).str.strip()
-                    
-                    # HTS마다 다른 컬럼명 자동 매핑
-                    if '종목코드' not in up_df.columns:
-                        if '코드' in up_df.columns: up_df = up_df.rename(columns={'코드': '종목코드'})
-                        elif '단축코드' in up_df.columns: up_df = up_df.rename(columns={'단축코드': '종목코드'})
-                    
-                    # 💡 파일에 진짜 종목코드가 있는지 검사
-                    if '종목코드' not in up_df.columns:
-                        st.error(f"🚨 엑셀 파일에 '종목코드' 열이 없습니다! (현재 열 이름: {', '.join(up_df.columns)})")
-                    else:
-                        up_df = up_df.dropna(subset=['종목코드'])
-                        up_df = up_df[up_df['종목코드'].astype(str).str.strip() != '']
-                        up_df = up_df[up_df['종목코드'].astype(str).str.lower() != 'nan']
-                        up_df['종목코드'] = up_df['종목코드'].astype(str).str.replace(r'\.0$', '', regex=True).str.zfill(6)
-                        if '종목명' not in up_df.columns:
-                            name_map = master_df.set_index('종목코드')['종목명'].to_dict() if not master_df.empty else {}
-                            up_df['종목명'] = up_df['종목코드'].map(name_map).fillna('이름없음')
-                        for c in ['매수단가', '수량']:
-                            if c in up_df.columns: up_df[c] = pd.to_numeric(up_df[c].astype(str).str.replace(r'[^0-9.-]', '', regex=True), errors='coerce').fillna(0).astype(int)
-                            else: up_df[c] = 0
+            # 💡 [핵심 버그 수정 1] 업로드 기능을 st.form 안에 가두어 파일 증발 방지
+            with st.form(f"up_form_{port_key}", clear_on_submit=True):
+                up_file = st.file_uploader("CSV/XLSX", type=['csv', 'xlsx'], key=f"up_{port_key}")
+                submitted = st.form_submit_button("엑셀 반영하기")
+                
+                if submitted and up_file is not None:
+                    try:
+                        if up_file.name.endswith('csv'):
+                            try: up_df = pd.read_csv(up_file, encoding='utf-8-sig')
+                            except UnicodeDecodeError: up_file.seek(0); up_df = pd.read_csv(up_file, encoding='cp949')
+                        else: up_df = pd.read_excel(up_file)
+                        
+                        up_df.columns = up_df.columns.str.replace('\ufeff', '', regex=False).str.strip()
+                        if '종목코드' not in up_df.columns:
+                            if '코드' in up_df.columns: up_df = up_df.rename(columns={'코드': '종목코드'})
+                            elif '단축코드' in up_df.columns: up_df = up_df.rename(columns={'단축코드': '종목코드'})
+                        
+                        if '종목코드' not in up_df.columns:
+                            st.error(f"🚨 파일에 '종목코드' 열이 없습니다! (발견된 열: {', '.join(up_df.columns)})")
+                        else:
+                            up_df = up_df.dropna(subset=['종목코드'])
+                            up_df = up_df[up_df['종목코드'].astype(str).str.strip() != '']
+                            up_df = up_df[up_df['종목코드'].astype(str).str.lower() != 'nan']
+                            up_df['종목코드'] = up_df['종목코드'].astype(str).str.replace(r'\.0$', '', regex=True).str.zfill(6)
                             
-                        up_df['시작금'] = st.session_state['portfolio_config'].get(f'start_{port_key}', 0)
-                        up_df['시작일'] = st.session_state['portfolio_config'].get('start_date', str(datetime.today().date()))
-                        
-                        st.session_state[f'df_{port_key}'] = up_df[["종목명", "종목코드", "매수단가", "수량", "시작금", "시작일"]]
-                        st.session_state[f'df_{port_key}'].to_csv(path, index=False, encoding='utf-8-sig')
-                        
-                        # 🔥 [해결] 파일 업로드 완료 시 표를 100% 강제로 새로 그리게 만듦
-                        st.session_state[f'ed_key_{port_key}'] += 1
-                        st.rerun()
-                except Exception as e: st.error(f"오류: {e}")
+                            if '종목명' not in up_df.columns:
+                                name_map = master_df.set_index('종목코드')['종목명'].to_dict() if not master_df.empty else {}
+                                up_df['종목명'] = up_df['종목코드'].map(name_map).fillna('이름없음')
+                                
+                            for c in ['매수단가', '수량']:
+                                if c in up_df.columns: up_df[c] = pd.to_numeric(up_df[c].astype(str).str.replace(r'[^0-9.-]', '', regex=True), errors='coerce').fillna(0).astype(int)
+                                else: up_df[c] = 0
+                                
+                            up_df['시작금'] = st.session_state['portfolio_config'].get(f'start_{port_key}', 0)
+                            up_df['시작일'] = st.session_state['portfolio_config'].get('start_date', str(datetime.today().date()))
+                            
+                            final_df = up_df[["종목명", "종목코드", "매수단가", "수량", "시작금", "시작일"]].copy()
+                            st.session_state[f'df_{port_key}'] = final_df
+                            final_df.to_csv(path, index=False, encoding='utf-8-sig')
+                            
+                            # 💡 [핵심 버그 수정 2] 표의 메모리 캐시를 물리적으로 파괴하여 즉시 갱신
+                            if editor_key in st.session_state:
+                                del st.session_state[editor_key]
+                            st.rerun()
+                    except Exception as e: st.error(f"업로드 처리 중 오류: {e}")
 
     st.markdown(f"### 📝 {port_name} 편집")
     clean_df = st.session_state[f'df_{port_key}'][["종목명", "종목코드", "매수단가", "수량"]].copy()
     clean_df.index = range(1, len(clean_df) + 1)
     
-    # 💡 [핵심] ed_key 번호가 바뀌면 스트림릿은 "아, 완전히 새로운 표구나!" 하고 기존 똥고집을 버립니다.
-    dynamic_editor_key = f"ed_{port_key}_{st.session_state[f'ed_key_{port_key}']}"
-    df_editor = st.data_editor(clean_df, num_rows="dynamic", use_container_width=True, key=dynamic_editor_key)
+    df_editor = st.data_editor(clean_df, num_rows="dynamic", use_container_width=True, key=editor_key)
     
     c_save, c_dn = st.columns([1, 4])
     with c_save:
@@ -251,13 +247,15 @@ def render_portfolio_tab(port_name, port_key, path, prices):
             st.session_state[f'df_{port_key}'] = df_editor
             df_editor.to_csv(path, index=False, encoding='utf-8-sig')
             
-            # 🔥 [해결] 수동 저장 시에도 표를 강제로 한 번 씻어줌
-            st.session_state[f'ed_key_{port_key}'] += 1
-            st.success(f"저장 완료!")
+            # 수동 저장 시에도 표 캐시 삭제
+            if editor_key in st.session_state:
+                del st.session_state[editor_key]
+            st.success("✅ 서버에 데이터가 저장되었습니다!")
             st.rerun()
+            
     with c_dn:
         csv_data = st.session_state[f'df_{port_key}'].to_csv(index=False, encoding='utf-8-sig')
-        st.download_button(label=f"📥 수정된 {port_name} 파일 다운로드", data=csv_data, file_name=os.path.basename(path), mime='text/csv')
+        st.download_button(label=f"📥 방금 수정한 {port_name} 엑셀 다운로드", data=csv_data, file_name=os.path.basename(path), mime='text/csv')
 
     with scoreboard_placeholder:
         st.markdown(f"### 🚀 {port_name} 실시간 성적표")
@@ -338,9 +336,8 @@ with tabs[0]:
                 st.session_state[f'df_{p_key}'] = df
                 df.to_csv(PORT_PATHS[p_key], index=False, encoding='utf-8-sig')
                 
-                # 🔥 [해결] 종합 설정 저장 시에도 표를 강제로 새로 그림
-                st.session_state[f'ed_key_{p_key}'] += 1
-                
+                # 종합 설정 저장 시 모든 에디터 캐시 삭제
+                if f"ed_{p_key}" in st.session_state: del st.session_state[f"ed_{p_key}"]
             st.session_state['config_saved_msg'] = True
             st.rerun()
 
