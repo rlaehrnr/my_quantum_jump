@@ -13,7 +13,7 @@ import os
 st.set_page_config(page_title="내 퀀트 포트폴리오", layout="wide")
 
 # 💡 여기에 선생님의 구글 시트 주소를 반드시 넣으세요!
-SHEET_URL = "https://docs.google.com/spreadsheets/d/여기에_선생님의_시트_주소를_넣으세요/edit"
+SHEET_URL = "https://docs.google.com/spreadsheets/d/1XTroUdH7iKN40dQSrSjz3nsZ1l1k2mr5skXSzlEfl7Y/edit?usp=sharing"
 
 FACE_VALUE_PATH = 'data/krx_stock_info.csv' 
 
@@ -65,16 +65,20 @@ def load_config_from_gsheet():
         try: ws = sheet.worksheet("Config")
         except:
             ws = sheet.add_worksheet(title="Config", rows=10, cols=2)
-            ws.update([["key", "value"], ["start_date", default_cfg["start_date"]], ["start_ddo", 0], ["start_sso", 0], ["start_mom", 0]], 'A1')
+            ws.update(values=[["key", "value"], ["start_date", default_cfg["start_date"]], ["start_ddo", 0], ["start_sso", 0], ["start_mom", 0]], range_name='A1')
             return default_cfg
         
         data = ws.get_all_values()
         if len(data) > 1:
             for row in data[1:]:
-                if row[0] in default_cfg:
-                    if row[0] == 'start_date': default_cfg[row[0]] = str(row[1])
-                    else: default_cfg[row[0]] = int(float(row[1])) if row[1] else 0
-    except: pass
+                k = str(row[0]).strip()
+                if k in default_cfg:
+                    if k == 'start_date': default_cfg[k] = str(row[1]).strip()
+                    else: 
+                        val = str(row[1]).replace(',', '').strip()
+                        default_cfg[k] = int(float(val)) if val else 0
+    except Exception as e:
+        st.error(f"Config 로드 에러: {e}")
     return default_cfg
 
 def save_config_to_gsheet(cfg):
@@ -83,8 +87,8 @@ def save_config_to_gsheet(cfg):
         sheet = client.open_by_url(SHEET_URL)
         ws = sheet.worksheet("Config")
         ws.clear()
-        ws.update([["key", "value"]] + [[k, str(v)] for k, v in cfg.items()], 'A1')
-    except Exception as e: st.error(f"설정 저장 중 오류: {e}")
+        ws.update(values=[["key", "value"]] + [[k, str(v)] for k, v in cfg.items()], range_name='A1')
+    except Exception as e: st.error(f"설정 저장 오류: {e}")
 
 def load_portfolio_from_gsheet(ws_name):
     df_empty = pd.DataFrame(columns=["종목명", "종목코드", "매수단가", "수량"])
@@ -92,16 +96,23 @@ def load_portfolio_from_gsheet(ws_name):
         client = get_gspread_client()
         sheet = client.open_by_url(SHEET_URL)
         ws = sheet.worksheet(ws_name)
-        records = ws.get_all_records()
-        if records:
-            df = pd.DataFrame(records)
-            # 💡 [해결] 종목코드 세척 로직 강화
-            df['종목코드'] = df['종목코드'].apply(lambda x: str(int(float(x))).zfill(6) if x and str(x).strip() != "" else "")
+        data = ws.get_all_values()
+        if len(data) > 1:
+            df = pd.DataFrame(data[1:], columns=data[0])
+            # 컬럼명 띄어쓰기 등 세척
+            df.columns = df.columns.str.strip()
+            # 💡 종목코드 복원 (숫자로 변환 후 다시 6자리 문자로)
+            def clean_code(x):
+                try: return str(int(float(str(x).strip()))).zfill(6)
+                except: return ""
+            df['종목코드'] = df['종목코드'].apply(clean_code)
             df = df[df['종목코드'] != ""]
             for c in ['매수단가', '수량']:
-                if c in df.columns: df[c] = pd.to_numeric(df[c].astype(str).str.replace(r'[^0-9.-]', '', regex=True), errors='coerce').fillna(0).astype(int)
+                if c in df.columns:
+                    df[c] = pd.to_numeric(df[c].astype(str).str.replace(r'[^0-9.-]', '', regex=True), errors='coerce').fillna(0).astype(int)
             return df[["종목명", "종목코드", "매수단가", "수량"]]
-    except: pass
+    except Exception as e:
+        print(f"로드 오류 ({ws_name}): {e}")
     return df_empty
 
 def save_portfolio_to_gsheet(ws_name, df):
@@ -110,10 +121,19 @@ def save_portfolio_to_gsheet(ws_name, df):
         sheet = client.open_by_url(SHEET_URL)
         ws = sheet.worksheet(ws_name)
         ws.clear()
-        ws.update([df.columns.values.tolist()] + df.fillna("").values.tolist(), 'A1')
-    except Exception as e: st.error(f"저장 오류: {e}")
+        ws.update(values=[df.columns.values.tolist()] + df.fillna("").values.tolist(), range_name='A1')
+    except Exception as e: st.error(f"구글 시트 저장 오류: {e}")
 
 # --- [3. 데이터 수집] ---
+@st.cache_data(ttl=86400, show_spinner=False)
+def get_stock_master_live():
+    try:
+        df = fdr.StockListing('KRX')
+        df['종목코드'] = df['Code'].astype(str).str.zfill(6)
+        df['시가총액(억)'] = (df['Marcap'] / 100000000).fillna(0).astype(int)
+        return df, df.set_index('종목코드')['시가총액(억)'].to_dict()
+    except: return pd.DataFrame(), {}
+
 @st.cache_data(ttl=86400, show_spinner=False)
 def get_face_value_map():
     if os.path.exists(FACE_VALUE_PATH):
@@ -125,18 +145,9 @@ def get_face_value_map():
         except: pass
     return {}
 
-@st.cache_data(ttl=86400, show_spinner=False)
-def get_stock_master_live():
-    try:
-        df = fdr.StockListing('KRX')
-        df['종목코드'] = df['Code'].astype(str).str.zfill(6)
-        df['시가총액(억)'] = (df['Marcap'] / 100000000).fillna(0).astype(int)
-        return df, df.set_index('종목코드')['시가총액(억)'].to_dict()
-    except: return pd.DataFrame(), {}
-
 global_fv_map = get_face_value_map()
 master_df, global_cap_map = get_stock_master_live()
-search_options = ["🔍 종목 검색"] + ("[" + master_df['종목코드'] + "] " + master_df['Name']).tolist() if not master_df.empty else ["검색 중..."]
+search_options = ["🔍 종목 검색"] + ("[" + master_df['종목코드'] + "] " + master_df['Name']).tolist() if not master_df.empty else ["데이터 로딩 중..."]
 
 @st.cache_data(ttl=60, show_spinner=False)
 def fetch_multi_prices(tickers):
@@ -146,7 +157,7 @@ def fetch_multi_prices(tickers):
         code_str = str(t).zfill(6)
         c, p = 0, 0
         try:
-            df = fdr.DataReader(code_str, datetime.today() - timedelta(days=10))
+            df = fdr.DataReader(code_str, datetime.today() - timedelta(days=12))
             if not df.empty: c, p = int(df['Close'].iloc[-1]), int(df['Close'].iloc[-2]) if len(df) > 1 else int(df['Close'].iloc[-1])
         except: pass
         return t, c, p
@@ -187,30 +198,37 @@ def render_portfolio_tab(port_name, port_key, prices):
 
     with c_file:
         with st.expander("📂 엑셀 업로드"):
-            up_file = st.file_uploader("CSV/XLSX", type=['csv', 'xlsx'], key=f"up_{port_key}")
-            if st.button("시트에 반영", key=f"btn_{port_key}") and up_file:
+            # 💡 [해결] 업로더를 form 밖으로 꺼내고 인코딩 방어
+            up_file = st.file_uploader("CSV/XLSX 선택", type=['csv', 'xlsx'], key=f"up_{port_key}")
+            if st.button("구글 시트에 반영", key=f"btn_{port_key}") and up_file:
                 try:
                     up_file.seek(0)
-                    up_df = pd.read_csv(up_file) if up_file.name.endswith('csv') else pd.read_excel(up_file)
+                    if up_file.name.endswith('csv'):
+                        try: up_df = pd.read_csv(up_file, encoding='utf-8-sig')
+                        except: up_file.seek(0); up_df = pd.read_csv(up_file, encoding='cp949')
+                    else: up_df = pd.read_excel(up_file)
+                    
                     up_df.columns = up_df.columns.astype(str).str.replace('\ufeff', '', regex=False).str.strip()
-                    # 종목코드 컬럼 자동 찾기
                     code_col = [c for c in up_df.columns if '코드' in c][0]
                     up_df = up_df.rename(columns={code_col: '종목코드'}).dropna(subset=['종목코드'])
-                    up_df['종목코드'] = up_df['종목코드'].apply(lambda x: str(int(float(x))).zfill(6))
+                    up_df['종목코드'] = up_df['종목코드'].apply(lambda x: str(int(float(str(x).strip()))).zfill(6))
+                    
                     if '종목명' not in up_df.columns: up_df['종목명'] = up_df['종목코드'].map(master_df.set_index('종목코드')['Name']).fillna('이름없음')
                     for c in ['매수단가', '수량']:
                         if c in up_df.columns: up_df[c] = pd.to_numeric(up_df[c].astype(str).str.replace(r'[^0-9.-]', '', regex=True), errors='coerce').fillna(0).astype(int)
                         else: up_df[c] = 0
+                    
                     final_df = up_df[["종목명", "종목코드", "매수단가", "수량"]].copy()
                     st.session_state[f'df_{port_key}'] = final_df
                     save_portfolio_to_gsheet(port_key, final_df)
                     st.session_state[f'editor_key_{port_key}'] += 1
                     st.rerun()
-                except: st.error("파일 형식을 확인해주세요.")
+                except Exception as e: st.error(f"파일 처리 에러: {e}")
 
     st.markdown(f"### 📝 {port_name} 편집")
+    # 💡 에디터 키를 변경하여 강제 갱신 보장
     df_ed = st.data_editor(st.session_state[f'df_{port_key}'], num_rows="dynamic", use_container_width=True, key=f"ed_{port_key}_{st.session_state[f'editor_key_{port_key}']}")
-    if st.button("구글 시트에 저장", key=f"sv_{port_key}"):
+    if st.button("이 편집 내용 저장", key=f"sv_{port_key}"):
         st.session_state[f'df_{port_key}'] = df_ed
         save_portfolio_to_gsheet(port_key, df_ed)
         st.session_state[f'editor_key_{port_key}'] += 1
@@ -275,20 +293,19 @@ with tabs[0]:
         c_dt, c_d, c_s, c_m, c_btn = st.columns([1.2, 1, 1, 1, 0.7])
         dt_v = datetime.strptime(config['start_date'], '%Y-%m-%d').date()
         with c_dt: new_date = st.date_input("📅 시작일", value=dt_v)
-        # 💡 [해결] 100을 입력하면 자동으로 1,000,000원으로 인식 및 UI 개선
+        # 💡 [해결] 100을 넣으면 저장 후 1,000,000으로 자동 변환되도록 UI 명시
         with c_d: s_ddo = st.text_input("💰 [또] 시작금", value=f"{config['start_ddo']:,}")
         with c_s: s_sso = st.text_input("💰 [쏘] 시작금", value=f"{config['start_sso']:,}")
         with c_m: s_mom = st.text_input("💰 [맘] 시작금", value=f"{config['start_mom']:,}")
         with c_btn: 
             if st.form_submit_button("설정\n저장"):
-                # 입력값이 1000 미만이면 '만 원' 단위로 자동 변환 (예: 100 -> 100만 원)
                 def smart_parse(v):
                     n = parse_krw(v, 0)
-                    return n * 10000 if 0 < n < 10000 else n
+                    return n * 10000 if 0 < n < 10000 else n # 1000 미만 입력 시 '만원' 단위 자동 계산
                 new_cfg = {"start_date": str(new_date), "start_ddo": smart_parse(s_ddo), "start_sso": smart_parse(s_sso), "start_mom": smart_parse(s_mom)}
                 st.session_state['portfolio_config'] = new_cfg
                 save_config_to_gsheet(new_cfg)
-                st.toast("✅ 구글 시트에 설정 저장 완료!", icon="⚙️")
+                st.toast("✅ 설정 저장 완료!", icon="⚙️")
                 st.rerun()
 
     st.markdown('<p class="section-title">🏆 성과 요약</p>', unsafe_allow_html=True)
@@ -308,7 +325,6 @@ with tabs[0]:
     f_c = lambda v, b=False: (f"box-red" if b and v>0 else "box-blue" if b and v<0 else ("val-red" if v>0 else "val-blue" if v<0 else "val-gray"))
     for r in summary_list:
         html += f"<tr><td><b>{r['name']}</b></td><td class='{f_c(r['daily'])}'>₩{int(r['daily']):,}</td><td>{r['dp']:.2f}%</td><td class='{f_c(r['pct'])}'>{r['pct']:.2f}%</td><td class='{f_c(r['prof'])}'>₩{int(r['prof']):,}</td><td class='highlight-cell'><span class='{f_c(r['since'], True)}'>₩{int(r['since']):,}</span></td></tr>"
-    
     t_prof_all = t_val_all - t_buy_all
     t_since_all = t_prof_all - total_start
     html += f"<tr class='summary-total'><td><b>합계</b></td><td class='{f_c(t_daily_all)}'>₩{int(t_daily_all):,}</td><td>{(t_daily_all/t_prev_all*100 if t_prev_all else 0):.2f}%</td><td>{(t_prof_all/t_buy_all*100 if t_buy_all else 0):.2f}%</td><td class='{f_c(t_prof_all)}'>₩{int(t_prof_all):,}</td><td class='highlight-cell'><span style='font-size:1.4rem;' class='{f_c(t_since_all, True)}'>₩{int(t_since_all):,}</span></td></tr></tbody></table>"
@@ -322,15 +338,15 @@ with tabs[4]:
     st.markdown('<p class="section-title">⚖️ 리밸런싱 계산기</p>', unsafe_allow_html=True)
     c_sel, c_up = st.columns([1, 2])
     tgt_p = c_sel.selectbox("🔄 기준 포트폴리오", options=[("또", "ddo"), ("쏘", "sso"), ("맘", "mom")], format_func=lambda x: f"[{x[0]}] 기준")
-    up_reb = c_up.file_uploader("목표 엑셀 업로드", type=['csv', 'xlsx'])
+    up_reb = c_up.file_uploader("목표 엑셀 업로드", type=['csv', 'xlsx'], key="reb_up")
     if up_reb:
         try:
             up_reb.seek(0)
             t_df = pd.read_csv(up_reb) if up_reb.name.endswith('csv') else pd.read_excel(up_reb)
-            t_df.columns = t_df.columns.str.strip()
+            t_df.columns = t_df.columns.astype(str).str.strip()
             c_col = [c for c in t_df.columns if '코드' in c][0]
             m_col = [c for c in t_df.columns if '목표' in c][0]
-            t_df['종목코드'] = t_df[c_col].apply(lambda x: str(int(float(x))).zfill(6))
+            t_df['종목코드'] = t_df[c_col].apply(lambda x: str(int(float(str(x).strip()))).zfill(6))
             t_df['목표금액'] = pd.to_numeric(t_df[m_col].astype(str).str.replace(r'[^0-9.]', '', regex=True)).fillna(0).astype(int) * 10000
             
             curr = st.session_state[f'df_{tgt_p[1]}'].copy()
@@ -348,4 +364,4 @@ with tabs[4]:
             diff = sell_s - buy_s
             st.markdown(f"**🔵 매도:** `₩{sell_s:,}` | **🔴 매수:** `₩{buy_s:,}` | **💡 잔액:** `₩{diff:,}` {'잔금' if diff>=0 else '추가 필요'}")
             st.dataframe(merged[['종목코드','종목명','현재가','수량','현재평가액','목표금액','주문','주문수량','예상금액']].style.format(precision=0), use_container_width=True, hide_index=True)
-        except: st.error("계산 중 오류가 발생했습니다.")
+        except Exception as e: st.error(f"리밸런싱 계산 오류: {e}")
