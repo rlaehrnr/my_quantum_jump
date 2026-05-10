@@ -140,11 +140,17 @@ def load_portfolio(path):
         except: pass
     return df_empty
 
+# 상태 및 💡 표 강제 갱신용 '에디터 키(editor_key)' 초기화
 default_config = {"start_date": str(datetime.today().date()), "start_ddo": 0, "start_sso": 0, "start_mom": 0}
 if os.path.exists(CONFIG_PATH):
     try:
         with open(CONFIG_PATH, 'r', encoding='utf-8') as f: default_config.update(json.load(f))
     except: pass
+
+# 에디터 키 생성
+for p_key in ["ddo", "sso", "mom"]:
+    if f'editor_key_{p_key}' not in st.session_state:
+        st.session_state[f'editor_key_{p_key}'] = 0
 
 for p_key, path in [("ddo", PORT_PATHS["ddo"]), ("sso", PORT_PATHS["sso"]), ("mom", PORT_PATHS["mom"])]:
     if f'df_{p_key}' not in st.session_state:
@@ -164,7 +170,6 @@ global_prices = fetch_multi_prices(tuple(sorted(all_tickers)))
 def render_portfolio_tab(port_name, port_key, path, prices):
     scoreboard_placeholder = st.container()
     st.markdown("---")
-    editor_key = f"ed_{port_key}"
     
     col_add, col_file = st.columns([1.5, 1])
     with col_add:
@@ -182,24 +187,26 @@ def render_portfolio_tab(port_name, port_key, path, prices):
                     st.session_state[f'df_{port_key}'] = pd.concat([st.session_state[f'df_{port_key}'], new_row], ignore_index=True)
                     st.session_state[f'df_{port_key}'].to_csv(path, index=False, encoding='utf-8-sig')
                     
-                    if editor_key in st.session_state: del st.session_state[editor_key]
+                    st.session_state[f'editor_key_{port_key}'] += 1 # 강제 갱신
                     st.rerun()
 
     with col_file:
         with st.expander("📂 엑셀 업로드", expanded=False):
-            # 💡 [핵심 버그 수정 1] 업로드 기능을 st.form 안에 가두어 파일 증발 방지
-            with st.form(f"up_form_{port_key}", clear_on_submit=True):
-                up_file = st.file_uploader("CSV/XLSX", type=['csv', 'xlsx'], key=f"up_{port_key}")
-                submitted = st.form_submit_button("엑셀 반영하기")
-                
-                if submitted and up_file is not None:
+            # 💡 [핵심 버그 수정] 파일 업로더를 form에서 꺼내어 증발 버그 원천 차단
+            up_file = st.file_uploader("CSV/XLSX", type=['csv', 'xlsx'], key=f"up_{port_key}")
+            if up_file:
+                if st.button("반영", key=f"btn_{port_key}"):
                     try:
+                        up_file.seek(0)
                         if up_file.name.endswith('csv'):
                             try: up_df = pd.read_csv(up_file, encoding='utf-8-sig')
-                            except UnicodeDecodeError: up_file.seek(0); up_df = pd.read_csv(up_file, encoding='cp949')
+                            except UnicodeDecodeError: 
+                                up_file.seek(0)
+                                up_df = pd.read_csv(up_file, encoding='cp949')
                         else: up_df = pd.read_excel(up_file)
                         
-                        up_df.columns = up_df.columns.str.replace('\ufeff', '', regex=False).str.strip()
+                        up_df.columns = up_df.columns.astype(str).str.replace('\ufeff', '', regex=False).str.strip()
+                        
                         if '종목코드' not in up_df.columns:
                             if '코드' in up_df.columns: up_df = up_df.rename(columns={'코드': '종목코드'})
                             elif '단축코드' in up_df.columns: up_df = up_df.rename(columns={'단축코드': '종목코드'})
@@ -224,20 +231,23 @@ def render_portfolio_tab(port_name, port_key, path, prices):
                             up_df['시작일'] = st.session_state['portfolio_config'].get('start_date', str(datetime.today().date()))
                             
                             final_df = up_df[["종목명", "종목코드", "매수단가", "수량", "시작금", "시작일"]].copy()
+                            
+                            # 데이터 덮어쓰기
                             st.session_state[f'df_{port_key}'] = final_df
                             final_df.to_csv(path, index=False, encoding='utf-8-sig')
                             
-                            # 💡 [핵심 버그 수정 2] 표의 메모리 캐시를 물리적으로 파괴하여 즉시 갱신
-                            if editor_key in st.session_state:
-                                del st.session_state[editor_key]
+                            # 💡 [핵심 해결] 표(editor)를 박살내고 새로 만들도록 키 번호를 무조건 올림!
+                            st.session_state[f'editor_key_{port_key}'] += 1
                             st.rerun()
-                    except Exception as e: st.error(f"업로드 처리 중 오류: {e}")
+                    except Exception as e: st.error(f"업로드 오류: {e}")
 
     st.markdown(f"### 📝 {port_name} 편집")
     clean_df = st.session_state[f'df_{port_key}'][["종목명", "종목코드", "매수단가", "수량"]].copy()
     clean_df.index = range(1, len(clean_df) + 1)
     
-    df_editor = st.data_editor(clean_df, num_rows="dynamic", use_container_width=True, key=editor_key)
+    # 여기서 매번 새로운 key가 부여되어 표가 과거의 데이터를 잊어버리게 만듭니다.
+    current_editor_key = f"editor_{port_key}_{st.session_state[f'editor_key_{port_key}']}"
+    df_editor = st.data_editor(clean_df, num_rows="dynamic", use_container_width=True, key=current_editor_key)
     
     c_save, c_dn = st.columns([1, 4])
     with c_save:
@@ -247,15 +257,12 @@ def render_portfolio_tab(port_name, port_key, path, prices):
             st.session_state[f'df_{port_key}'] = df_editor
             df_editor.to_csv(path, index=False, encoding='utf-8-sig')
             
-            # 수동 저장 시에도 표 캐시 삭제
-            if editor_key in st.session_state:
-                del st.session_state[editor_key]
-            st.success("✅ 서버에 데이터가 저장되었습니다!")
+            st.session_state[f'editor_key_{port_key}'] += 1 # 저장 시에도 화면 깔끔하게 갱신
             st.rerun()
             
     with c_dn:
         csv_data = st.session_state[f'df_{port_key}'].to_csv(index=False, encoding='utf-8-sig')
-        st.download_button(label=f"📥 방금 수정한 {port_name} 엑셀 다운로드", data=csv_data, file_name=os.path.basename(path), mime='text/csv')
+        st.download_button(label=f"📥 수정된 {port_name} 파일 다운로드", data=csv_data, file_name=os.path.basename(path), mime='text/csv')
 
     with scoreboard_placeholder:
         st.markdown(f"### 🚀 {port_name} 실시간 성적표")
@@ -307,9 +314,6 @@ st.markdown('<p class="main-title">💼 내 퀀트 포트폴리오 종합 대시
 tabs = st.tabs(["📊 종합 요약", "🌱 또", "🌿 쏘", "🍀 맘", "⚖️ 리밸런싱 계산기"])
 
 with tabs[0]:
-    if st.session_state.pop('config_saved_msg', False):
-        st.success("✅ 설정이 저장되고 개별 포트폴리오에 완벽하게 동기화되었습니다!")
-
     config = st.session_state['portfolio_config']
     total_start_sum = config.get('start_ddo', 0) + config.get('start_sso', 0) + config.get('start_mom', 0)
     try: dt_obj = datetime.strptime(config['start_date'], '%Y-%m-%d'); disp_date = f"{dt_obj.strftime('%y')}년 {dt_obj.month}월 {dt_obj.day}일"
@@ -336,9 +340,7 @@ with tabs[0]:
                 st.session_state[f'df_{p_key}'] = df
                 df.to_csv(PORT_PATHS[p_key], index=False, encoding='utf-8-sig')
                 
-                # 종합 설정 저장 시 모든 에디터 캐시 삭제
-                if f"ed_{p_key}" in st.session_state: del st.session_state[f"ed_{p_key}"]
-            st.session_state['config_saved_msg'] = True
+                st.session_state[f'editor_key_{p_key}'] += 1 # 설정 변경 시에도 표 새로고침
             st.rerun()
 
     st.markdown('<p class="section-title">🏆 포트폴리오 성과 요약</p>', unsafe_allow_html=True)
