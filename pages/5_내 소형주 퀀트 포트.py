@@ -7,14 +7,14 @@ import json
 import gspread
 from google.oauth2.service_account import Credentials
 from concurrent.futures import ThreadPoolExecutor, as_completed
+import os
 
 # --- [1. 설정 및 경로] ---
 st.set_page_config(page_title="내 퀀트 포트폴리오", layout="wide")
 
-# 💡 여기에 1단계에서 만드신 구글 스프레드시트의 인터넷 주소(URL)를 복사해서 붙여넣으세요!
-SHEET_URL = "https://docs.google.com/spreadsheets/d/1XTroUdH7iKN40dQSrSjz3nsZ1l1k2mr5skXSzlEfl7Y/edit?usp=sharing"
+# 💡 여기에 선생님의 구글 시트 주소를 반드시 넣으세요!
+SHEET_URL = "https://docs.google.com/spreadsheets/d/여기에_선생님의_시트_주소를_넣으세요/edit"
 
-MASTER_TICKER_PATH = 'data/krx_stock_master.csv'
 FACE_VALUE_PATH = 'data/krx_stock_info.csv' 
 
 st.markdown("""
@@ -24,6 +24,7 @@ st.markdown("""
     .section-title { font-size: 1.6rem !important; font-weight: bold; margin-top: 25px; margin-bottom: 15px; color: #E5E7EB; }
     .stMetric { background-color: rgba(130, 130, 130, 0.1); padding: 15px; border-radius: 10px; border: 1px solid rgba(255,255,255,0.05); }
     .stTabs [data-baseweb="tab"] { font-size: 18px; font-weight: bold; }
+    @media (max-width: 768px) { div[data-testid="stHorizontalBlock"] > div[data-testid="column"] { min-width: 45% !important; margin-bottom: 10px !important; } }
     .summary-table { width: 100%; border-collapse: collapse; text-align: center; font-size: 1.15rem; background-color: #1a1c24; border-radius: 12px; overflow: hidden; margin-top: 10px; }
     .summary-table th { background-color: #2d313e; padding: 15px; color: #9ca3af; font-size: 0.9rem; text-transform: uppercase; letter-spacing: 1px; }
     .summary-table td { padding: 16px; border-bottom: 1px solid #2d313e; color: #e5e7eb; }
@@ -49,7 +50,7 @@ def parse_krw(val_str, default_val):
         return int(val_str)
     except: return default_val
 
-# --- [2. 구글 시트 연동 및 데이터 수집] ---
+# --- [2. 구글 시트 연동 & 실시간 데이터 수집] ---
 @st.cache_resource
 def get_gspread_client():
     scopes = ['https://www.googleapis.com/auth/spreadsheets', 'https://www.googleapis.com/auth/drive']
@@ -57,13 +58,46 @@ def get_gspread_client():
     creds = Credentials.from_service_account_info(creds_info, scopes=scopes)
     return gspread.authorize(creds)
 
-def load_portfolio_from_gsheet(worksheet_name):
-    df_empty = pd.DataFrame(columns=["종목명", "종목코드", "매수단가", "수량", "시작금", "시작일"])
+# 💡 [핵심] Config(시작금, 시작일) 전용 구글 시트 로드
+def load_config_from_gsheet():
+    default_cfg = {"start_date": str(datetime.today().date()), "start_ddo": 0, "start_sso": 0, "start_mom": 0}
     try:
         client = get_gspread_client()
         sheet = client.open_by_url(SHEET_URL)
-        try:
-            ws = sheet.worksheet(worksheet_name)
+        try: ws = sheet.worksheet("Config")
+        except gspread.exceptions.WorksheetNotFound:
+            ws = sheet.add_worksheet(title="Config", rows=10, cols=2)
+            init_data = [["key", "value"], ["start_date", default_cfg["start_date"]], ["start_ddo", 0], ["start_sso", 0], ["start_mom", 0]]
+            ws.update(values=init_data, range_name='A1')
+            return default_cfg
+            
+        records = ws.get_all_records()
+        for r in records:
+            if r['key'] in default_cfg:
+                if r['key'] == 'start_date': default_cfg[r['key']] = str(r['value'])
+                else: default_cfg[r['key']] = int(r['value'])
+        return default_cfg
+    except Exception as e:
+        print(f"Config 시트 로드 에러: {e}")
+        return default_cfg
+
+def save_config_to_gsheet(cfg):
+    try:
+        client = get_gspread_client()
+        sheet = client.open_by_url(SHEET_URL)
+        ws = sheet.worksheet("Config")
+        data_to_upload = [["key", "value"]] + [[k, v] for k, v in cfg.items()]
+        ws.clear()
+        ws.update(values=data_to_upload, range_name='A1')
+    except Exception as e: st.error(f"Config 저장 오류: {e}")
+
+# 💡 포트폴리오 로드 (이제 지저분한 시작금, 시작일 열은 뺍니다!)
+def load_portfolio_from_gsheet(worksheet_name):
+    df_empty = pd.DataFrame(columns=["종목명", "종목코드", "매수단가", "수량"])
+    try:
+        client = get_gspread_client()
+        sheet = client.open_by_url(SHEET_URL)
+        try: ws = sheet.worksheet(worksheet_name)
         except gspread.exceptions.WorksheetNotFound:
             ws = sheet.add_worksheet(title=worksheet_name, rows=100, cols=10)
             ws.update(values=[df_empty.columns.values.tolist()], range_name='A1')
@@ -73,13 +107,11 @@ def load_portfolio_from_gsheet(worksheet_name):
         if records:
             df = pd.DataFrame(records)
             df['종목코드'] = df['종목코드'].astype(str).str.replace(r'\.0$', '', regex=True).str.zfill(6)
-            for c in ['매수단가', '수량', '시작금']:
+            for c in ['매수단가', '수량']:
                 if c in df.columns: df[c] = pd.to_numeric(df[c].astype(str).str.replace(r'[^0-9.-]', '', regex=True), errors='coerce').fillna(0).astype(int)
                 else: df[c] = 0
-            if '시작일' not in df.columns: df['시작일'] = str(datetime.today().date())
-            return df[["종목명", "종목코드", "매수단가", "수량", "시작금", "시작일"]]
-    except Exception as e:
-        print(f"GSheet 로드 에러 ({worksheet_name}): {e}")
+            return df[["종목명", "종목코드", "매수단가", "수량"]]
+    except Exception as e: print(f"GSheet 로드 에러 ({worksheet_name}): {e}")
     return df_empty
 
 def save_portfolio_to_gsheet(worksheet_name, df):
@@ -90,12 +122,10 @@ def save_portfolio_to_gsheet(worksheet_name, df):
         ws.clear()
         data_to_upload = [df.columns.values.tolist()] + df.fillna("").values.tolist()
         ws.update(values=data_to_upload, range_name='A1')
-    except Exception as e:
-        st.error(f"구글 시트 저장 오류 ({worksheet_name}): {e}")
+    except Exception as e: st.error(f"구글 시트 저장 오류 ({worksheet_name}): {e}")
 
 @st.cache_data(ttl=86400, show_spinner=False)
 def get_face_value_map():
-    import os
     if os.path.exists(FACE_VALUE_PATH):
         try:
             df = pd.read_csv(FACE_VALUE_PATH, dtype={'단축코드': str}, encoding='utf-8-sig')
@@ -105,21 +135,22 @@ def get_face_value_map():
         except: pass
     return {}
 
-global_fv_map = get_face_value_map()
-
+# 💡 [핵심] 이제 로컬 CSV 대신 FinanceDataReader로 매일 아침 전 종목 시총을 싹 긁어옵니다!
 @st.cache_data(ttl=86400, show_spinner=False)
-def get_stock_master_and_cap():
-    import os
-    if os.path.exists(MASTER_TICKER_PATH):
-        try:
-            df = pd.read_csv(MASTER_TICKER_PATH, dtype={'종목코드': str}, encoding='utf-8-sig')
-            df['종목코드'] = df['종목코드'].astype(str).str.zfill(6)
-            df['시가총액(억)'] = pd.to_numeric(df['시가총액(억)'].astype(str).str.replace(r'[^0-9.]', '', regex=True), errors='coerce').fillna(0).astype(int)
-            return df, df.set_index('종목코드')['시가총액(억)'].to_dict()
-        except: pass
-    return pd.DataFrame(), {}
+def get_stock_master_and_cap_live():
+    try:
+        df = fdr.StockListing('KRX')
+        df['종목코드'] = df['Code'].astype(str).str.zfill(6)
+        # Marcap(원) 단위를 억 단위로 변경
+        df['시가총액(억)'] = (df['Marcap'] / 100000000).fillna(0).astype(int)
+        df['종목명'] = df['Name']
+        return df, df.set_index('종목코드')['시가총액(억)'].to_dict()
+    except Exception as e:
+        print(f"시총 데이터 로드 실패: {e}")
+        return pd.DataFrame(), {}
 
-master_df, global_cap_map = get_stock_master_and_cap()
+global_fv_map = get_face_value_map()
+master_df, global_cap_map = get_stock_master_and_cap_live()
 search_options = ["🔍 종목 검색"] + ("[" + master_df['종목코드'] + "] " + master_df['종목명']).tolist() if not master_df.empty else ["검색 데이터 없음"]
 
 @st.cache_data(ttl=60, show_spinner=False)
@@ -131,8 +162,7 @@ def fetch_multi_prices(tickers):
         curr_val, prev_val = 0, 0
         try:
             df = fdr.DataReader(code_str, datetime.today() - timedelta(days=100))
-            if not df.empty:
-                curr_val, prev_val = int(df['Close'].iloc[-1]), int(df['Close'].iloc[-2]) if len(df) >= 2 else int(df['Close'].iloc[-1])
+            if not df.empty: curr_val, prev_val = int(df['Close'].iloc[-1]), int(df['Close'].iloc[-2]) if len(df) >= 2 else int(df['Close'].iloc[-1])
         except: pass
         return t, curr_val, prev_val
     with ThreadPoolExecutor(max_workers=30) as executor:
@@ -141,23 +171,13 @@ def fetch_multi_prices(tickers):
             price_map[t] = {'curr': curr, 'prev': prev}
     return price_map
 
-# 💡 강제 초기화 키 설정 및 구글 시트에서 최신 데이터 불러오기
-default_config = {"start_date": str(datetime.today().date()), "start_ddo": 0, "start_sso": 0, "start_mom": 0}
-
-for p_key in ["ddo", "sso", "mom"]:
-    if f'editor_key_{p_key}' not in st.session_state:
-        st.session_state[f'editor_key_{p_key}'] = 0
-
-for p_key in ["ddo", "sso", "mom"]:
-    if f'df_{p_key}' not in st.session_state:
-        df_loaded = load_portfolio_from_gsheet(p_key)
-        st.session_state[f'df_{p_key}'] = df_loaded
-        if not df_loaded.empty:
-            if '시작금' in df_loaded.columns: default_config[f'start_{p_key}'] = int(df_loaded['시작금'].iloc[0])
-            if '시작일' in df_loaded.columns: default_config['start_date'] = str(df_loaded['시작일'].iloc[0])
-
+# 초기화 및 시트 로드
 if 'portfolio_config' not in st.session_state:
-    st.session_state['portfolio_config'] = default_config
+    st.session_state['portfolio_config'] = load_config_from_gsheet()
+
+for p_key in ["ddo", "sso", "mom"]:
+    if f'editor_key_{p_key}' not in st.session_state: st.session_state[f'editor_key_{p_key}'] = 0
+    if f'df_{p_key}' not in st.session_state: st.session_state[f'df_{p_key}'] = load_portfolio_from_gsheet(p_key)
 
 all_tickers = set(t for p in ["ddo", "sso", "mom"] for t in st.session_state[f'df_{p}']['종목코드'].tolist())
 global_prices = fetch_multi_prices(tuple(sorted(all_tickers)))
@@ -177,11 +197,8 @@ def render_portfolio_tab(port_name, port_key, prices):
                 q = c2.number_input("수량", min_value=1, step=1)
                 if st.form_submit_button("추가") and sel != search_options[0]:
                     code, name = sel[1:7], sel[9:]
-                    c_money, c_date = st.session_state['portfolio_config'].get(f'start_{port_key}', 0), st.session_state['portfolio_config'].get('start_date', str(datetime.today().date()))
-                    new_row = pd.DataFrame([{"종목명": name, "종목코드": code, "매수단가": int(p), "수량": int(q), "시작금": c_money, "시작일": c_date}])
+                    new_row = pd.DataFrame([{"종목명": name, "종목코드": code, "매수단가": int(p), "수량": int(q)}])
                     st.session_state[f'df_{port_key}'] = pd.concat([st.session_state[f'df_{port_key}'], new_row], ignore_index=True)
-                    
-                    # 구글 시트에 즉시 저장
                     save_portfolio_to_gsheet(port_key, st.session_state[f'df_{port_key}'])
                     st.session_state[f'editor_key_{port_key}'] += 1
                     st.rerun()
@@ -215,11 +232,8 @@ def render_portfolio_tab(port_name, port_key, prices):
                                 if c in up_df.columns: up_df[c] = pd.to_numeric(up_df[c].astype(str).str.replace(r'[^0-9.-]', '', regex=True), errors='coerce').fillna(0).astype(int)
                                 else: up_df[c] = 0
                             
-                            up_df['시작금'], up_df['시작일'] = st.session_state['portfolio_config'].get(f'start_{port_key}', 0), st.session_state['portfolio_config'].get('start_date', str(datetime.today().date()))
-                            final_df = up_df[["종목명", "종목코드", "매수단가", "수량", "시작금", "시작일"]].copy()
+                            final_df = up_df[["종목명", "종목코드", "매수단가", "수량"]].copy()
                             st.session_state[f'df_{port_key}'] = final_df
-                            
-                            # 구글 시트에 즉시 덮어쓰기
                             save_portfolio_to_gsheet(port_key, final_df)
                             st.session_state[f'editor_key_{port_key}'] += 1
                             st.rerun()
@@ -232,18 +246,14 @@ def render_portfolio_tab(port_name, port_key, prices):
     current_editor_key = f"editor_{port_key}_{st.session_state[f'editor_key_{port_key}']}"
     df_editor = st.data_editor(clean_df, num_rows="dynamic", use_container_width=True, key=current_editor_key)
     
-    c_save, c_dn = st.columns([1, 4])
-    with c_save:
-        if st.button("구글 시트에 저장", key=f"sv_{port_key}"):
-            df_editor['시작금'] = st.session_state['portfolio_config'].get(f'start_{port_key}', 0)
-            df_editor['시작일'] = st.session_state['portfolio_config'].get('start_date', str(datetime.today().date()))
-            st.session_state[f'df_{port_key}'] = df_editor
-            
-            # 구글 시트에 저장
-            save_portfolio_to_gsheet(port_key, df_editor)
-            st.session_state[f'editor_key_{port_key}'] += 1
-            st.success("✅ 구글 스프레드시트에 영구 저장 완료!")
-            st.rerun()
+    if st.button("구글 시트에 저장", key=f"sv_{port_key}"):
+        st.session_state[f'df_{port_key}'] = df_editor
+        save_portfolio_to_gsheet(port_key, df_editor)
+        st.session_state[f'editor_key_{port_key}'] += 1
+        
+        # 💡 [핵심] 사라지지 않는 메시지 대신 3초 뒤에 예쁘게 스르륵 사라지는 토스트 팝업 사용!
+        st.toast(f"✅ {port_name} 포트폴리오가 구글 시트에 영구 저장되었습니다!", icon="🚀")
+        st.rerun()
 
     with scoreboard_placeholder:
         st.markdown(f"### 🚀 {port_name} 실시간 성적표")
@@ -295,9 +305,6 @@ st.markdown('<p class="main-title">💼 내 퀀트 포트폴리오 종합 대시
 tabs = st.tabs(["📊 종합 요약", "🌱 또", "🌿 쏘", "🍀 맘", "⚖️ 리밸런싱 계산기"])
 
 with tabs[0]:
-    if st.session_state.pop('config_saved_msg', False):
-        st.success("✅ 설정이 구글 스프레드시트에 영구 동기화되었습니다!")
-
     config = st.session_state['portfolio_config']
     total_start_sum = config.get('start_ddo', 0) + config.get('start_sso', 0) + config.get('start_mom', 0)
     try: dt_obj = datetime.strptime(config['start_date'], '%Y-%m-%d'); disp_date = f"{dt_obj.strftime('%y')}년 {dt_obj.month}월 {dt_obj.day}일"
@@ -308,25 +315,26 @@ with tabs[0]:
         c_dt, c_d, c_s, c_m, c_btn = st.columns([1.2, 1, 1, 1, 0.7])
         dt_val = datetime.strptime(config['start_date'], '%Y-%m-%d').date() if '-' in config['start_date'] else datetime.today().date()
         with c_dt: new_date = st.date_input("📅 시작일", value=dt_val)
-        with c_d: str_ddo = st.text_input("💰 [또] 시작금", value=f"{config['start_ddo']:,}")
-        with c_s: str_sso = st.text_input("💰 [쏘] 시작금", value=f"{config['start_sso']:,}")
-        with c_m: str_mom = st.text_input("💰 [맘] 시작금", value=f"{config['start_mom']:,}")
+        
+        # 💡 [핵심] 입력창에 (단위: 만원) 표시 및 10000으로 나눈 값 보여주기
+        with c_d: str_ddo = st.text_input("💰 [또] 시작금 (단위: 만원)", value=f"{config['start_ddo'] // 10000:,}")
+        with c_s: str_sso = st.text_input("💰 [쏘] 시작금 (단위: 만원)", value=f"{config['start_sso'] // 10000:,}")
+        with c_m: str_mom = st.text_input("💰 [맘] 시작금 (단위: 만원)", value=f"{config['start_mom'] // 10000:,}")
         with c_btn: submitted = st.form_submit_button("설정\n저장", use_container_width=True)
         
         if submitted:
-            new_ddo, new_sso, new_mom = parse_krw(str_ddo, config['start_ddo']), parse_krw(str_sso, config['start_sso']), parse_krw(str_mom, config['start_mom'])
+            # 💡 [핵심] 선생님이 100을 치면 자동으로 10000을 곱해서 100만 원으로 저장합니다!
+            new_ddo = parse_krw(str_ddo, config['start_ddo'] // 10000) * 10000
+            new_sso = parse_krw(str_sso, config['start_sso'] // 10000) * 10000
+            new_mom = parse_krw(str_mom, config['start_mom'] // 10000) * 10000
+            
             new_config = {"start_date": str(new_date), "start_ddo": new_ddo, "start_sso": new_sso, "start_mom": new_mom}
             st.session_state['portfolio_config'] = new_config
             
-            for p_key, start_val in [("ddo", new_ddo), ("sso", new_sso), ("mom", new_mom)]:
-                df = st.session_state[f'df_{p_key}'].copy()
-                df['시작금'] = start_val; df['시작일'] = str(new_date)
-                st.session_state[f'df_{p_key}'] = df
-                
-                # 구글 시트 저장
-                save_portfolio_to_gsheet(p_key, df)
-                st.session_state[f'editor_key_{p_key}'] += 1 
-            st.session_state['config_saved_msg'] = True
+            # Config 전용 구글 시트에 한 번만 딱 깔끔하게 저장
+            save_config_to_gsheet(new_config)
+            
+            st.toast("✅ 설정이 구글 스프레드시트에 영구 동기화되었습니다!", icon="🚀")
             st.rerun()
 
     st.markdown('<p class="section-title">🏆 포트폴리오 성과 요약</p>', unsafe_allow_html=True)
@@ -387,7 +395,7 @@ with tabs[4]:
             buy_sum, sell_sum = merged[merged['예상체결금액'] > 0]['예상체결금액'].sum(), merged[merged['예상체결금액'] < 0]['예상체결금액'].abs().sum()
             net_cash, net_css, net_text = sell_sum - buy_sum, ("color: #FF3333; background-color: rgba(255, 51, 51, 0.15);", f"₩{sell_sum-buy_sum:,} 잔금") if sell_sum >= buy_sum else ("color: #3399FF; background-color: rgba(51, 153, 255, 0.15);", f"₩{abs(sell_sum-buy_sum):,} 추가 필요")
             c_head, c_btn = st.columns([5, 1])
-            c_head.markdown(f"**🔵 매도 자금:** `₩{sell_sum:,}` &nbsp;|&nbsp; **🔴 매수 자금:** `₩{buy_sum:,}` &nbsp;|&nbsp; **💡 잔액:** <span style='font-size: 1.25rem; padding: 2px 10px; border-radius: 6px; {net_css}'>**{net_text}**</span>", unsafe_allow_html=True)
+            c_head.markdown(f"**🔵 매도 자금:** `₩{sell_sum:,}` &nbsp;|&nbsp; **🔴 매 매수 자금:** `₩{buy_sum:,}` &nbsp;|&nbsp; **💡 잔액:** <span style='font-size: 1.25rem; padding: 2px 10px; border-radius: 6px; {net_css}'>**{net_text}**</span>", unsafe_allow_html=True)
             c_btn.download_button("📥 다운로드", merged.to_csv(index=False, encoding='utf-8-sig'), f"리밸런싱_{datetime.today().strftime('%Y%m%d')}.csv", "text/csv")
             def style_rebal(st_df):
                 s = pd.DataFrame('', index=st_df.index, columns=st_df.columns)
