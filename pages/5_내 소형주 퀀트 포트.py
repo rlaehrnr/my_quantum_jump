@@ -12,7 +12,6 @@ import os
 # --- [1. 설정 및 경로] ---
 st.set_page_config(page_title="내 퀀트 포트폴리오", layout="wide")
 
-# ✅ 구글 시트 주소
 SHEET_URL = "https://docs.google.com/spreadsheets/d/1XTroUdH7iKN40dQSrSjz3nsZ1l1k2mr5skXSzlEfl7Y/edit"
 FACE_VALUE_PATH = 'data/krx_stock_info.csv' 
 
@@ -40,7 +39,6 @@ st.markdown("""
     </style>
 """, unsafe_allow_html=True)
 
-# 💡 [핵심] CSV 인코딩 무적 방어 함수
 def robust_read_file(up_file):
     if up_file.name.endswith('csv'):
         encodings = ['utf-8-sig', 'cp949', 'euc-kr', 'utf-8']
@@ -50,9 +48,8 @@ def robust_read_file(up_file):
                 return pd.read_csv(up_file, encoding=enc)
             except UnicodeDecodeError: continue
         up_file.seek(0)
-        return pd.read_csv(up_file, encoding='cp949', errors='replace') # 최후의 수단
-    else:
-        return pd.read_excel(up_file)
+        return pd.read_csv(up_file, encoding='cp949', errors='replace')
+    else: return pd.read_excel(up_file)
 
 def parse_krw(val_str, default_val):
     try:
@@ -103,7 +100,7 @@ def load_stock_info_from_gsheet():
         ws = sheet.worksheet("StockInfo")
         data = ws.get_all_records()
         for row in data:
-            code = str(row.get('종목코드', '')).strip().zfill(6)
+            code = str(row.get('단축코드', row.get('종목코드', ''))).strip().zfill(6)
             if code:
                 info_map[code] = {
                     '액면가': parse_krw(row.get('액면가', 0), 0),
@@ -124,12 +121,9 @@ def load_portfolio_from_gsheet(ws_name):
             df.columns = df.columns.str.strip()
             df['종목코드'] = df['종목코드'].apply(lambda x: str(int(float(str(x).strip()))).zfill(6) if str(x).strip() else "")
             df = df[df['종목코드'] != ""]
-            
-            # 💡 [핵심] 기존에 찌꺼기로 들어간 c, p 같은 열 무시하고 필수 4열만 가져옴
             for req_col in ["종목명", "종목코드", "매수단가", "수량"]:
                 if req_col not in df.columns: df[req_col] = "" if "종목" in req_col else 0
             df = df[["종목명", "종목코드", "매수단가", "수량"]].copy()
-            
             for c in ['매수단가', '수량']:
                 df[c] = pd.to_numeric(df[c].astype(str).str.replace(r'[^0-9.-]', '', regex=True), errors='coerce').fillna(0).astype(int)
             return df
@@ -142,8 +136,6 @@ def save_portfolio_to_gsheet(ws_name, df):
         sheet = client.open_by_url(SHEET_URL)
         ws = sheet.worksheet(ws_name)
         ws.clear()
-        
-        # 💡 [핵심] 저장할 때도 찌꺼기 방지. 딱 4열만 저장!
         save_df = df[["종목명", "종목코드", "매수단가", "수량"]].copy()
         ws.update(values=[save_df.columns.values.tolist()] + save_df.fillna("").values.tolist(), range_name='A1')
     except Exception as e: st.error(f"저장 오류: {e}")
@@ -180,11 +172,11 @@ master_df, live_cap_map = get_krx_master()
 gsheet_stock_info = load_stock_info_from_gsheet()
 search_options = ["🔍 종목 검색"] + ("[" + master_df['종목코드'] + "] " + master_df['Name']).tolist() if not master_df.empty else ["데이터 로드 중..."]
 
-if 'portfolio_config' not in st.session_state:
-    st.session_state['portfolio_config'] = load_config_from_gsheet()
+if 'portfolio_config' not in st.session_state: st.session_state['portfolio_config'] = load_config_from_gsheet()
 
 for p_key in ["ddo", "sso", "mom"]:
     if f'editor_key_{p_key}' not in st.session_state: st.session_state[f'editor_key_{p_key}'] = 0
+    if f'up_key_{p_key}' not in st.session_state: st.session_state[f'up_key_{p_key}'] = 0 # 💡 파일 삭제용 키
     if f'df_{p_key}' not in st.session_state: st.session_state[f'df_{p_key}'] = load_portfolio_from_gsheet(p_key)
 
 all_tickers = set(t for p in ["ddo", "sso", "mom"] for t in st.session_state[f'df_{p}']['종목코드'].tolist())
@@ -211,33 +203,52 @@ def render_portfolio_tab(port_name, port_key, prices):
 
     with c_file:
         with st.expander("📂 엑셀 업로드"):
-            up_file = st.file_uploader("CSV/XLSX 선택", type=['csv', 'xlsx'], key=f"up_{port_key}")
+            # 💡 [해결] 키를 동적으로 바꿔서 업로드 후 파일이 싹 사라지게 만듦
+            up_file = st.file_uploader("CSV/XLSX 선택", type=['csv', 'xlsx'], key=f"up_{port_key}_{st.session_state[f'up_key_{port_key}']}")
             if st.button("구글 시트에 반영", key=f"btn_{port_key}") and up_file:
                 try:
-                    up_df = robust_read_file(up_file) # 💡 자동 인코딩 탐지 적용
+                    up_df = robust_read_file(up_file)
                     up_df.columns = up_df.columns.astype(str).str.replace('\ufeff', '', regex=False).str.strip()
-                    code_col = [c for c in up_df.columns if '코드' in c][0]
-                    up_df = up_df.rename(columns={code_col: '종목코드'}).dropna(subset=['종목코드'])
-                    up_df['종목코드'] = up_df['종목코드'].apply(lambda x: str(int(float(str(x).strip()))).zfill(6))
-                    if '종목명' not in up_df.columns: up_df['종목명'] = up_df['종목코드'].map(master_df.set_index('종목코드')['Name']).fillna('이름없음')
-                    for c in ['매수단가', '수량']:
-                        if c in up_df.columns: up_df[c] = pd.to_numeric(up_df[c].astype(str).str.replace(r'[^0-9.-]', '', regex=True), errors='coerce').fillna(0).astype(int)
-                        else: up_df[c] = 0
-                    final_df = up_df[["종목명", "종목코드", "매수단가", "수량"]].copy()
-                    st.session_state[f'df_{port_key}'] = final_df
-                    save_portfolio_to_gsheet(port_key, final_df)
-                    st.session_state[f'editor_key_{port_key}'] += 1
-                    st.rerun()
+                    c_cols = [c for c in up_df.columns if '코드' in c]
+                    if not c_cols:
+                        st.error("🚨 파일에 '코드'라는 단어가 포함된 열이 없습니다.")
+                    else:
+                        code_col = c_cols[0]
+                        up_df = up_df.rename(columns={code_col: '종목코드'}).dropna(subset=['종목코드'])
+                        up_df['종목코드'] = up_df['종목코드'].apply(lambda x: str(int(float(str(x).strip()))).zfill(6))
+                        if '종목명' not in up_df.columns: up_df['종목명'] = up_df['종목코드'].map(master_df.set_index('종목코드')['Name']).fillna('이름없음')
+                        for c in ['매수단가', '수량']:
+                            if c in up_df.columns: up_df[c] = pd.to_numeric(up_df[c].astype(str).str.replace(r'[^0-9.-]', '', regex=True), errors='coerce').fillna(0).astype(int)
+                            else: up_df[c] = 0
+                        final_df = up_df[["종목명", "종목코드", "매수단가", "수량"]].copy()
+                        st.session_state[f'df_{port_key}'] = final_df
+                        save_portfolio_to_gsheet(port_key, final_df)
+                        
+                        st.session_state[f'editor_key_{port_key}'] += 1
+                        st.session_state[f'up_key_{port_key}'] += 1 # 💡 파일 비우기 발동!
+                        st.rerun()
                 except Exception as e: st.error(f"파일 양식 또는 인코딩 에러: {e}")
 
     st.markdown(f"### 📝 {port_name} 편집")
     clean_df = st.session_state[f'df_{port_key}'][["종목명", "종목코드", "매수단가", "수량"]].copy()
-    clean_df.index = range(1, len(clean_df) + 1) # 💡 [해결] 편집기에 No.(인덱스) 부여
     
-    df_ed = st.data_editor(clean_df, num_rows="dynamic", use_container_width=True, key=f"ed_{port_key}_{st.session_state[f'editor_key_{port_key}']}")
+    # 💡 [해결] 편집기에 No. 열 추가
+    clean_df.insert(0, 'No.', range(1, len(clean_df) + 1))
+    
+    # 폭을 제일 좁게 만들고 수정 불가로 잠금
+    col_cfg = {
+        "No.": st.column_config.NumberColumn("No.", width="small", disabled=True),
+        "종목명": st.column_config.TextColumn("종목명", width="medium"),
+        "종목코드": st.column_config.TextColumn("종목코드", width="small")
+    }
+    
+    df_ed = st.data_editor(clean_df, num_rows="dynamic", use_container_width=True, hide_index=True, column_config=col_cfg, key=f"ed_{port_key}_{st.session_state[f'editor_key_{port_key}']}")
+    
     if st.button("이 편집 내용 저장", key=f"sv_{port_key}"):
-        st.session_state[f'df_{port_key}'] = df_ed
-        save_portfolio_to_gsheet(port_key, df_ed)
+        # 저장할 때는 No. 열을 빼고 저장
+        save_df = df_ed.drop(columns=['No.']) if 'No.' in df_ed.columns else df_ed
+        st.session_state[f'df_{port_key}'] = save_df
+        save_portfolio_to_gsheet(port_key, save_df)
         st.session_state[f'editor_key_{port_key}'] += 1
         st.toast(f"✅ {port_name} 구글 시트 저장 완료!", icon="🚀")
         st.rerun()
@@ -246,7 +257,7 @@ def render_portfolio_tab(port_name, port_key, prices):
         st.markdown(f"### 🚀 {port_name} 실시간 성적표")
         df = st.session_state[f'df_{port_key}'].copy()
         if not df.empty:
-            df.insert(0, 'No.', range(1, len(df) + 1)) # 💡 [해결] 실시간 성적표 맨 앞에 No. 열 추가
+            df.insert(0, 'No.', range(1, len(df) + 1))
             df['액면가'] = df['종목코드'].apply(lambda x: gsheet_stock_info.get(x, {}).get('액면가', 0))
             df['현재가'] = df['종목코드'].apply(lambda x: prices.get(x, {}).get('curr', 0))
             
@@ -278,6 +289,7 @@ def render_portfolio_tab(port_name, port_key, prices):
             df['티커_L'] = df.apply(lambda r: f"https://finance.naver.com/item/main.naver?code={r['종목코드']}", axis=1)
             df['종목명_L'] = df.apply(lambda r: f"https://m.stock.naver.com/fchart/domestic/stock/{r['종목코드']}#{r['종목명']}", axis=1)
             
+            # 💡 [해결] 테이블 중앙 정렬 CSS 적용
             def style_row(st_df):
                 s = pd.DataFrame('', index=st_df.index, columns=st_df.columns)
                 for col in ['전일대비(%)', '평가손익', '수익률(%)']:
@@ -289,10 +301,10 @@ def render_portfolio_tab(port_name, port_key, prices):
                     elif 0 < row['현재가'] < 1000: s.loc[i, '현재가'] = h_css
                 return s
 
-            st.dataframe(df.style.apply(style_row, axis=None).format({'전일대비(%)':'{:.2f}%','수익률(%)':'{:.2f}%','시총(억)':'{:,}','매수단가':'{:,}','액면가':'{:,}','현재가':'{:,}','평가금액':'{:,}','평가손익':'{:,}'}), 
+            st.dataframe(df.style.apply(style_row, axis=None).set_properties(**{'text-align': 'center'}).format({'전일대비(%)':'{:.2f}%','수익률(%)':'{:.2f}%','시총(억)':'{:,}','매수단가':'{:,}','액면가':'{:,}','현재가':'{:,}','평가금액':'{:,}','평가손익':'{:,}'}), 
                          use_container_width=True, hide_index=True,
                          column_order=['No.', '티커_L', '종목명_L', '시총(억)', '수량', '매수단가', '액면가', '현재가', '전일대비(%)', '평가금액', '평가손익', '수익률(%)'],
-                         column_config={"티커_L": st.column_config.LinkColumn("코드", display_text=r"code=(.+)"), "종목명_L": st.column_config.LinkColumn("종목명", display_text=r"#(.+)")})
+                         column_config={"No.": st.column_config.NumberColumn("No.", width="small"), "티커_L": st.column_config.LinkColumn("코드", display_text=r"code=(.+)"), "종목명_L": st.column_config.LinkColumn("종목명", display_text=r"#(.+)")})
 
 # --- [6. 메인 화면] ---
 st.markdown('<p class="main-title">💼 내 퀀트 포트폴리오 종합 대시보드</p>', unsafe_allow_html=True)
@@ -322,7 +334,7 @@ with tabs[0]:
     st.markdown('<p class="section-title">🏆 성과 요약</p>', unsafe_allow_html=True)
     summary_list, t_buy_all, t_val_all, t_daily_all, t_prev_all = [], 0, 0, 0, 0
     for p_n, p_k in [("또", "ddo"), ("쏘", "sso"), ("맘", "mom")]:
-        df = st.session_state[f'df_{p_k}'].copy() # 💡 [해결] 복사본 생성 (c, p 찌꺼기 방지)
+        df = st.session_state[f'df_{p_k}'].copy()
         s_val = config[f'start_{p_k}']
         if not df.empty:
             df['c_tmp'] = df['종목코드'].apply(lambda x: global_prices.get(x, {}).get('curr', 0))
@@ -349,25 +361,48 @@ with tabs[4]:
     st.markdown('<p class="section-title">⚖️ 리밸런싱 계산기</p>', unsafe_allow_html=True)
     c_sel, c_up = st.columns([1, 2])
     tgt_p = c_sel.selectbox("🔄 기준 포트폴리오", options=[("또", "ddo"), ("쏘", "sso"), ("맘", "mom")], format_func=lambda x: f"[{x[0]}] 기준")
-    up_reb = c_up.file_uploader("목표 엑셀 업로드", type=['csv', 'xlsx'], key="reb_up_gs")
+    
+    if 'up_reb_key' not in st.session_state: st.session_state['up_reb_key'] = 0
+    
+    # 💡 파일 비우기 방어 적용
+    up_reb = c_up.file_uploader("목표 엑셀 업로드", type=['csv', 'xlsx'], key=f"reb_up_{st.session_state['up_reb_key']}")
+    
     if up_reb:
         try:
-            t_df = robust_read_file(up_reb) # 💡 [해결] 리밸런싱 업로드에도 무적 방어 적용
+            t_df = robust_read_file(up_reb)
             t_df.columns = t_df.columns.astype(str).str.strip()
-            c_col, m_col = [c for c in t_df.columns if '코드' in c][0], [c for c in t_df.columns if '목표' in c][0]
-            t_df['종목코드'] = t_df[c_col].apply(lambda x: str(int(float(str(x).strip()))).zfill(6))
-            t_df['목표금액'] = pd.to_numeric(t_df[m_col].astype(str).str.replace(r'[^0-9.]', '', regex=True)).fillna(0).astype(int) * 10000
-            curr = st.session_state[f'df_{tgt_p[1]}'].copy()
-            merged = pd.merge(curr[['종목코드', '수량']], t_df[['종목코드', '목표금액']], on='종목코드', how='outer').fillna(0)
-            merged.insert(0, 'No.', range(1, len(merged) + 1)) # 💡 리밸런싱에도 No. 추가
-            merged['종목명'] = merged['종목코드'].map(master_df.set_index('종목코드')['Name']).fillna('이름없음')
-            p_map = fetch_multi_prices(tuple(merged['종목코드'].tolist()))
-            merged['현재가'] = merged['종목코드'].apply(lambda x: p_map.get(x, {}).get('curr', 0))
-            merged['현재평가액'] = merged['수량'] * merged['현재가']; merged['차액'] = merged['목표금액'] - merged['현재평가액']
-            merged['주문'] = merged.apply(lambda r: "전량매도" if r['목표금액']==0 else ("신규매수" if r['수량']==0 else ("추가매수" if r['차액']>0 else "부분매도")), axis=1)
-            merged['주문수량'] = merged.apply(lambda r: r['수량'] if r['주문']=="전량매도" else int(abs(r['차액']) // r['현재가']) if r['현재가']>0 else 0, axis=1)
-            merged['예상금액'] = merged.apply(lambda r: r['주문수량']*r['현재가'] * (1 if '매수' in r['주문'] else -1), axis=1)
-            buy_s, sell_s = merged[merged['예상금액']>0]['예상금액'].sum(), abs(merged[merged['예상금액']<0]['예상금액'].sum())
-            st.markdown(f"**🔵 매도:** `₩{sell_s:,}` | **🔴 매수:** `₩{buy_s:,}` | **💡 잔액:** `₩{sell_s-buy_s:,}` {'잔금' if sell_s-buy_s>=0 else '추가 필요'}")
-            st.dataframe(merged[['No.', '종목코드','종목명','현재가','수량','현재평가액','목표금액','주문','주문수량','예상금액']].style.format(precision=0), use_container_width=True, hide_index=True)
+            
+            # 💡 [해결] 에러를 내뿜지 않도록 열 확인 로직 추가
+            c_cols = [c for c in t_df.columns if '코드' in c]
+            m_cols = [c for c in t_df.columns if '목표' in c]
+            
+            if not c_cols or not m_cols:
+                st.error("🚨 업로드하신 파일에 '코드' 또는 '목표'가 포함된 열 이름이 없습니다. 파일을 잘못 올리셨거나 양식을 확인해주세요.")
+            else:
+                c_col, m_col = c_cols[0], m_cols[0]
+                t_df['종목코드'] = t_df[c_col].apply(lambda x: str(int(float(str(x).strip()))).zfill(6))
+                t_df['목표금액'] = pd.to_numeric(t_df[m_col].astype(str).str.replace(r'[^0-9.]', '', regex=True)).fillna(0).astype(int) * 10000
+                
+                curr = st.session_state[f'df_{tgt_p[1]}'].copy()
+                merged = pd.merge(curr[['종목코드', '수량']], t_df[['종목코드', '목표금액']], on='종목코드', how='outer').fillna(0)
+                
+                merged.insert(0, 'No.', range(1, len(merged) + 1))
+                merged['종목명'] = merged['종목코드'].map(master_df.set_index('종목코드')['Name']).fillna('이름없음')
+                p_map = fetch_multi_prices(tuple(merged['종목코드'].tolist()))
+                merged['현재가'] = merged['종목코드'].apply(lambda x: p_map.get(x, {}).get('curr', 0))
+                merged['현재평가액'] = merged['수량'] * merged['현재가']; merged['차액'] = merged['목표금액'] - merged['현재평가액']
+                merged['주문'] = merged.apply(lambda r: "전량매도" if r['목표금액']==0 else ("신규매수" if r['수량']==0 else ("추가매수" if r['차액']>0 else "부분매도")), axis=1)
+                merged['주문수량'] = merged.apply(lambda r: r['수량'] if r['주문']=="전량매도" else int(abs(r['차액']) // r['현재가']) if r['현재가']>0 else 0, axis=1)
+                merged['예상금액'] = merged.apply(lambda r: r['주문수량']*r['현재가'] * (1 if '매수' in r['주문'] else -1), axis=1)
+                
+                buy_s, sell_s = merged[merged['예상금액']>0]['예상금액'].sum(), abs(merged[merged['예상금액']<0]['예상금액'].sum())
+                
+                st.markdown(f"**🔵 매도:** `₩{sell_s:,}` | **🔴 매수:** `₩{buy_s:,}` | **💡 잔액:** `₩{sell_s-buy_s:,}` {'잔금' if sell_s-buy_s>=0 else '추가 필요'}")
+                st.dataframe(merged[['No.', '종목코드','종목명','현재가','수량','현재평가액','목표금액','주문','주문수량','예상금액']].style.set_properties(**{'text-align': 'center'}).format(precision=0), use_container_width=True, hide_index=True, column_config={"No.": st.column_config.NumberColumn("No.", width="small")})
+                
+                # 계산 완료 후 업로더 리셋 버튼
+                if st.button("계산기 초기화"):
+                    st.session_state['up_reb_key'] += 1
+                    st.rerun()
+
         except Exception as e: st.error(f"오류: 파일 형식이나 인코딩을 확인해주세요. ({e})")
