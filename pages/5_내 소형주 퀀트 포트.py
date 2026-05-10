@@ -10,6 +10,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 # --- [1. 설정 및 경로] ---
 st.set_page_config(page_title="내 퀀트 포트폴리오", layout="wide")
 
+# 💡 포트폴리오 전용 폴더 설정 (파일은 반드시 이 port 폴더 안에서 확인하세요!)
 PORT_DIR = 'port'
 if not os.path.exists(PORT_DIR): os.makedirs(PORT_DIR)
 if not os.path.exists('data'): os.makedirs('data')
@@ -119,7 +120,6 @@ def fetch_multi_prices(tickers):
             price_map[t] = {'curr': curr, 'prev': prev}
     return price_map
 
-# 💡 [핵심] CSV에서 포트폴리오, '시작금', '시작일' 모두 완벽 로드
 def load_portfolio(path):
     df_empty = pd.DataFrame(columns=["종목명", "종목코드", "매수단가", "수량", "시작금", "시작일"])
     if os.path.exists(path):
@@ -153,7 +153,7 @@ if os.path.exists(CONFIG_PATH):
         with open(CONFIG_PATH, 'r', encoding='utf-8') as f: default_config.update(json.load(f))
     except: pass
 
-# 💡 [핵심] CSV에서 최신 '시작금' 및 '시작일' 우선 읽어오기
+# CSV에서 최신 '시작금' 및 '시작일' 우선 읽어오기
 for p_key, path in [("ddo", PORT_PATHS["ddo"]), ("sso", PORT_PATHS["sso"]), ("mom", PORT_PATHS["mom"])]:
     if f'df_{p_key}' not in st.session_state:
         df_loaded = load_portfolio(path)
@@ -227,16 +227,22 @@ def render_portfolio_tab(port_name, port_key, path, prices):
                         st.rerun()
                 except Exception as e: st.error(f"오류 발생: {e}")
 
-    st.markdown(f"### 📝 {port_name} 편집")
-    clean_df = st.session_state[f'df_{port_key}'][["종목명", "종목코드", "매수단가", "수량"]]
+    # 💡 [핵심] 🚀 데이터 에디터 자동 저장 기능 도입 (저장 버튼 삭제)
+    st.markdown(f"### 📝 {port_name} 편집 <span style='font-size: 0.9rem; color: #10b981;'>(입력 후 엔터 시 즉시 자동저장)</span>", unsafe_allow_html=True)
+    
+    clean_df = st.session_state[f'df_{port_key}'][["종목명", "종목코드", "매수단가", "수량"]].copy()
     clean_df.index = range(1, len(clean_df) + 1)
 
     df_editor = st.data_editor(clean_df, num_rows="dynamic", use_container_width=True, key=f"ed_{port_key}")
-    if st.button("저장", key=f"sv_{port_key}"):
-        df_editor['시작금'] = st.session_state['portfolio_config'].get(f'start_{port_key}', 0)
-        df_editor['시작일'] = st.session_state['portfolio_config'].get('start_date', str(datetime.today().date()))
-        st.session_state[f'df_{port_key}'] = df_editor
-        st.session_state[f'df_{port_key}'].to_csv(path, index=False, encoding='utf-8-sig')
+    
+    # 표에서 값이 변경된 것을 감지하면 그 즉시 저장하고 새로고침!
+    if not clean_df.equals(df_editor):
+        new_df = df_editor.copy()
+        new_df['시작금'] = st.session_state['portfolio_config'].get(f'start_{port_key}', 0)
+        new_df['시작일'] = st.session_state['portfolio_config'].get('start_date', str(datetime.today().date()))
+        
+        st.session_state[f'df_{port_key}'] = new_df
+        new_df.to_csv(path, index=False, encoding='utf-8-sig')
         st.rerun()
 
     with scoreboard_placeholder:
@@ -294,6 +300,10 @@ st.markdown('<p class="main-title">💼 내 퀀트 포트폴리오 종합 대시
 tabs = st.tabs(["📊 종합 요약", "🌱 또", "🌿 쏘", "🍀 맘", "⚖️ 리밸런싱 계산기"])
 
 with tabs[0]:
+    # 💡 성공 메시지 출력용 (설정 저장 시)
+    if st.session_state.pop('config_saved_msg', False):
+        st.success("✅ 설정이 저장되고 개별 포트폴리오(port 폴더)에 완벽하게 동기화되었습니다!")
+
     config = st.session_state['portfolio_config']
     total_start_sum = config.get('start_ddo', 0) + config.get('start_sso', 0) + config.get('start_mom', 0)
     
@@ -321,14 +331,15 @@ with tabs[0]:
             st.session_state['portfolio_config'] = new_config
             with open(CONFIG_PATH, 'w', encoding='utf-8') as f: json.dump(new_config, f)
             
-            # 💡 [핵심] 입력된 '시작일'과 '시작금'을 각각의 CSV 파일 열에 덮어쓰기하여 동기화
+            # 💡 [핵심] 입력된 '시작일'과 '시작금'을 각각의 CSV 파일(port/ 폴더) 열에 덮어쓰기하여 동기화
             for p_key, start_val in [("ddo", new_ddo), ("sso", new_sso), ("mom", new_mom)]:
-                df = st.session_state[f'df_{p_key}']
+                df = st.session_state[f'df_{p_key}'].copy()
                 df['시작금'] = start_val
                 df['시작일'] = str(new_date)
-                st.session_state[f'df_{p_key}'] = df # 갱신
-                df.to_csv(PORT_PATHS[p_key], index=False, encoding='utf-8-sig')
+                st.session_state[f'df_{p_key}'] = df # 세션 스테이트 갱신
+                df.to_csv(PORT_PATHS[p_key], index=False, encoding='utf-8-sig') # CSV 덮어쓰기
             
+            st.session_state['config_saved_msg'] = True
             st.rerun()
 
     st.markdown('<p class="section-title">🏆 포트폴리오 성과 요약</p>', unsafe_allow_html=True)
