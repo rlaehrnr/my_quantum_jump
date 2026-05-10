@@ -5,3 +5,4 @@ finance-datareader
 plotly
 yfinance
 xlsxwriter
+gspread
