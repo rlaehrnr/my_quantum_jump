@@ -238,11 +238,11 @@ def render_portfolio_tab(port_name, port_key, prices):
     
     clean_df.insert(0, 'No.', range(1, len(clean_df) + 1))
     
+    # 💡 [디자인 핵심] 편집기 열 너비를 유동적(flex)으로 변경. No.만 최소화.
     col_cfg = {
-        "No.": st.column_config.NumberColumn("No.", width="small", format="%d", disabled=True),
-        "종목코드": st.column_config.TextColumn("종목코드", width="small"),
-        "매수단가": st.column_config.NumberColumn("매수단가", width="small"),
-        "수량": st.column_config.NumberColumn("수량", width="small")
+        "No.": st.column_config.NumberColumn("No.", width=45, format="%d", disabled=True),
+        "종목명": st.column_config.TextColumn("종목명", disabled=True),
+        "종목코드": st.column_config.TextColumn("종목코드") # 폭 지정 안 함 = 자동 늘어남
     }
     
     df_ed = st.data_editor(clean_df, num_rows="dynamic", use_container_width=True, hide_index=True, column_config=col_cfg, key=f"ed_{port_key}_{st.session_state[f'editor_key_{port_key}']}")
@@ -261,14 +261,9 @@ def render_portfolio_tab(port_name, port_key, prices):
         if not df.empty:
             df.insert(0, 'No.', range(1, len(df) + 1))
             
-            # 💡 [핵심] 코드 열에 PC링크 및 KOSPI:000000 텍스트 결합
             df['시장'] = df['종목코드'].apply(lambda x: market_map.get(x, 'KOSPI'))
             df['코드'] = df.apply(lambda r: f"https://finance.naver.com/item/main.naver?code={r['종목코드']}#{r['시장']}:{r['종목코드']}", axis=1)
-            
-            # 💡 [핵심] 차트 열에 모바일 링크 생성 (이모지용)
             df['차트'] = df['종목코드'].apply(lambda x: f"https://m.stock.naver.com/fchart/domestic/stock/{x}")
-            
-            # 종목명은 이제 순수 텍스트이므로 정렬이 완벽하게 작동합니다.
             
             df['액면가'] = df['종목코드'].apply(lambda x: gsheet_stock_info.get(x, {}).get('액면가', 0))
             df['현재가'] = df['종목코드'].apply(lambda x: prices.get(x, {}).get('curr', 0))
@@ -309,14 +304,15 @@ def render_portfolio_tab(port_name, port_key, prices):
                     elif 0 < row['현재가'] < 1000: s.loc[i, '현재가'] = h_css
                 return s
 
+            # 💡 [디자인 핵심] No.와 차트는 강제 최소폭(45), 코드는 medium, 나머지는 유동적 자동 설정
             st.dataframe(df.style.apply(style_row, axis=None).set_properties(**{'text-align': 'center'}).format({'전일대비(%)':'{:.2f}%','수익률(%)':'{:.2f}%','시총(억)':'{:,}','매수단가':'{:,}','액면가':'{:,}','현재가':'{:,}','평가금액':'{:,}','평가손익':'{:,}'}), 
                          use_container_width=True, hide_index=True,
                          column_order=['No.', '코드', '종목명', '차트', '시총(억)', '수량', '매수단가', '액면가', '현재가', '전일대비(%)', '평가금액', '평가손익', '수익률(%)'],
                          column_config={
-                             "No.": st.column_config.NumberColumn("No.", width="small", format="%d"),
-                             "코드": st.column_config.LinkColumn("코드", width="small", display_text=r"#(.+)"),
+                             "No.": st.column_config.NumberColumn("No.", width=45, format="%d"),
+                             "코드": st.column_config.LinkColumn("코드", width="medium", display_text=r"#(.+)"),
                              "종목명": st.column_config.TextColumn("종목명"),
-                             "차트": st.column_config.LinkColumn("차트", display_text="📈")
+                             "차트": st.column_config.LinkColumn("차트", width=45, display_text="📈")
                          })
 
 # --- [6. 메인 화면] ---
@@ -416,10 +412,9 @@ with tabs[4]:
                 
                 st.markdown(f"**🔵 매도:** `₩{sell_s:,}` | **🔴 매수:** `₩{buy_s:,}` | **💡 잔액:** `₩{diff:,}` {'잔금' if diff>=0 else '추가 필요'}")
                 st.dataframe(merged[['No.', '코드', '종목명', '차트', '현재가','수량','현재평가액','목표금액','주문','주문수량','예상금액']].style.set_properties(**{'text-align': 'center'}).format(precision=0), use_container_width=True, hide_index=True, column_config={
-                    "No.": st.column_config.NumberColumn("No.", width="small", format="%d"),
-                    "코드": st.column_config.LinkColumn("코드", width="small", display_text=r"#(.+)"),
-                    "종목명": st.column_config.TextColumn("종목명"),
-                    "차트": st.column_config.LinkColumn("차트", display_text="📈")
+                    "No.": st.column_config.NumberColumn("No.", width=45, format="%d"),
+                    "코드": st.column_config.LinkColumn("코드", width="medium", display_text=r"#(.+)"),
+                    "차트": st.column_config.LinkColumn("차트", width=45, display_text="📈")
                 })
                 
                 if st.button("계산기 초기화 (업로드 파일 삭제)"):
