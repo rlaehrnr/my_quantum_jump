@@ -91,16 +91,33 @@ def get_mdd_history(equity_series):
     res_df['MDD'] = res_df['MDD'].apply(lambda x: f"{x:.2f}%")
     return res_df[['MDD', '기간', '회복기간']]
 
+# 💡 [업그레이드] 연수익률 복리 계산 및 컬럼이 추가된 히트맵 함수
 def get_monthly_heatmap(df_res, strategy_col):
     temp = df_res[['투자월', strategy_col]].copy()
     temp['Year'] = temp['투자월'].apply(lambda x: str(x.split('-')[0]))
     temp['Month'] = temp['투자월'].apply(lambda x: int(x.split('-')[1]))
     pivot = temp.pivot(index='Year', columns='Month', values=strategy_col)
+    
+    # 1~12월 컬럼 강제 생성 및 월별 이름 지정
     for m in range(1, 13):
         if m not in pivot.columns: pivot[m] = float('nan')
     pivot = pivot[list(range(1, 13))]
-    pivot.columns = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
+    pivot.columns = ['1월', '2월', '3월', '4월', '5월', '6월', '7월', '8월', '9월', '10월', '11월', '12월']
+    
+    # 🏆 연수익률 (복리 누적) 계산 로직 추가
+    def calc_yearly_return(row):
+        rets = row.dropna() / 100.0
+        if len(rets) == 0:
+            return float('nan')
+        # 복리 누적 계산: (1+r1)*(1+r2)*... - 1
+        return ((1 + rets).prod() - 1) * 100
+        
+    pivot['🏆 연수익률'] = pivot.apply(calc_yearly_return, axis=1)
+    
+    # '평균' 행 추가
     pivot.loc['평균'] = pivot.mean()
+    
+    # 컬러 매핑 로직 (다크 모드 유지)
     def color_cells(val):
         if pd.isna(val): return 'background-color: #1e1e26; color: transparent;'
         if val > 0:
@@ -114,8 +131,10 @@ def get_monthly_heatmap(df_res, strategy_col):
             text_white = 'white' if alpha > 0.4 else '#e2e8f0'
             return f'background-color: {color}; color: {text_white}; text-align: center; font-weight: bold;'
         return 'text-align: center; color: #94a3b8; background-color: #1e1e26;'
-    try: styled = pivot.style.format("{:+.1f}", na_rep="").map(color_cells)
-    except AttributeError: styled = pivot.style.format("{:+.1f}", na_rep="").applymap(color_cells)
+        
+    try: styled = pivot.style.format("{:+.2f}%", na_rep="").map(color_cells)
+    except AttributeError: styled = pivot.style.format("{:+.2f}%", na_rep="").applymap(color_cells)
+    
     return styled
 
 ma_cfg = {
@@ -142,10 +161,6 @@ main_cfg = {
     "12개월(%)": st.column_config.NumberColumn(format="%.1f"),
     "이번달수익률": st.column_config.NumberColumn("이번달 수익률(%)", format="%.2f") 
 }
-
-
-
-
 
 # 1. 전체 순위 하이라이트 스타일 (파스텔 옐로우 - 종목명만)
 def apply_custom_total_styling(row, top_codes):
@@ -223,5 +238,3 @@ col_order_d1 = ['순위', '통합티커_L', '종목명_L', '12-1개월(%)', '6-1
 col_order_d2 = ['순위', '통합티커_L', '종목명_L', '6-1개월(%)', '3-1개월(%)']
 cols_m = ['순위', '통합티커_L', '종목명_L', '시가총액', '종가', '1개월(%)', '3개월(%)', '6개월(%)', '12개월(%)', '12-1개월(%)', '6-1개월(%)', '3-1개월(%)', '커스텀스코어', '이번달수익률']
 cols_d = ['순위', '통합티커_L', '종목명_L', '시가총액', '종가', '거래량', '1개월(%)', '3개월(%)', '6개월(%)', '12개월(%)', '12-1개월(%)', '6-1개월(%)', '3-1개월(%)', '커스텀스코어']
-
-
