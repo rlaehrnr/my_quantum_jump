@@ -212,7 +212,6 @@ def render_portfolio_tab(port_name, port_key, prices):
                     if not c_cols: st.error("🚨 파일에 '코드'라는 단어가 포함된 열이 없습니다.")
                     else:
                         code_col = c_cols[0]
-                        # 💡 종목코드 숫자/문자 혼용 에러 완벽 차단
                         up_df['종목코드'] = up_df[code_col].astype(str).str.extract(r'(\d+)')[0].str.zfill(6)
                         up_df = up_df.dropna(subset=['종목코드'])
                         
@@ -233,15 +232,13 @@ def render_portfolio_tab(port_name, port_key, prices):
     st.markdown(f"### 📝 {port_name} 편집")
     clean_df = st.session_state[f'df_{port_key}'][["종목명", "종목코드", "매수단가", "수량"]].copy()
     
-    # 💡 [해결] 편집기에 No. 열 추가 및 문자열 변환으로 강제 폭 축소/정렬
     clean_df.insert(0, 'No.', range(1, len(clean_df) + 1))
-    clean_df['No.'] = clean_df['No.'].astype(str) 
     
     col_cfg = {
-        "No.": st.column_config.TextColumn("No.", width=40, disabled=True),
-        "종목코드": st.column_config.TextColumn("종목코드", width=80),
-        "매수단가": st.column_config.NumberColumn("매수단가", width=120),
-        "수량": st.column_config.NumberColumn("수량", width=100)
+        "No.": st.column_config.NumberColumn("No.", width="small", format="%d", disabled=True),
+        "종목코드": st.column_config.TextColumn("종목코드", width="small"),
+        "매수단가": st.column_config.NumberColumn("매수단가", width="small"),
+        "수량": st.column_config.NumberColumn("수량", width="small")
     }
     
     df_ed = st.data_editor(clean_df, num_rows="dynamic", use_container_width=True, hide_index=True, column_config=col_cfg, key=f"ed_{port_key}_{st.session_state[f'editor_key_{port_key}']}")
@@ -258,9 +255,7 @@ def render_portfolio_tab(port_name, port_key, prices):
         st.markdown(f"### 🚀 {port_name} 실시간 성적표")
         df = st.session_state[f'df_{port_key}'].copy()
         if not df.empty:
-            # 💡 [해결] 성적표 No. 열 문자열 변환으로 폭 최소화
             df.insert(0, 'No.', range(1, len(df) + 1))
-            df['No.'] = df['No.'].astype(str)
             
             df['액면가'] = df['종목코드'].apply(lambda x: gsheet_stock_info.get(x, {}).get('액면가', 0))
             df['현재가'] = df['종목코드'].apply(lambda x: prices.get(x, {}).get('curr', 0))
@@ -290,8 +285,9 @@ def render_portfolio_tab(port_name, port_key, prices):
             c4.metric("💸 총 평가손익", f"{int(t_profit):,}원", delta=f"{int(t_profit):,}원")
             c5.metric("📊 총 수익률", f"{(t_profit/t_buy*100) if t_buy > 0 else 0:.2f}%", delta=f"{(t_profit/t_buy*100) if t_buy > 0 else 0:.2f}%")
             
-            df['티커_L'] = df.apply(lambda r: f"https://finance.naver.com/item/main.naver?code={r['종목코드']}", axis=1)
-            df['종목명_L'] = df.apply(lambda r: f"https://m.stock.naver.com/fchart/domestic/stock/{r['종목코드']}#{r['종목명']}", axis=1)
+            # 💡 [핵심] 마크다운 문법을 사용하여 정렬 버그 완벽 해결
+            df['종목코드_L'] = df.apply(lambda r: f"[{r['종목코드']}](https://finance.naver.com/item/main.naver?code={r['종목코드']})", axis=1)
+            df['종목명_L'] = df.apply(lambda r: f"[{r['종목명']}](https://m.stock.naver.com/fchart/domestic/stock/{r['종목코드']})", axis=1)
             
             def style_row(st_df):
                 s = pd.DataFrame('', index=st_df.index, columns=st_df.columns)
@@ -304,10 +300,14 @@ def render_portfolio_tab(port_name, port_key, prices):
                     elif 0 < row['현재가'] < 1000: s.loc[i, '현재가'] = h_css
                 return s
 
-            st.dataframe(df.style.apply(style_row, axis=None).format({'전일대비(%)':'{:.2f}%','수익률(%)':'{:.2f}%','시총(억)':'{:,}','매수단가':'{:,}','액면가':'{:,}','현재가':'{:,}','평가금액':'{:,}','평가손익':'{:,}'}), 
+            st.dataframe(df.style.apply(style_row, axis=None).set_properties(**{'text-align': 'center'}).format({'전일대비(%)':'{:.2f}%','수익률(%)':'{:.2f}%','시총(억)':'{:,}','매수단가':'{:,}','액면가':'{:,}','현재가':'{:,}','평가금액':'{:,}','평가손익':'{:,}'}), 
                          use_container_width=True, hide_index=True,
-                         column_order=['No.', '티커_L', '종목명_L', '시총(억)', '수량', '매수단가', '액면가', '현재가', '전일대비(%)', '평가금액', '평가손익', '수익률(%)'],
-                         column_config={"No.": st.column_config.TextColumn("No.", width=40), "티커_L": st.column_config.LinkColumn("코드", display_text=r"code=(.+)"), "종목명_L": st.column_config.LinkColumn("종목명", display_text=r"#(.+)")})
+                         column_order=['No.', '종목코드_L', '종목명_L', '시총(억)', '수량', '매수단가', '액면가', '현재가', '전일대비(%)', '평가금액', '평가손익', '수익률(%)'],
+                         column_config={
+                             "No.": st.column_config.NumberColumn("No.", width="small", format="%d"),
+                             "종목코드_L": st.column_config.LinkColumn("코드", width="small"),
+                             "종목명_L": st.column_config.LinkColumn("종목명")
+                         })
 
 # --- [6. 메인 화면] ---
 st.markdown('<p class="main-title">💼 내 퀀트 포트폴리오 종합 대시보드</p>', unsafe_allow_html=True)
@@ -380,8 +380,6 @@ with tabs[4]:
                 st.error("🚨 파일에 '코드' 또는 '목표'가 포함된 열 이름이 없습니다. 양식을 다시 확인해주세요.")
             else:
                 c_col, m_col = c_cols[0], m_cols[0]
-                
-                # 💡 [해결] NaN 에러 완벽 차단 로직
                 t_df['종목코드'] = t_df[c_col].astype(str).str.extract(r'(\d+)')[0].str.zfill(6)
                 t_df = t_df.dropna(subset=['종목코드'])
                 
@@ -391,7 +389,6 @@ with tabs[4]:
                 merged = pd.merge(curr[['종목코드', '수량']], t_df[['종목코드', '목표금액']], on='종목코드', how='outer').fillna(0)
                 
                 merged.insert(0, 'No.', range(1, len(merged) + 1))
-                merged['No.'] = merged['No.'].astype(str) # 💡 폭 축소
                 
                 merged['종목명'] = merged['종목코드'].map(master_df.set_index('종목코드')['Name']).fillna('이름없음')
                 p_map = fetch_multi_prices(tuple(merged['종목코드'].tolist()))
@@ -405,7 +402,7 @@ with tabs[4]:
                 diff = sell_s - buy_s
                 
                 st.markdown(f"**🔵 매도:** `₩{sell_s:,}` | **🔴 매수:** `₩{buy_s:,}` | **💡 잔액:** `₩{diff:,}` {'잔금' if diff>=0 else '추가 필요'}")
-                st.dataframe(merged[['No.', '종목코드','종목명','현재가','수량','현재평가액','목표금액','주문','주문수량','예상금액']].style.format(precision=0), use_container_width=True, hide_index=True, column_config={"No.": st.column_config.TextColumn("No.", width=40)})
+                st.dataframe(merged[['No.', '종목코드','종목명','현재가','수량','현재평가액','목표금액','주문','주문수량','예상금액']].style.set_properties(**{'text-align': 'center'}).format(precision=0), use_container_width=True, hide_index=True, column_config={"No.": st.column_config.NumberColumn("No.", width="small", format="%d")})
                 
                 if st.button("계산기 초기화 (업로드 파일 삭제)"):
                     st.session_state['up_reb_key'] += 1
