@@ -147,8 +147,12 @@ def get_krx_master():
         df = fdr.StockListing('KRX')
         df['종목코드'] = df['Code'].astype(str).str.zfill(6)
         df['시총_억'] = (df['Marcap'] / 100000000).fillna(0).astype(int)
-        return df, df.set_index('종목코드')['시총_억'].to_dict()
-    except: return pd.DataFrame(), {}
+        
+        cap_map = df.set_index('종목코드')['시총_억'].to_dict()
+        name_map = df.set_index('종목코드')['Name'].to_dict()
+        market_map = df.set_index('종목코드')['Market'].to_dict() if 'Market' in df.columns else {}
+        return df, cap_map, name_map, market_map
+    except: return pd.DataFrame(), {}, {}, {}
 
 @st.cache_data(ttl=60, show_spinner=False)
 def fetch_multi_prices(tickers):
@@ -168,7 +172,7 @@ def fetch_multi_prices(tickers):
     return price_map
 
 # --- [4. 초기화 및 데이터 로드] ---
-master_df, live_cap_map = get_krx_master()
+master_df, live_cap_map, name_map, market_map = get_krx_master()
 gsheet_stock_info = load_stock_info_from_gsheet()
 search_options = ["🔍 종목 검색"] + ("[" + master_df['종목코드'] + "] " + master_df['Name']).tolist() if not master_df.empty else ["데이터 로드 중..."]
 
@@ -215,7 +219,7 @@ def render_portfolio_tab(port_name, port_key, prices):
                         up_df['종목코드'] = up_df[code_col].astype(str).str.extract(r'(\d+)')[0].str.zfill(6)
                         up_df = up_df.dropna(subset=['종목코드'])
                         
-                        if '종목명' not in up_df.columns: up_df['종목명'] = up_df['종목코드'].map(master_df.set_index('종목코드')['Name']).fillna('이름없음')
+                        if '종목명' not in up_df.columns: up_df['종목명'] = up_df['종목코드'].map(name_map).fillna('이름없음')
                         for c in ['매수단가', '수량']:
                             if c in up_df.columns: up_df[c] = pd.to_numeric(up_df[c].astype(str).str.replace(r'[^0-9.-]', '', regex=True), errors='coerce').fillna(0).astype(int)
                             else: up_df[c] = 0
@@ -257,6 +261,14 @@ def render_portfolio_tab(port_name, port_key, prices):
         if not df.empty:
             df.insert(0, 'No.', range(1, len(df) + 1))
             
+            # 💡 [핵심] 코스피/코스닥 마켓 맵핑 후 KOSDAQ:035460 형태로 코드 생성
+            df['시장'] = df['종목코드'].apply(lambda x: market_map.get(x, 'KOSPI'))
+            df['코드'] = df.apply(lambda r: f"{r['시장']}:{r['종목코드']}", axis=1)
+            
+            # 💡 [핵심] 정렬을 망치는 주소 대신, 독립된 전용 🔗링크 열 2개 생성!
+            df['모바일차트'] = df['종목코드'].apply(lambda x: f"https://m.stock.naver.com/fchart/domestic/stock/{x}")
+            df['PC정보'] = df['종목코드'].apply(lambda x: f"https://finance.naver.com/item/main.naver?code={x}")
+            
             df['액면가'] = df['종목코드'].apply(lambda x: gsheet_stock_info.get(x, {}).get('액면가', 0))
             df['현재가'] = df['종목코드'].apply(lambda x: prices.get(x, {}).get('curr', 0))
             
@@ -285,13 +297,6 @@ def render_portfolio_tab(port_name, port_key, prices):
             c4.metric("💸 총 평가손익", f"{int(t_profit):,}원", delta=f"{int(t_profit):,}원")
             c5.metric("📊 총 수익률", f"{(t_profit/t_buy*100) if t_buy > 0 else 0:.2f}%", delta=f"{(t_profit/t_buy*100) if t_buy > 0 else 0:.2f}%")
             
-            # 💡 [핵심 해결] 마크다운 링크 버리고, 스트림릿 내장 LinkColumn 사용!
-            # display_text 옵션을 써서 URL 안에 숨겨진 진짜 이름만 화면에 쏙 빼서 보여줍니다.
-            df['코드'] = df.apply(lambda r: f"https://finance.naver.com/item/main.naver?code={r['종목코드']}", axis=1)
-            
-            # 주소 맨 뒤에 #기산텔레콤 처럼 이름을 몰래 달아둡니다.
-            df['종목명'] = df.apply(lambda r: f"https://m.stock.naver.com/fchart/domestic/stock/{r['종목코드']}#{r['종목명']}", axis=1)
-            
             def style_row(st_df):
                 s = pd.DataFrame('', index=st_df.index, columns=st_df.columns)
                 for col in ['전일대비(%)', '평가손익', '수익률(%)']:
@@ -305,12 +310,11 @@ def render_portfolio_tab(port_name, port_key, prices):
 
             st.dataframe(df.style.apply(style_row, axis=None).set_properties(**{'text-align': 'center'}).format({'전일대비(%)':'{:.2f}%','수익률(%)':'{:.2f}%','시총(억)':'{:,}','매수단가':'{:,}','액면가':'{:,}','현재가':'{:,}','평가금액':'{:,}','평가손익':'{:,}'}), 
                          use_container_width=True, hide_index=True,
-                         column_order=['No.', '코드', '종목명', '시총(억)', '수량', '매수단가', '액면가', '현재가', '전일대비(%)', '평가금액', '평가손익', '수익률(%)'],
+                         column_order=['No.', '코드', '종목명', '모바일차트', 'PC정보', '시총(억)', '수량', '매수단가', '액면가', '현재가', '전일대비(%)', '평가금액', '평가손익', '수익률(%)'],
                          column_config={
                              "No.": st.column_config.NumberColumn("No.", width="small", format="%d"),
-                             # 정규표현식(Regex)을 써서 주소에서 필요한 글자만 추출해서 보여줍니다! 정렬도 이것 기준으로 됨!
-                             "코드": st.column_config.LinkColumn("코드", width="small", display_text=r"code=(.+)"),
-                             "종목명": st.column_config.LinkColumn("종목명", display_text=r"#(.+)")
+                             "모바일차트": st.column_config.LinkColumn("모바일", width="small", display_text="📱차트"),
+                             "PC정보": st.column_config.LinkColumn("PC", width="small", display_text="🖥️정보")
                          })
 
 # --- [6. 메인 화면] ---
@@ -393,8 +397,10 @@ with tabs[4]:
                 merged = pd.merge(curr[['종목코드', '수량']], t_df[['종목코드', '목표금액']], on='종목코드', how='outer').fillna(0)
                 
                 merged.insert(0, 'No.', range(1, len(merged) + 1))
+                merged['시장'] = merged['종목코드'].apply(lambda x: market_map.get(x, 'KOSPI'))
+                merged['코드'] = merged.apply(lambda r: f"{r['시장']}:{r['종목코드']}", axis=1)
+                merged['종목명'] = merged['종목코드'].map(name_map).fillna('이름없음')
                 
-                merged['종목명'] = merged['종목코드'].map(master_df.set_index('종목코드')['Name']).fillna('이름없음')
                 p_map = fetch_multi_prices(tuple(merged['종목코드'].tolist()))
                 merged['현재가'] = merged['종목코드'].apply(lambda x: p_map.get(x, {}).get('curr', 0))
                 merged['현재평가액'] = merged['수량'] * merged['현재가']; merged['차액'] = merged['목표금액'] - merged['현재평가액']
@@ -406,7 +412,7 @@ with tabs[4]:
                 diff = sell_s - buy_s
                 
                 st.markdown(f"**🔵 매도:** `₩{sell_s:,}` | **🔴 매수:** `₩{buy_s:,}` | **💡 잔액:** `₩{diff:,}` {'잔금' if diff>=0 else '추가 필요'}")
-                st.dataframe(merged[['No.', '종목코드','종목명','현재가','수량','현재평가액','목표금액','주문','주문수량','예상금액']].style.set_properties(**{'text-align': 'center'}).format(precision=0), use_container_width=True, hide_index=True, column_config={"No.": st.column_config.NumberColumn("No.", width="small", format="%d")})
+                st.dataframe(merged[['No.', '코드', '종목명','현재가','수량','현재평가액','목표금액','주문','주문수량','예상금액']].style.set_properties(**{'text-align': 'center'}).format(precision=0), use_container_width=True, hide_index=True, column_config={"No.": st.column_config.NumberColumn("No.", width="small", format="%d")})
                 
                 if st.button("계산기 초기화 (업로드 파일 삭제)"):
                     st.session_state['up_reb_key'] += 1
