@@ -285,9 +285,12 @@ def render_portfolio_tab(port_name, port_key, prices):
             c4.metric("💸 총 평가손익", f"{int(t_profit):,}원", delta=f"{int(t_profit):,}원")
             c5.metric("📊 총 수익률", f"{(t_profit/t_buy*100) if t_buy > 0 else 0:.2f}%", delta=f"{(t_profit/t_buy*100) if t_buy > 0 else 0:.2f}%")
             
-            # 💡 [핵심] 마크다운 문법을 사용하여 정렬 버그 완벽 해결
-            df['종목코드_L'] = df.apply(lambda r: f"[{r['종목코드']}](https://finance.naver.com/item/main.naver?code={r['종목코드']})", axis=1)
-            df['종목명_L'] = df.apply(lambda r: f"[{r['종목명']}](https://m.stock.naver.com/fchart/domestic/stock/{r['종목코드']})", axis=1)
+            # 💡 [핵심 해결] 마크다운 링크 버리고, 스트림릿 내장 LinkColumn 사용!
+            # display_text 옵션을 써서 URL 안에 숨겨진 진짜 이름만 화면에 쏙 빼서 보여줍니다.
+            df['코드'] = df.apply(lambda r: f"https://finance.naver.com/item/main.naver?code={r['종목코드']}", axis=1)
+            
+            # 주소 맨 뒤에 #기산텔레콤 처럼 이름을 몰래 달아둡니다.
+            df['종목명'] = df.apply(lambda r: f"https://m.stock.naver.com/fchart/domestic/stock/{r['종목코드']}#{r['종목명']}", axis=1)
             
             def style_row(st_df):
                 s = pd.DataFrame('', index=st_df.index, columns=st_df.columns)
@@ -302,11 +305,12 @@ def render_portfolio_tab(port_name, port_key, prices):
 
             st.dataframe(df.style.apply(style_row, axis=None).set_properties(**{'text-align': 'center'}).format({'전일대비(%)':'{:.2f}%','수익률(%)':'{:.2f}%','시총(억)':'{:,}','매수단가':'{:,}','액면가':'{:,}','현재가':'{:,}','평가금액':'{:,}','평가손익':'{:,}'}), 
                          use_container_width=True, hide_index=True,
-                         column_order=['No.', '종목코드_L', '종목명_L', '시총(억)', '수량', '매수단가', '액면가', '현재가', '전일대비(%)', '평가금액', '평가손익', '수익률(%)'],
+                         column_order=['No.', '코드', '종목명', '시총(억)', '수량', '매수단가', '액면가', '현재가', '전일대비(%)', '평가금액', '평가손익', '수익률(%)'],
                          column_config={
                              "No.": st.column_config.NumberColumn("No.", width="small", format="%d"),
-                             "종목코드_L": st.column_config.LinkColumn("코드", width="small"),
-                             "종목명_L": st.column_config.LinkColumn("종목명")
+                             # 정규표현식(Regex)을 써서 주소에서 필요한 글자만 추출해서 보여줍니다! 정렬도 이것 기준으로 됨!
+                             "코드": st.column_config.LinkColumn("코드", width="small", display_text=r"code=(.+)"),
+                             "종목명": st.column_config.LinkColumn("종목명", display_text=r"#(.+)")
                          })
 
 # --- [6. 메인 화면] ---
