@@ -358,7 +358,7 @@ with tab3:
                 st.markdown("#### 🗓️ 상세 분석 (월별 수익률 히트맵 & MDD)")
                 analysis_strat_t3 = st.radio("분석할 전략을 선택하세요", s_cols, horizontal=True, index=0, key="analysis_radio_t3_us")
                 
-                col_hm, col_mdd = st.columns([6, 4])
+                col_hm, col_mdd = st.columns([7.5, 2.5])
                 with col_hm: st.dataframe(get_monthly_heatmap(df_res, analysis_strat_t3), use_container_width=True)
                 with col_mdd: st.dataframe(get_mdd_history(df_cum[analysis_strat_t3]), use_container_width=True, hide_index=True)
                 
