@@ -2,7 +2,7 @@ name: US Monthly Archive
 
 on:
   schedule:
-    - cron: '0 23 28-31 * *'  # 💡 UTC 23시 = 한국 시간 아침 8시
+    - cron: '15 23 28-31 * *'  # 💡 UTC 23시 15분 = 한국 시간 아침 8시 15분 (데일리 로봇과 15분 간격 두기)
   workflow_dispatch:
 
 jobs:
@@ -15,7 +15,7 @@ jobs:
     - name: 1. 저장소 코드 불러오기
       uses: actions/checkout@v3
 
-    - name: 2. 1일 체크 로직 (한국 시간 기준 1일 아침 8시에만 작동)
+    - name: 2. 1일 체크 로직 (한국 시간 기준 1일 아침 8시 15분에만 작동)
       id: date_check
       run: |
         if [ "$(date +'%d')" != "01" ]; then
@@ -47,4 +47,6 @@ jobs:
         git config --local user.email "action@github.com"
         git config --local user.name "GitHub Action Bot"
         git add .
-        git diff --quiet && git diff --staged --quiet || (git commit -m "🤖 [US] 매월 1일 미국 모멘텀 아카이브 자동 생성 완료" && git push)
+        git commit -m "🤖 [US] 매월 1일 미국 모멘텀 아카이브 자동 생성 완료" || echo "No changes to commit"
+        git pull origin main --rebase
+        git push
