@@ -22,19 +22,45 @@ def inject_custom_css():
     """, unsafe_allow_html=True)
 
 def apply_korea_styling(row, highlight_codes=None, overlap_codes=None):
+    """
+    한국 데이터프레임 행에 색상 스타일 적용.
+    - 수익률 양수: 빨강 / 음수: 파랑
+    - 종목명: 중복(노랑) / 하이라이트(초록)
+    
+    💡 [안전성 수정] 중복 컬럼 등 예외 상황에 .index().fallback 사용.
+    """
     styles = [''] * len(row)
-    ret_col = '이번달수익률' if '이번달수익률' in row.index else ('다음달수익률(%)' if '다음달수익률(%)' in row.index else None)
+    
+    # 수익률 컬럼 색상
+    ret_col = None
+    if '이번달수익률' in row.index:
+        ret_col = '이번달수익률'
+    elif '다음달수익률(%)' in row.index:
+        ret_col = '다음달수익률(%)'
+    
     if ret_col:
-        col_idx = row.index.get_loc(ret_col)
-        val = row[ret_col]
-        if pd.notna(val) and val > 0: styles[col_idx] = 'color: #D32F2F; font-weight: bold;'
-        elif pd.notna(val) and val < 0: styles[col_idx] = 'color: #1976D2; font-weight: bold;'
-        
+        try:
+            col_idx = list(row.index).index(ret_col)
+            val = row[ret_col]
+            if pd.notna(val) and val > 0:
+                styles[col_idx] = 'color: #D32F2F; font-weight: bold;'
+            elif pd.notna(val) and val < 0:
+                styles[col_idx] = 'color: #1976D2; font-weight: bold;'
+        except (ValueError, IndexError):
+            pass  # 컬럼 못 찾으면 그냥 넘김
+    
+    # 종목명 배경색
     code = row.get('종목코드')
     if code and '종목명_L' in row.index:
-        name_idx = row.index.get_loc('종목명_L')
-        if overlap_codes and code in overlap_codes: styles[name_idx] = 'background-color: #FFF59D; color: #D84315; font-weight: bold;'
-        elif highlight_codes and code in highlight_codes: styles[name_idx] = 'background-color: #E8F5E9; color: #2E7D32; font-weight: bold;'
+        try:
+            name_idx = list(row.index).index('종목명_L')
+            if overlap_codes and code in overlap_codes:
+                styles[name_idx] = 'background-color: #FFF59D; color: #D84315; font-weight: bold;'
+            elif highlight_codes and code in highlight_codes:
+                styles[name_idx] = 'background-color: #E8F5E9; color: #2E7D32; font-weight: bold;'
+        except (ValueError, IndexError):
+            pass
+    
     return styles
 
 def style_kospi_ma(df):
@@ -83,9 +109,15 @@ def get_mdd_history(equity_series):
     if res_df.empty: return pd.DataFrame(columns=['MDD', '기간', '회복기간'])
     res_df = res_df.sort_values('MDD').head(10).reset_index(drop=True)
     def calc_months(s, e):
-        if e == '진행중': return '진행중'
+        """💡 [수정] 정확한 일수 기반 개월 계산. 1개월 미만은 일 단위로 표시."""
+        if e == '진행중':
+            return '진행중'
         sd, ed = pd.to_datetime(s), pd.to_datetime(e)
-        return f"{(ed.year - sd.year) * 12 + (ed.month - sd.month)}개월"
+        days = (ed - sd).days
+        if days < 30:
+            return f"{days}일"
+        months = days / 30.44  # 평균 한 달 일수
+        return f"{months:.1f}개월"
     res_df['기간'] = res_df.apply(lambda r: f"{r['시작일']} ~ {r['최저일']}", axis=1)
     res_df['회복기간'] = res_df.apply(lambda r: calc_months(r['시작일'], r['회복일']), axis=1)
     res_df['MDD'] = res_df['MDD'].apply(lambda x: f"{x:.2f}%")
