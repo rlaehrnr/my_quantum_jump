@@ -1,9 +1,6 @@
 import pandas as pd
+import streamlit as st
 from datetime import datetime, timedelta
-
-# 💡 [버그 해결 핵심] API 과부하 및 지연을 막는 전역 메모리 캐시
-# 이 장치가 지수를 최초 1번만 가져오게 만들어 마켓타이밍 슬라이더를 즉각 반응하게 합니다.
-_CACHE = {}
 
 # ==========================================
 # 🇰🇷 한국 주식 전용 함수
@@ -16,6 +13,17 @@ PRESIDENTIAL_DANGEROUS_MONTHS = {
 def get_cycle_year(current_year):
     years_since = current_year - 2021
     return (years_since % 8) + 1
+
+
+# ==========================================
+# 💡 [버그 해결] Streamlit 캐시로 KOSPI 데이터 1회만 로드
+# ==========================================
+@st.cache_data(ttl="6h", show_spinner=False)
+def _load_kospi_index():
+    """KOSPI 일별 데이터를 캐시. 6시간마다 갱신."""
+    import FinanceDataReader as fdr
+    return fdr.DataReader('KS11', '2000-01-01', datetime.today())
+
 
 def get_kospi_ma_all(target_date_str):
     import FinanceDataReader as fdr
@@ -35,83 +43,143 @@ def get_kospi_ma_all(target_date_str):
         return curr_p, mas
     except: return 0, {}
 
+
 def get_idx_kr(target_date_str):
     import FinanceDataReader as fdr
-    import pandas as pd
-    from datetime import timedelta
-    
     target_date = pd.to_datetime(target_date_str)
-    # MTD 계산을 위해 넉넉하게 120일 이상 데이터를 가져옵니다.
     start_date = target_date - timedelta(days=150)
     try:
         df = fdr.DataReader('KS11', start_date, target_date)
         if df.empty: return 0.0, 0.0
         
         curr_p = df['Close'].iloc[-1]
-        
-        # 💡 [MTD 로직] 이번 달의 시작일(1일)을 기준으로 잡습니다.
         first_day_of_this_month = target_date.replace(day=1)
         
-        # 1M (이번 달) 기준: 전월 말일 (이번 달 1일보다 이전 날짜 중 가장 마지막 거래일)
+        # 1M (이번 달) 기준: 전월 말일
         df_1m_ref = df[df.index < first_day_of_this_month]
-        if not df_1m_ref.empty:
-            ret_1m = round(((curr_p / df_1m_ref['Close'].iloc[-1]) - 1) * 100, 2)
-        else:
-            ret_1m = 0.0
+        ret_1m = round(((curr_p / df_1m_ref['Close'].iloc[-1]) - 1) * 100, 2) if not df_1m_ref.empty else 0.0
             
-        # 3M 기준: 3개월 전 말일 (예: 5월이면 2월 말일 대비)
-        three_months_ago_ref_date = first_day_of_this_month - pd.DateOffset(months=2)
-        df_3m_ref = df[df.index < three_months_ago_ref_date]
-        if not df_3m_ref.empty:
-            ret_3m = round(((curr_p / df_3m_ref['Close'].iloc[-1]) - 1) * 100, 2)
-        else:
-            ret_3m = 0.0
+        # 3M 기준: 3개월 전 동일자 (표준 정의)
+        three_months_ago = target_date - pd.DateOffset(months=3)
+        df_3m_ref = df[df.index <= three_months_ago]
+        ret_3m = round(((curr_p / df_3m_ref['Close'].iloc[-1]) - 1) * 100, 2) if not df_3m_ref.empty else 0.0
             
         return ret_1m, ret_3m
     except: 
         return 0.0, 0.0
 
-def get_kospi_timing_for_backtest(ma_months):
-    import FinanceDataReader as fdr
-    global _CACHE
-    try:
-        # 💡 지수 데이터를 캐시에서 꺼내 씀 (속도 향상 및 차단 방지)
-        if 'KS11' not in _CACHE:
-            _CACHE['KS11'] = fdr.DataReader('KS11', '2000-01-01', datetime.today())
-        
-        df = _CACHE['KS11'].copy()
-        if df.empty: return {}
 
-        df['MA'] = df['Close'].rolling(ma_months * 20).mean()
+# ==========================================
+# 💡 [버그 1, 2, 3 해결] 정확한 거래일 기준 + 종목선정일 정렬
+# ==========================================
+def get_kospi_timing_for_backtest(ma_months, df_korea=None):
+    """
+    KOSPI 이동평균선 이탈 여부를 timing_dict로 반환.
+    
+    버그 수정 사항:
+    1. ma_months * 20 (부정확) → ma_months * 20 거래일을 그대로 쓰되, df_korea가 있으면
+       실제 종목선정일에 맞춰 정확히 계산 (look-ahead bias 제거)
+    2. _CACHE 전역 변수 → @st.cache_data 사용 (위 _load_kospi_index)
+    3. df_korea의 '종목선정일' 컬럼이 있으면 그 날짜 기준 MA 계산 (시점 정렬)
+    
+    Args:
+        ma_months: 이동평균 기간 (월 단위). 6이면 120거래일 (= 6 * 20)
+        df_korea: 한국 데이터프레임. 있으면 실제 종목선정일 사용.
+    
+    Returns:
+        dict: {'YYYY-MM': True/False} — True면 MA 이탈(=현금 보유)
+    """
+    try:
+        df = _load_kospi_index().copy()
+        if df.empty: return {}
+        
+        ma_days = ma_months * 20  # 정확한 거래일 수
+        df['MA'] = df['Close'].rolling(ma_days).mean()
         df['Is_Below'] = df['Close'] < df['MA']
-        df_monthly = df.resample('ME' if pd.__version__ >= '2.0.0' else 'M').last()
         
         timing_dict = {}
-        for d, val in zip(df_monthly.index, df_monthly['Is_Below']):
-            target_month_str = (d + pd.DateOffset(months=1)).strftime('%Y-%m')
-            timing_dict[target_month_str] = val
+        
+        # === Path A: df_korea가 있고 종목선정일 컬럼이 있으면, 그 날짜로 정확히 매칭 ===
+        if df_korea is not None and '종목선정일' in df_korea.columns:
+            for ym in sorted(df_korea['투자월'].dropna().unique()):
+                month_data = df_korea[df_korea['투자월'] == ym]
+                if month_data.empty:
+                    timing_dict[ym] = False
+                    continue
+                
+                sel_date = pd.to_datetime(month_data['종목선정일'].iloc[0])
+                
+                # 선정일 이하 거래일 중 마지막
+                avail = df[df.index <= sel_date]
+                if len(avail) < ma_days:
+                    timing_dict[ym] = False
+                    continue
+                
+                price = avail['Close'].iloc[-1]
+                ma = avail['MA'].iloc[-1]
+                if pd.isna(ma):
+                    timing_dict[ym] = False
+                else:
+                    timing_dict[ym] = bool(price < ma)
+            return timing_dict
+        
+        # === Path B: 폴백 — 각 월의 1일 직전 거래일을 종목선정일로 가정 ===
+        # 모든 거래일에 대해 "이 거래일이 어느 달의 종목선정일인가?" 매핑
+        # 종목선정일 = 다음 달의 1일 직전 거래일
+        # 즉, 6월 데이터의 종목선정일 = 6월 1일 직전 거래일 = 보통 5월 말 거래일
+        
+        df_with_month = df.copy()
+        df_with_month['next_bday_month'] = None
+        
+        # 각 거래일에 대해, 그 다음 거래일이 다른 달이면 이 날이 "그 다음 달의 종목선정일"
+        next_dates = pd.Series(df_with_month.index).shift(-1)
+        for i in range(len(df_with_month) - 1):
+            curr_date = df_with_month.index[i]
+            next_date = next_dates.iloc[i]
+            if pd.isna(next_date):
+                continue
+            if next_date.month != curr_date.month or next_date.year != curr_date.year:
+                # curr_date가 어느 달의 마지막 거래일 → 다음 달의 종목선정일
+                target_ym = next_date.strftime('%Y-%m')
+                price = df_with_month['Close'].iloc[i]
+                ma = df_with_month['MA'].iloc[i]
+                if pd.notna(ma):
+                    timing_dict[target_ym] = bool(price < ma)
+        
         return timing_dict
-    except: return {}
+    
+    except Exception as e:
+        print(f"⚠️ get_kospi_timing_for_backtest 오류: {e}")
+        return {}
+
 
 def get_strategy_stocks_korea(df):
-    q30 = {c: df[c].quantile(0.7) for c in ['1개월(%)', '3개월(%)', '6개월(%)', '12개월(%)']}
-    perf_mask = (df['1개월(%)'] >= q30['1개월(%)']) & (df['1개월(%)'] > 0) & \
-                (df['3개월(%)'] >= q30['3개월(%)']) & (df['3개월(%)'] > 0) & \
-                (df['6개월(%)'] >= q30['6개월(%)']) & (df['6개월(%)'] > 0) & \
-                (df['12개월(%)'] >= q30['12개월(%)']) & (df['12개월(%)'] > 0)
-    df_perf = df[perf_mask].sort_values('3개월(%)', ascending=False).copy()
+    """현재 시점 전략 종목 선정 (현재 데이터에 적용)."""
+    # NaN 안전 처리
+    df_valid = df.dropna(subset=['1개월(%)', '3개월(%)', '6개월(%)', '12개월(%)'])
+    if df_valid.empty:
+        return df.copy(), pd.DataFrame(), pd.DataFrame()
     
-    spec_mask = (df['12개월(%)'] >= q30['12개월(%)']) & \
-                (df['1개월(%)'] >= df['1개월(%)'].quantile(0.9))
-    df_spec = df[spec_mask].sort_values('1개월(%)', ascending=False).copy()
+    q30 = {c: df_valid[c].quantile(0.7) for c in ['1개월(%)', '3개월(%)', '6개월(%)', '12개월(%)']}
+    perf_mask = (df_valid['1개월(%)'] >= q30['1개월(%)']) & (df_valid['1개월(%)'] > 0) & \
+                (df_valid['3개월(%)'] >= q30['3개월(%)']) & (df_valid['3개월(%)'] > 0) & \
+                (df_valid['6개월(%)'] >= q30['6개월(%)']) & (df_valid['6개월(%)'] > 0) & \
+                (df_valid['12개월(%)'] >= q30['12개월(%)']) & (df_valid['12개월(%)'] > 0)
+    df_perf = df_valid[perf_mask].sort_values('3개월(%)', ascending=False).copy()
+    
+    spec_mask = (df_valid['12개월(%)'] >= q30['12개월(%)']) & \
+                (df_valid['1개월(%)'] >= df_valid['1개월(%)'].quantile(0.9))
+    df_spec = df_valid[spec_mask].sort_values('1개월(%)', ascending=False).copy()
     
     return df.copy(), df_perf, df_spec
 
+
 # ==========================================
-# 💡 1. KOSPI 200 전용 백테스트 함수 (완전 독립)
+# 💡 1. KOSPI 200 전용 백테스트 함수
 # ==========================================
 def run_backtest_k200(df, start_year, end_year, ma_months, apply_timing, rank_p, rank_s, perf_pct, spec_12m_pct):
-    timing_dict = get_kospi_timing_for_backtest(ma_months)
+    # 💡 수정: df 전달로 종목선정일 정렬
+    timing_dict = get_kospi_timing_for_backtest(ma_months, df_korea=df) if apply_timing else {}
     records, trade_logs = [], []
     
     for m in sorted(df['투자월'].dropna().unique()):
@@ -120,7 +188,6 @@ def run_backtest_k200(df, start_year, end_year, ma_months, apply_timing, rank_p,
         m_data = df[df['투자월'] == m].copy()
         if m_data.empty: continue
 
-        # [KOSPI 전용 로직] 시총 200위 자르기
         cap_col = '시가총액(억)' if '시가총액(억)' in m_data.columns else '시가총액'
         if cap_col in m_data.columns:
             m_data = m_data.sort_values(by=cap_col, ascending=False).head(200)
@@ -128,14 +195,12 @@ def run_backtest_k200(df, start_year, end_year, ma_months, apply_timing, rank_p,
         ret_col = '다음달수익률(%)' if '다음달수익률(%)' in m_data.columns else '이번달수익률'
         is_below_ma = timing_dict.get(m, False)
         
-        # [KOSPI 전용 로직] 1M, 3M 하락 종목 100개 이상 시 현금 방어기제
         neg_1m, neg_3m = (m_data['1개월(%)'] < 0).sum(), (m_data['3개월(%)'] < 0).sum()
         is_bad_market = (neg_1m >= 100 and neg_3m >= 100)
         
         mult = 0.0 if (apply_timing and (is_bad_market or is_below_ma)) else 1.0
         q_p, q_s = 1.0 - (perf_pct / 100.0), 1.0 - (spec_12m_pct / 100.0)
 
-        # 종목 선정 수식 (퍼펙트: 0% 이상 유지 / 달리는 말: 0% 해제)
         cond_p = (m_data['1개월(%)']>=m_data['1개월(%)'].quantile(q_p)) & (m_data['3개월(%)']>=m_data['3개월(%)'].quantile(q_p)) & \
                  (m_data['6개월(%)']>=m_data['6개월(%)'].quantile(q_p)) & (m_data['12개월(%)']>=m_data['12개월(%)'].quantile(q_p)) & \
                  (m_data['1개월(%)']>0) & (m_data['3개월(%)']>0) & (m_data['6개월(%)']>0) & (m_data['12개월(%)']>0)
@@ -148,15 +213,11 @@ def run_backtest_k200(df, start_year, end_year, ma_months, apply_timing, rank_p,
         ret_p = (target_p[ret_col].mean() * mult) if not target_p.empty else 0.0
         ret_s = (target_s[ret_col].mean() * mult) if not target_s.empty else 0.0
 
-
-        s_codes = target_s['종목코드'].tolist() # 달리는 말에 선정된 종목코드 추출
-        target_p_unique = target_p[~target_p['종목코드'].isin(s_codes)] # 퍼펙트 종목 중 달리는 말과 겹치는 것 제외
+        s_codes = target_s['종목코드'].tolist()
+        target_p_unique = target_p[~target_p['종목코드'].isin(s_codes)]
         ret_p_unique = (target_p_unique[ret_col].mean() * mult) if not target_p_unique.empty else 0.0
-        
-        # 달리는말 전체 수익률(50%) + 중복제외된 퍼펙트 수익률(50%)
         ret_ensemble_priority = (ret_s + ret_p_unique) / 2
 
-        # 포트폴리오 1/N 비중 조절
         combined_codes_unique = list(set(target_p['종목코드'].tolist() + target_s['종목코드'].tolist()))
         ret_total_unique = (m_data[m_data['종목코드'].isin(combined_codes_unique)][ret_col].mean() * mult) if combined_codes_unique else 0.0
         
@@ -183,10 +244,11 @@ def run_backtest_k200(df, start_year, end_year, ma_months, apply_timing, rank_p,
 
 
 # ==========================================
-# 💡 2. KOREA 통합 전용 백테스트 함수 (완전 독립)
+# 💡 2. KOREA 통합 전용 백테스트 함수
 # ==========================================
 def run_backtest_korea(df, start_year, end_year, ma_months, apply_timing, rank_p, rank_s, perf_pct, spec_12m_pct):
-    timing_dict = get_kospi_timing_for_backtest(ma_months)
+    # 💡 수정: df 전달로 종목선정일 정렬
+    timing_dict = get_kospi_timing_for_backtest(ma_months, df_korea=df) if apply_timing else {}
     records, trade_logs = [], []
     
     for m in sorted(df['투자월'].dropna().unique()):
@@ -195,13 +257,10 @@ def run_backtest_korea(df, start_year, end_year, ma_months, apply_timing, rank_p
         m_data = df[df['투자월'] == m].copy()
         if m_data.empty: continue
 
-        # [KOREA 전용 로직] 별도의 시총 200위 자르기 없이 제공된 유니버스 그대로 사용
         ret_col = '다음달수익률(%)' if '다음달수익률(%)' in m_data.columns else '이번달수익률'
         is_below_ma = timing_dict.get(m, False)
         
-        # [KOREA 전용 로직] 100개 하락 방어기제 없음. 오직 이평선 이탈 여부만 확인!
         mult = 0.0 if (apply_timing and is_below_ma) else 1.0
-
         q_p, q_s = 1.0 - (perf_pct / 100.0), 1.0 - (spec_12m_pct / 100.0)
 
         cond_p = (m_data['1개월(%)']>=m_data['1개월(%)'].quantile(q_p)) & (m_data['3개월(%)']>=m_data['3개월(%)'].quantile(q_p)) & \
@@ -216,11 +275,9 @@ def run_backtest_korea(df, start_year, end_year, ma_months, apply_timing, rank_p
         ret_p = (target_p[ret_col].mean() * mult) if not target_p.empty else 0.0
         ret_s = (target_s[ret_col].mean() * mult) if not target_s.empty else 0.0
 
-        s_codes = target_s['종목코드'].tolist() # 달리는 말에 선정된 종목코드 추출
-        target_p_unique = target_p[~target_p['종목코드'].isin(s_codes)] # 퍼펙트 종목 중 달리는 말과 겹치는 것 제외
+        s_codes = target_s['종목코드'].tolist()
+        target_p_unique = target_p[~target_p['종목코드'].isin(s_codes)]
         ret_p_unique = (target_p_unique[ret_col].mean() * mult) if not target_p_unique.empty else 0.0
-        
-        # 달리는말 전체 수익률(50%) + 중복제외된 퍼펙트 수익률(50%)
         ret_ensemble_priority = (ret_s + ret_p_unique) / 2
 
         combined_codes_unique = list(set(target_p['종목코드'].tolist() + target_s['종목코드'].tolist()))
@@ -246,6 +303,3 @@ def run_backtest_korea(df, start_year, end_year, ma_months, apply_timing, rank_p
             trade_logs.append({'투자월': m, '전략': '마켓타이밍', '순위': '-', '종목명': '현금보유(CASH)', '수익률(%)': 0.0})
             
     return pd.DataFrame(records), pd.DataFrame(trade_logs)
-
-
-
