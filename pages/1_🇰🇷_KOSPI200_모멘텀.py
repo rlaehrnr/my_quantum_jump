@@ -86,8 +86,8 @@ years_list = sorted(df_master['투자연도'].unique().astype(int))
 min_y, max_y = min(years_list), max(years_list)
 
 @st.cache_data(show_spinner=False)
-def cached_run_backtest_korea(df, start_year, end_year, ma_months, apply_timing, rank_p, rank_s, perf_pct, spec_12m_pct):
-    return run_backtest_k200(df, start_year, end_year, ma_months, apply_timing, rank_p, rank_s, perf_pct, spec_12m_pct)
+def cached_run_backtest_korea(df, start_year, end_year, ma_months, apply_timing, rank_p, rank_s, perf_pct, spec_12m_pct, trading_cost_pct=0.25):
+    return run_backtest_k200(df, start_year, end_year, ma_months, apply_timing, rank_p, rank_s, perf_pct, spec_12m_pct, trading_cost_pct=trading_cost_pct)
 
 @st.cache_data(show_spinner=False)
 def cached_run_custom_backtest(df, start_year_c, end_year_c, ma_months_t4, apply_timing_c, w1, w3, w6, w12, custom_pct, rank_c_s, rank_c_e):
@@ -335,9 +335,10 @@ with tab2:
 # ==========================================
 with tab3:
     st.markdown("<h4 style='margin:0;'>⚙️ 시뮬레이션 설정</h4>", unsafe_allow_html=True)
-    c1, c_ma, c_chk = st.columns([1, 1, 1.5])
+    c1, c_ma, c_cost, c_chk = st.columns([1, 1, 1, 1.5])
     with c1: start_year, end_year = st.slider("📅 테스트 기간", min_y, max_y, (min_y, max_y), key='t3_yr')
     with c_ma: ma_months_t3 = st.slider("📉 마켓타이밍 (개월선)", 1, 12, 6, key='t3_ma')
+    with c_cost: trading_cost_pct_t3 = st.slider("💰 거래비용(편도%)", 0.0, 0.5, 0.25, 0.05, key='t3_cost')  
     with c_chk:
         st.markdown("<div style='margin-top: 35px;'></div>", unsafe_allow_html=True)
         apply_timing = st.checkbox("🛑 마켓타이밍 적용 (1&3M 하락 100개↑ & MA 이탈 시 현금)", value=True, key='t3_chk')
@@ -350,7 +351,7 @@ with tab3:
     with c5: rank_s_s, rank_s_e = st.slider("🐎 달리는말 매수 순위", 1, 30, (1, 2))
 
     with st.spinner("엔진 구동 중..."):
-        df_res, df_trades = cached_run_backtest_korea(df_master, start_year, end_year, ma_months_t3, apply_timing, (rank_p_s, rank_p_e), (rank_s_s, rank_s_e), perf_pct_t3, spec_12m_pct_t3)
+        df_res, df_trades = cached_run_backtest_korea(df, start_year, end_year, ma_months_t3, apply_timing, (rank_p_s, rank_p_e), (rank_s_s, rank_s_e), perf_pct_t3, spec_12m_pct_t3, trading_cost_pct=trading_cost_pct_t3)
         if not df_res.empty:
             s_cols = [c for c in df_res.columns if c not in ['투자월', 'invested']]
             df_cum = (1 + df_res.set_index('투자월')[s_cols] / 100).cumprod() * 100
@@ -364,7 +365,21 @@ with tab3:
                 cagr = ((final_val/100)**(1/years)-1)*100 if final_val > 0 else -100
                 win_rate = (df_res.loc[df_res['invested'], col]>0).mean()*100 if df_res['invested'].any() else 0
                 mdd = ((df_cum[col]/df_cum[col].cummax())-1).min()*100
-                stats.append({"전략명": col, "CAGR (연평균)": f"{cagr:.1f}%", "총 누적수익률": f"{final_val-100:,.1f}%", "MDD (최대낙폭)": f"{mdd:.1f}%", "투자월 비율": f"{(df_res['invested'].sum()/len(df_res))*100:.1f}%", "월별 승률": f"{win_rate:.1f}%", "평균 수익률": f"{df_res.loc[df_res['invested'], col].mean():.2f}%" if df_res['invested'].any() else "0.00%"})
+                # 💡 1억 투자 시 최종 금액 계산
+            final_amount_1e = 1.0 * (final_val / 100.0)  # final_val이 100 기준이므로
+            # final_val가 "100기준"인지 확인 필요. 보통 (1+ret).cumprod()*100이면 100기준.
+            # 만약 final_val가 이미 누적 배수면 final_amount_1e = 1.0 * final_val
+            
+            stats.append({
+                "전략명": col, 
+                "CAGR (연평균)": f"{cagr:.1f}%", 
+                "총 누적수익률": f"{final_val-100:,.1f}%", 
+                "1억 투자 시": f"{final_amount_1e:,.2f}억",  # 💡 추가
+                "MDD (최대낙폭)": f"{mdd:.1f}%", 
+                "투자월 비율": f"{(df_res['invested'].sum()/len(df_res))*100:.1f}%", 
+                "월별 승률": f"{win_rate:.1f}%", 
+                "평균 수익률": f"{df_res.loc[df_res['invested'], col].mean():.2f}%" if df_res['invested'].any() else "0.00%"
+            })
             
             stats_df_t3 = pd.DataFrame(stats)
             
