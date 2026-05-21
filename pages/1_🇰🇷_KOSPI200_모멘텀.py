@@ -366,20 +366,20 @@ with tab3:
                 win_rate = (df_res.loc[df_res['invested'], col]>0).mean()*100 if df_res['invested'].any() else 0
                 mdd = ((df_cum[col]/df_cum[col].cummax())-1).min()*100
                 # 💡 1억 투자 시 최종 금액 계산
-            final_amount_1e = 1.0 * (final_val / 100.0)  # final_val이 100 기준이므로
-            # final_val가 "100기준"인지 확인 필요. 보통 (1+ret).cumprod()*100이면 100기준.
-            # 만약 final_val가 이미 누적 배수면 final_amount_1e = 1.0 * final_val
-            
-            stats.append({
-                "전략명": col, 
-                "CAGR (연평균)": f"{cagr:.1f}%", 
-                "총 누적수익률": f"{final_val-100:,.1f}%", 
-                "1억 투자 시": f"{final_amount_1e:,.2f}억",  # 💡 추가
-                "MDD (최대낙폭)": f"{mdd:.1f}%", 
-                "투자월 비율": f"{(df_res['invested'].sum()/len(df_res))*100:.1f}%", 
-                "월별 승률": f"{win_rate:.1f}%", 
-                "평균 수익률": f"{df_res.loc[df_res['invested'], col].mean():.2f}%" if df_res['invested'].any() else "0.00%"
-            })
+                final_amount_1e = 1.0 * (final_val / 100.0)  # final_val이 100 기준이므로
+                # final_val가 "100기준"인지 확인 필요. 보통 (1+ret).cumprod()*100이면 100기준.
+                # 만약 final_val가 이미 누적 배수면 final_amount_1e = 1.0 * final_val
+                
+                stats.append({
+                    "전략명": col, 
+                    "CAGR (연평균)": f"{cagr:.1f}%", 
+                    "총 누적수익률": f"{final_val-100:,.1f}%", 
+                    "1억 투자 시": f"{final_amount_1e:,.2f}억",  # 💡 추가
+                    "MDD (최대낙폭)": f"{mdd:.1f}%", 
+                    "투자월 비율": f"{(df_res['invested'].sum()/len(df_res))*100:.1f}%", 
+                    "월별 승률": f"{win_rate:.1f}%", 
+                    "평균 수익률": f"{df_res.loc[df_res['invested'], col].mean():.2f}%" if df_res['invested'].any() else "0.00%"
+                })
             
             stats_df_t3 = pd.DataFrame(stats)
             
