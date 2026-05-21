@@ -351,7 +351,7 @@ with tab3:
     with c5: rank_s_s, rank_s_e = st.slider("🐎 달리는말 매수 순위", 1, 30, (1, 2))
 
     with st.spinner("엔진 구동 중..."):
-        df_res, df_trades = cached_run_backtest_korea(df, start_year, end_year, ma_months_t3, apply_timing, (rank_p_s, rank_p_e), (rank_s_s, rank_s_e), perf_pct_t3, spec_12m_pct_t3, trading_cost_pct=trading_cost_pct_t3)
+        df_res, df_trades = cached_run_backtest_korea(df_master, start_year, end_year, ma_months_t3, apply_timing, (rank_p_s, rank_p_e), (rank_s_s, rank_s_e), perf_pct_t3, spec_12m_pct_t3, trading_cost_pct=trading_cost_pct_t3)
         if not df_res.empty:
             s_cols = [c for c in df_res.columns if c not in ['투자월', 'invested']]
             df_cum = (1 + df_res.set_index('투자월')[s_cols] / 100).cumprod() * 100
