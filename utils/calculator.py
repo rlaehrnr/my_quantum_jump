@@ -201,11 +201,15 @@ def get_strategy_stocks_korea(df):
 
 
 # ==========================================
-# 💡 백테스트: KOSPI 200 전용
+# 💡 백테스트: KOSPI 200 전용 [업그레이드]
 # 
 # K200 모드의 특징:
 # - 매월 시총 상위 200위만 사용 (m_data.sort_values(...).head(200))
-# - 하락 종목 100개 이상이면 현금 (방어기제 OR 마켓타이밍 조건)
+# - 마켓타이밍을 3개의 독립 필터로 분리:
+#   * 필터 A: 1개월 하락 ≥ N개 AND 3개월 하락 ≥ N개 시 현금
+#   * 필터 B: KOSPI N개월 이동평균선 이탈 시 현금
+#   * 필터 C: 200종목 3개월 평균 수익률 < 0% 시 현금
+# - 각 필터마다 on/off + 결합방식(AND/OR) 선택 가능
 # 
 # 거래비용:
 # - trading_cost_pct: 편도 거래비용 (%). 기본 0.25%.
@@ -214,20 +218,40 @@ def get_strategy_stocks_korea(df):
 # ==========================================
 def run_backtest_k200(df, start_year, end_year, ma_months, apply_timing, 
                      rank_p, rank_s, perf_pct, spec_12m_pct,
-                     trading_cost_pct=0.25):
+                     trading_cost_pct=0.25,
+                     spec_1m_pct=10,
+                     bad_market_threshold=100,
+                     filter_a_enabled=True, filter_a_mode='OR',
+                     filter_b_enabled=True, filter_b_mode='OR',
+                     filter_c_enabled=False, filter_c_mode='OR'):
     """
     Args:
         df: 한국 데이터프레임
         start_year, end_year: 백테스트 기간
-        ma_months: MA 기간 (월)
-        apply_timing: 마켓타이밍 적용 여부
+        ma_months: MA 기간 (월). 필터 B에서 사용.
+        apply_timing: 마켓타이밍 마스터 스위치. False면 모든 필터 무시.
         rank_p: 퍼펙트 종목 순위 범위 (예: (1, 5) = 1~5위)
         rank_s: 달리는말 종목 순위 범위
         perf_pct: 퍼펙트 컷오프 (%) — 30 = 상위 30%
         spec_12m_pct: 달리는말 12개월 컷오프 (%)
         trading_cost_pct: 편도 거래비용 (%). 기본 0.25%. 0이면 비용 무시.
+        spec_1m_pct: 달리는말 1개월 수익률 컷오프 (%). 기본 10 = 상위 10%.
+        bad_market_threshold: 필터 A의 1&3개월 하락 종목 수 임계값. 기본 100.
+        filter_a_enabled: 필터 A (하락 종목 수) on/off
+        filter_a_mode: 'OR' or 'AND' — 다른 활성 필터와의 결합 방식
+        filter_b_enabled: 필터 B (MA 이탈) on/off
+        filter_b_mode: 'OR' or 'AND'
+        filter_c_enabled: 필터 C (3개월 평균 < 0) on/off
+        filter_c_mode: 'OR' or 'AND'
+    
+    Note on 결합 방식:
+        활성화된 필터들의 결합 방식은 "각 필터의 mode"로 결정됩니다.
+        - 한 필터의 mode='OR'면 그 필터 단독으로 신호 발생 가능
+        - mode='AND'인 필터들은 모두 함께 신호 발생해야 함
+        예: A(OR), B(AND), C(AND) → A 단독 OR (B AND C)
     """
-    timing_dict = get_kospi_timing_for_backtest(ma_months, df_korea=df) if apply_timing else {}
+    # 필터 B는 마켓타이밍 적용 시에만 의미가 있음
+    timing_dict = get_kospi_timing_for_backtest(ma_months, df_korea=df) if (apply_timing and filter_b_enabled) else {}
     records, trade_logs = [], []
     
     # 거래비용: 매월 풀 리밸런싱 가정 → 왕복 = 편도 × 2
@@ -245,22 +269,48 @@ def run_backtest_k200(df, start_year, end_year, ma_months, apply_timing,
             m_data = m_data.sort_values(by=cap_col, ascending=False).head(200)
 
         ret_col = '다음달수익률(%)' if '다음달수익률(%)' in m_data.columns else '이번달수익률'
-        is_below_ma = timing_dict.get(m, False)
         
-        # [K200 전용] 하락 종목 100개 이상 시 현금 방어
-        neg_1m, neg_3m = (m_data['1개월(%)'] < 0).sum(), (m_data['3개월(%)'] < 0).sum()
-        is_bad_market = (neg_1m >= 100 and neg_3m >= 100)
+        # === 각 필터 신호 계산 ===
+        # 필터 A: 1개월 하락 ≥ N개 AND 3개월 하락 ≥ N개 (기존 OR → AND로 변경됨)
+        neg_1m = (m_data['1개월(%)'] < 0).sum()
+        neg_3m = (m_data['3개월(%)'] < 0).sum()
+        signal_a = (neg_1m >= bad_market_threshold) and (neg_3m >= bad_market_threshold)
         
-        mult = 0.0 if (apply_timing and (is_bad_market or is_below_ma)) else 1.0
+        # 필터 B: MA 이탈
+        signal_b = bool(timing_dict.get(m, False))
+        
+        # 필터 C: 200종목 3개월 평균 수익률 < 0
+        signal_c = bool(m_data['3개월(%)'].mean() < 0)
+        
+        # === 활성 필터들을 결합 방식에 따라 평가 ===
+        # OR 그룹: 활성+OR 필터 중 하나라도 True면 신호
+        # AND 그룹: 활성+AND 필터가 모두 True여야 신호
+        # 최종 신호 = OR그룹 OR AND그룹
+        or_signals, and_signals = [], []
+        if filter_a_enabled:
+            (or_signals if filter_a_mode == 'OR' else and_signals).append(signal_a)
+        if filter_b_enabled:
+            (or_signals if filter_b_mode == 'OR' else and_signals).append(signal_b)
+        if filter_c_enabled:
+            (or_signals if filter_c_mode == 'OR' else and_signals).append(signal_c)
+        
+        or_part = any(or_signals) if or_signals else False
+        and_part = all(and_signals) if and_signals else False
+        # AND 그룹이 비어있으면 False (기여 안 함). OR 그룹도 비어있으면 False.
+        any_active = filter_a_enabled or filter_b_enabled or filter_c_enabled
+        cash_signal = (or_part or and_part) if any_active else False
+        
+        mult = 0.0 if (apply_timing and cash_signal) else 1.0
         q_p, q_s = 1.0 - (perf_pct / 100.0), 1.0 - (spec_12m_pct / 100.0)
+        q_s_1m = 1.0 - (spec_1m_pct / 100.0)  # 달리는말 1개월 컷오프
 
         # 퍼펙트 상승: 1/3/6/12개월 모두 상위 (1-q_p) & 모두 양수
         cond_p = (m_data['1개월(%)']>=m_data['1개월(%)'].quantile(q_p)) & (m_data['3개월(%)']>=m_data['3개월(%)'].quantile(q_p)) & \
                  (m_data['6개월(%)']>=m_data['6개월(%)'].quantile(q_p)) & (m_data['12개월(%)']>=m_data['12개월(%)'].quantile(q_p)) & \
                  (m_data['1개월(%)']>0) & (m_data['3개월(%)']>0) & (m_data['6개월(%)']>0) & (m_data['12개월(%)']>0)
 
-        # 달리는 말: 12개월 상위 + 1개월 상위 10%
-        cond_s = (m_data['12개월(%)']>=m_data['12개월(%)'].quantile(q_s)) & (m_data['1개월(%)']>=m_data['1개월(%)'].quantile(0.9))
+        # 달리는 말: 12개월 상위 spec_12m_pct% + 1개월 상위 spec_1m_pct%
+        cond_s = (m_data['12개월(%)']>=m_data['12개월(%)'].quantile(q_s)) & (m_data['1개월(%)']>=m_data['1개월(%)'].quantile(q_s_1m))
 
         target_p = m_data[cond_p].sort_values('3개월(%)', ascending=False).iloc[rank_p[0]-1 : rank_p[1]]
         target_s = m_data[cond_s].sort_values('1개월(%)', ascending=False).iloc[rank_s[0]-1 : rank_s[1]]
