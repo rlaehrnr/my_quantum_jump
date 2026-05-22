@@ -363,22 +363,27 @@ with tab3:
                 final_val = df_cum[col].iloc[-1]
                 years = len(df_res)/12
                 cagr = ((final_val/100)**(1/years)-1)*100 if final_val > 0 else -100
-                win_rate = (df_res.loc[df_res['invested'], col]>0).mean()*100 if df_res['invested'].any() else 0
                 mdd = ((df_cum[col]/df_cum[col].cummax())-1).min()*100
-                # 💡 1억 투자 시 최종 금액 계산
-                final_amount_1e = 1.0 * (final_val / 100.0)  # final_val이 100 기준이므로
-                # final_val가 "100기준"인지 확인 필요. 보통 (1+ret).cumprod()*100이면 100기준.
-                # 만약 final_val가 이미 누적 배수면 final_amount_1e = 1.0 * final_val
+                
+                # 💡 투자월 / 총개월 / 승월 카운트
+                total_months = len(df_res)
+                invested_months = int(df_res['invested'].sum())
+                if invested_months > 0:
+                    win_months = int((df_res.loc[df_res['invested'], col] > 0).sum())
+                    win_rate = win_months / invested_months * 100
+                    avg_ret_str = f"{df_res.loc[df_res['invested'], col].mean():.2f}%"
+                else:
+                    win_months, win_rate, avg_ret_str = 0, 0.0, "0.00%"
+                inv_ratio = invested_months / total_months * 100 if total_months > 0 else 0
                 
                 stats.append({
                     "전략명": col, 
                     "CAGR (연평균)": f"{cagr:.1f}%", 
                     "총 누적수익률": f"{final_val-100:,.1f}%", 
-                    "1억 투자 시": f"{final_amount_1e:,.2f}억",  # 💡 추가
                     "MDD (최대낙폭)": f"{mdd:.1f}%", 
-                    "투자월 비율": f"{(df_res['invested'].sum()/len(df_res))*100:.1f}%", 
-                    "월별 승률": f"{win_rate:.1f}%", 
-                    "평균 수익률": f"{df_res.loc[df_res['invested'], col].mean():.2f}%" if df_res['invested'].any() else "0.00%"
+                    "투자월 비율": f"{inv_ratio:.1f}% ({invested_months}/{total_months})", 
+                    "월별 승률": f"{win_rate:.1f}% ({win_months}/{invested_months})", 
+                    "평균 수익률": avg_ret_str
                 })
             
             stats_df_t3 = pd.DataFrame(stats)
@@ -453,7 +458,26 @@ with tab4:
                 years_c = len(df_res_c) / 12
                 cagr_c = ((final_val_c/100)**(1/years_c)-1)*100 if final_val_c > 0 else -100
                 mdd_c = ((df_cum_c['커스텀 전략']/df_cum_c['커스텀 전략'].cummax())-1).min()*100
-                stats_c = [{"전략명": "커스텀 스코어", "CAGR (연평균)": f"{cagr_c:.1f}%", "총 누적수익률": f"{final_val_c-100:,.1f}%", "MDD (최대낙폭)": f"{mdd_c:.1f}%", "투자월 비율": f"{(df_res_c['invested'].sum()/len(df_res_c))*100:.1f}%", "월별 승률": f"{(df_res_c.loc[df_res_c['invested'], '커스텀 전략']>0).mean()*100:.1f}%" if df_res_c['invested'].any() else "0.0%", "평균 수익률": f"{df_res_c.loc[df_res_c['invested'], '커스텀 전략'].mean():.2f}%" if df_res_c['invested'].any() else "0.00%"}]
+                # 💡 투자월 / 총개월 / 승월 카운트
+                total_months_c = len(df_res_c)
+                invested_months_c = int(df_res_c['invested'].sum())
+                if invested_months_c > 0:
+                    win_months_c = int((df_res_c.loc[df_res_c['invested'], '커스텀 전략'] > 0).sum())
+                    win_rate_c = win_months_c / invested_months_c * 100
+                    avg_ret_c_str = f"{df_res_c.loc[df_res_c['invested'], '커스텀 전략'].mean():.2f}%"
+                else:
+                    win_months_c, win_rate_c, avg_ret_c_str = 0, 0.0, "0.00%"
+                inv_ratio_c = invested_months_c / total_months_c * 100 if total_months_c > 0 else 0
+                
+                stats_c = [{
+                    "전략명": "커스텀 스코어",
+                    "CAGR (연평균)": f"{cagr_c:.1f}%",
+                    "총 누적수익률": f"{final_val_c-100:,.1f}%",
+                    "MDD (최대낙폭)": f"{mdd_c:.1f}%",
+                    "투자월 비율": f"{inv_ratio_c:.1f}% ({invested_months_c}/{total_months_c})",
+                    "월별 승률": f"{win_rate_c:.1f}% ({win_months_c}/{invested_months_c})",
+                    "평균 수익률": avg_ret_c_str
+                }]
                 
                 stats_df_t4 = pd.DataFrame(stats_c)
                 
