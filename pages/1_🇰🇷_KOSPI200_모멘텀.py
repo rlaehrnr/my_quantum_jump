@@ -370,10 +370,10 @@ with tab3:
         fb_mode = st.radio("결합", ['OR', 'AND'], horizontal=True, key='t3_fb_mode', disabled=not fb_enabled)
         st.caption(f"📉 {ma_months_t3}개월 이동평균선 이탈 시 (위 슬라이더로 조정)")
     with f_col_c:
-        st.markdown("**필터 C: 3M 평균 < 0**")
+        st.markdown("**필터 C: 1M&3M 평균 < 0**")
         fc_enabled = st.checkbox("✅ 적용", value=False, key='t3_fc_en')
         fc_mode = st.radio("결합", ['OR', 'AND'], horizontal=True, key='t3_fc_mode', disabled=not fc_enabled)
-        st.caption("📊 200종목의 3개월 수익률 평균이 0% 미만일 때 신호")
+        st.caption("📊 200종목 1M 평균 AND 3M 평균 모두 0% 미만일 때 신호")
     
     st.markdown("<hr style='margin: 10px 0px;'>", unsafe_allow_html=True)
     c2, c3, c4, c5 = st.columns([1, 1, 1, 1])
@@ -441,7 +441,7 @@ with tab3:
                 '마켓타이밍 마스터': "ON" if apply_timing else "OFF",
                 '필터 A (하락종목수)': _fmt_filter('A', fa_enabled, fa_mode, f"1&3M 하락 ≥{bad_market_thr_t3}개 (AND)"),
                 '필터 B (MA 이탈)': _fmt_filter('B', fb_enabled, fb_mode, f"{ma_months_t3}개월선"),
-                '필터 C (3M평균<0)': _fmt_filter('C', fc_enabled, fc_mode, "200종목 3M 평균 < 0%"),
+                '필터 C (1M&3M평균<0)': _fmt_filter('C', fc_enabled, fc_mode, "200종목 1M&3M 평균 모두 < 0%"),
                 '퍼펙트 상위 %': f"상위 {perf_pct_t3}% 이내",
                 '퍼펙트 매수 순위': f"{rank_p_s}위 ~ {rank_p_e}위",
                 '달리는말 12M 상위 %': f"상위 {spec_12m_pct_t3}% 이내",
