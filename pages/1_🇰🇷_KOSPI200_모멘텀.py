@@ -86,17 +86,8 @@ years_list = sorted(df_master['투자연도'].unique().astype(int))
 min_y, max_y = min(years_list), max(years_list)
 
 @st.cache_data(show_spinner=False)
-def cached_run_backtest_korea(df, start_year, end_year, ma_months, apply_timing, rank_p, rank_s, perf_pct, spec_12m_pct, trading_cost_pct=0.25,
-                              spec_1m_pct=10, bad_market_threshold=100,
-                              filter_a_enabled=True, filter_a_mode='OR',
-                              filter_b_enabled=True, filter_b_mode='OR',
-                              filter_c_enabled=False, filter_c_mode='OR'):
-    return run_backtest_k200(df, start_year, end_year, ma_months, apply_timing, rank_p, rank_s, perf_pct, spec_12m_pct,
-                             trading_cost_pct=trading_cost_pct,
-                             spec_1m_pct=spec_1m_pct, bad_market_threshold=bad_market_threshold,
-                             filter_a_enabled=filter_a_enabled, filter_a_mode=filter_a_mode,
-                             filter_b_enabled=filter_b_enabled, filter_b_mode=filter_b_mode,
-                             filter_c_enabled=filter_c_enabled, filter_c_mode=filter_c_mode)
+def cached_run_backtest_korea(df, start_year, end_year, ma_months, apply_timing, rank_p, rank_s, perf_pct, spec_12m_pct, trading_cost_pct=0.25):
+    return run_backtest_k200(df, start_year, end_year, ma_months, apply_timing, rank_p, rank_s, perf_pct, spec_12m_pct, trading_cost_pct=trading_cost_pct)
 
 @st.cache_data(show_spinner=False)
 def cached_run_custom_backtest(df, start_year_c, end_year_c, ma_months_t4, apply_timing_c, w1, w3, w6, w12, custom_pct, rank_c_s, rank_c_e):
@@ -346,59 +337,21 @@ with tab3:
     st.markdown("<h4 style='margin:0;'>⚙️ 시뮬레이션 설정</h4>", unsafe_allow_html=True)
     c1, c_ma, c_cost, c_chk = st.columns([1, 1, 1, 1.5])
     with c1: start_year, end_year = st.slider("📅 테스트 기간", min_y, max_y, (min_y, max_y), key='t3_yr')
-    with c_ma: ma_months_t3 = st.slider("📉 필터 B 기준 (개월선)", 1, 12, 6, key='t3_ma')
+    with c_ma: ma_months_t3 = st.slider("📉 마켓타이밍 (개월선)", 1, 12, 6, key='t3_ma')
     with c_cost: trading_cost_pct_t3 = st.slider("💰 거래비용(편도%)", 0.0, 0.5, 0.25, 0.05, key='t3_cost')  
     with c_chk:
         st.markdown("<div style='margin-top: 35px;'></div>", unsafe_allow_html=True)
-        apply_timing = st.checkbox("🛑 마켓타이밍 마스터 스위치 (꺼지면 모든 필터 무시)", value=True, key='t3_chk')
-    
-    # === 💡 [신규] 마켓타이밍 필터 3종 분리 ===
-    st.markdown("<hr style='margin: 10px 0px;'>", unsafe_allow_html=True)
-    st.markdown("<h5 style='margin:0;'>🛡️ 마켓타이밍 필터 (각각 ON/OFF + OR/AND 결합)</h5>", unsafe_allow_html=True)
-    st.caption("💡 각 필터의 mode가 'OR'이면 단독으로 현금 신호 발생. 'AND'면 AND 그룹 필터가 모두 True여야 신호. 최종 신호 = (OR 그룹) OR (AND 그룹).")
-    
-    f_col_a, f_col_b, f_col_c = st.columns(3)
-    with f_col_a:
-        st.markdown("**필터 A: 하락종목 수**")
-        fa_enabled = st.checkbox("✅ 적용", value=True, key='t3_fa_en')
-        fa_mode = st.radio("결합", ['OR', 'AND'], horizontal=True, key='t3_fa_mode', disabled=not fa_enabled)
-        bad_market_thr_t3 = st.slider("1&3M 하락 N개 이상", 50, 200, 100, step=10, key='t3_bad_thr',
-                                       help="1개월 하락 ≥ N개 AND 3개월 하락 ≥ N개일 때 신호 발생 (기존 OR → AND)")
-    with f_col_b:
-        st.markdown("**필터 B: MA 이탈**")
-        fb_enabled = st.checkbox("✅ 적용", value=True, key='t3_fb_en')
-        fb_mode = st.radio("결합", ['OR', 'AND'], horizontal=True, key='t3_fb_mode', disabled=not fb_enabled)
-        st.caption(f"📉 {ma_months_t3}개월 이동평균선 이탈 시 (위 슬라이더로 조정)")
-    with f_col_c:
-        st.markdown("**필터 C: 1M&3M 평균 < 0**")
-        fc_enabled = st.checkbox("✅ 적용", value=False, key='t3_fc_en')
-        fc_mode = st.radio("결합", ['OR', 'AND'], horizontal=True, key='t3_fc_mode', disabled=not fc_enabled)
-        st.caption("📊 200종목 1M 평균 AND 3M 평균 모두 0% 미만일 때 신호")
+        apply_timing = st.checkbox("🛑 마켓타이밍 적용 (1&3M 하락 100개↑ & MA 이탈 시 현금)", value=True, key='t3_chk')
     
     st.markdown("<hr style='margin: 10px 0px;'>", unsafe_allow_html=True)
     c2, c3, c4, c5 = st.columns([1, 1, 1, 1])
     with c2: perf_pct_t3 = st.slider("🔥 퍼펙트 상위 %", 5, 50, 30, step=5)
     with c3: rank_p_s, rank_p_e = st.slider("🔥 퍼펙트 매수 순위", 1, 30, (1, 6))
-    with c4: spec_12m_pct_t3 = st.slider("🐎 달리는말 12M 상위 %", 5, 50, 30, step=5)
+    with c4: spec_12m_pct_t3 = st.slider("🐎 달리는말 상위 %", 5, 50, 30, step=5)
     with c5: rank_s_s, rank_s_e = st.slider("🐎 달리는말 매수 순위", 1, 30, (1, 2))
-    
-    # 💡 [신규] 달리는말 1개월 수익률 컷오프 슬라이더
-    c_1m, _, _, _ = st.columns([1, 1, 1, 1])
-    with c_1m: spec_1m_pct_t3 = st.slider("🐎 달리는말 1M 상위 %", 5, 50, 10, step=5,
-                                           help="1개월 수익률 상위 N% 이내 종목만 후보. 기본 10%.")
 
     with st.spinner("엔진 구동 중..."):
-        df_res, df_trades = cached_run_backtest_korea(
-            df_master, start_year, end_year, ma_months_t3, apply_timing,
-            (rank_p_s, rank_p_e), (rank_s_s, rank_s_e),
-            perf_pct_t3, spec_12m_pct_t3,
-            trading_cost_pct=trading_cost_pct_t3,
-            spec_1m_pct=spec_1m_pct_t3,
-            bad_market_threshold=bad_market_thr_t3,
-            filter_a_enabled=fa_enabled, filter_a_mode=fa_mode,
-            filter_b_enabled=fb_enabled, filter_b_mode=fb_mode,
-            filter_c_enabled=fc_enabled, filter_c_mode=fc_mode,
-        )
+        df_res, df_trades = cached_run_backtest_korea(df_master, start_year, end_year, ma_months_t3, apply_timing, (rank_p_s, rank_p_e), (rank_s_s, rank_s_e), perf_pct_t3, spec_12m_pct_t3, trading_cost_pct=trading_cost_pct_t3)
         if not df_res.empty:
             s_cols = [c for c in df_res.columns if c not in ['투자월', 'invested']]
             df_cum = (1 + df_res.set_index('투자월')[s_cols] / 100).cumprod() * 100
@@ -431,21 +384,14 @@ with tab3:
             stats_df_t3 = pd.DataFrame(stats)
             
             # 💡 [업그레이드] 전략 조합 백테스트 종합 엑셀 리포트 데이터 생성
-            def _fmt_filter(name, en, mode, detail=""):
-                if not apply_timing: return f"OFF (마스터 OFF)"
-                if not en: return "OFF"
-                return f"ON ({mode}){' / ' + detail if detail else ''}"
             settings_dict_t3 = {
                 '테스트 시작 연도': f"{start_year}년",
                 '테스트 종료 연도': f"{end_year}년",
-                '마켓타이밍 마스터': "ON" if apply_timing else "OFF",
-                '필터 A (하락종목수)': _fmt_filter('A', fa_enabled, fa_mode, f"1&3M 하락 ≥{bad_market_thr_t3}개 (AND)"),
-                '필터 B (MA 이탈)': _fmt_filter('B', fb_enabled, fb_mode, f"{ma_months_t3}개월선"),
-                '필터 C (1M&3M평균<0)': _fmt_filter('C', fc_enabled, fc_mode, "200종목 1M&3M 평균 모두 < 0%"),
+                '마켓타이밍 (개월선)': f"{ma_months_t3}개월선",
+                '마켓타이밍 적용': "적용(현금)" if apply_timing else "미적용",
                 '퍼펙트 상위 %': f"상위 {perf_pct_t3}% 이내",
                 '퍼펙트 매수 순위': f"{rank_p_s}위 ~ {rank_p_e}위",
-                '달리는말 12M 상위 %': f"상위 {spec_12m_pct_t3}% 이내",
-                '달리는말 1M 상위 %': f"상위 {spec_1m_pct_t3}% 이내",
+                '달리는말 상위 %': f"상위 {spec_12m_pct_t3}% 이내",
                 '달리는말 매수 순위': f"{rank_s_s}위 ~ {rank_s_e}위"
             }
             
