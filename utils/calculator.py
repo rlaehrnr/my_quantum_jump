@@ -208,7 +208,7 @@ def get_strategy_stocks_korea(df):
 # - 마켓타이밍을 3개의 독립 필터로 분리:
 #   * 필터 A: 1개월 하락 ≥ N개 AND 3개월 하락 ≥ N개 시 현금
 #   * 필터 B: KOSPI N개월 이동평균선 이탈 시 현금
-#   * 필터 C: 200종목 3개월 평균 수익률 < 0% 시 현금
+#   * 필터 C: 200종목 1개월 평균 AND 3개월 평균 모두 < 0% 시 현금
 # - 각 필터마다 on/off + 결합방식(AND/OR) 선택 가능
 # 
 # 거래비용:
@@ -241,7 +241,7 @@ def run_backtest_k200(df, start_year, end_year, ma_months, apply_timing,
         filter_a_mode: 'OR' or 'AND' — 다른 활성 필터와의 결합 방식
         filter_b_enabled: 필터 B (MA 이탈) on/off
         filter_b_mode: 'OR' or 'AND'
-        filter_c_enabled: 필터 C (3개월 평균 < 0) on/off
+        filter_c_enabled: 필터 C (1M&3M 평균 모두 < 0) on/off
         filter_c_mode: 'OR' or 'AND'
     
     Note on 결합 방식:
@@ -279,8 +279,8 @@ def run_backtest_k200(df, start_year, end_year, ma_months, apply_timing,
         # 필터 B: MA 이탈
         signal_b = bool(timing_dict.get(m, False))
         
-        # 필터 C: 200종목 3개월 평균 수익률 < 0
-        signal_c = bool(m_data['3개월(%)'].mean() < 0)
+        # 필터 C: 200종목 1개월 평균 AND 3개월 평균 모두 < 0
+        signal_c = bool((m_data['1개월(%)'].mean() < 0) and (m_data['3개월(%)'].mean() < 0))
         
         # === 활성 필터들을 결합 방식에 따라 평가 ===
         # OR 그룹: 활성+OR 필터 중 하나라도 True면 신호
