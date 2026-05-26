@@ -31,6 +31,7 @@ def _load_kospi_index():
     return fdr.DataReader('KS11', '2000-01-01', datetime.today())
 
 
+@st.cache_data(ttl=3600, show_spinner=False)
 def get_kospi_ma_all(target_date_str):
     """
     특정 날짜 기준 KOSPI 현재가와 여러 이동평균선 값을 반환.
@@ -54,19 +55,48 @@ def get_kospi_ma_all(target_date_str):
             12: round(df['Close'].rolling(240).mean().iloc[-1], 2)
         }
         return curr_p, mas
-    except: return 0, {}
+    except Exception as e:
+        print(f"⚠️ get_kospi_ma_all({target_date_str}) 오류: {e}")
+        return 0, {}
 
 
+# 💡 [중복 제거] page1, page2에 각각 정의되어 있던 KOSDAQ MA 계산을 utils로 이동.
+@st.cache_data(ttl=3600, show_spinner=False)
+def get_kosdaq_ma_all(target_date_str):
+    """
+    특정 날짜 기준 KOSDAQ 현재가와 이동평균선 값들을 반환.
+    get_kospi_ma_all과 동일한 구조 (대상 지수만 KQ11).
+    """
+    import FinanceDataReader as fdr
+    target_date = pd.to_datetime(target_date_str)
+    start_date = target_date - timedelta(days=450)
+    try:
+        df = fdr.DataReader('KQ11', start_date, target_date)
+        if df.empty: return 0, {}
+        curr_p = df['Close'].iloc[-1]
+        mas = {
+            4: round(df['Close'].rolling(80).mean().iloc[-1], 2),
+            5: round(df['Close'].rolling(100).mean().iloc[-1], 2),
+            6: round(df['Close'].rolling(120).mean().iloc[-1], 2),
+            10: round(df['Close'].rolling(200).mean().iloc[-1], 2),
+            12: round(df['Close'].rolling(240).mean().iloc[-1], 2)
+        }
+        return curr_p, mas
+    except Exception as e:
+        print(f"⚠️ get_kosdaq_ma_all({target_date_str}) 오류: {e}")
+        return 0, {}
+
+
+@st.cache_data(ttl=3600, show_spinner=False)
 def get_idx_kr(target_date_str):
     """
     KOSPI 지수의 1개월/3개월 수익률 반환.
     
     정의:
     - 1개월 수익률: 전월 말일 종가 대비 (예: 5월 21일 기준 → 4월 말 대비)
-    - 3개월 수익률: 3개월 전 월말 종가 대비 (예: 5월 21일 기준 → 2월 말 대비)
-    
-    💡 [버그 수정] 기존 코드는 months=2를 빼서 사실상 2개월 전 월말과 비교했음.
-    이제 months=3을 빼서 의도대로 3개월 전 월말과 비교.
+    - 3개월 수익률: "3개월 전 월말" 종가 대비
+      예) 5월 21일 기준 → 2월 말일 종가 대비 (2월, 3월, 4월 → 3개월 흐른 시점)
+          1월 21일 기준 → 10월 말일 종가 대비
     """
     import FinanceDataReader as fdr
     target_date = pd.to_datetime(target_date_str)
@@ -79,26 +109,21 @@ def get_idx_kr(target_date_str):
         curr_p = df['Close'].iloc[-1]
         first_day_of_this_month = target_date.replace(day=1)
         
-        # 1M 기준: 전월 말일 (이번 달 1일보다 이전 마지막 거래일)
+        # 1M 기준: 전월 말일 (이번 달 1일 직전 거래일)
         df_1m_ref = df[df.index < first_day_of_this_month]
         ret_1m = round(((curr_p / df_1m_ref['Close'].iloc[-1]) - 1) * 100, 2) if not df_1m_ref.empty else 0.0
             
-        # 💡 [수정] 3M 기준: 3개월 전 월말 종가
-        # 예: 5월 21일 기준 → 2월 28일 (3개월 전 월말)
-        # 계산: 이번달 1일에서 3개월 빼면 (3월에서 -3 = 12월 또는 4월에서 -3 = 1월 식으로 어색해질 수 있어,
-        # 명시적으로 "이번달 1일 - 3개월" 이전 마지막 거래일을 잡으면 정확히 3개월 전 월말 거래일이 됨)
-        three_months_ago_first = first_day_of_this_month - pd.DateOffset(months=3)
-        # three_months_ago_first 이전의 마지막 거래일 = 그 직전 달의 마지막 거래일 = 우리가 원하는 시점
-        # 잠깐, 더 정확하게는: target_date - 3개월 = 그 시점의 월말
-        # 예: 5월 21일 - 3개월 = 2월 21일 → 우리는 2월 말일이 필요
-        # 그래서: 3월 1일 - 1거래일 = 2월 28일
-        three_months_ago_month_start = first_day_of_this_month - pd.DateOffset(months=2)
-        # 5월 1일에서 2개월 뒤로 = 3월 1일. 3월 1일보다 작은 마지막 거래일 = 2월 말 거래일.
-        df_3m_ref = df[df.index < three_months_ago_month_start]
+        # 3M 기준: "3개월 전 월말 거래일"을 정확히 잡으려면
+        #   = (이번달 1일 - 2개월) 직전 거래일
+        # 예: 5월 기준 → 5/1 - 2개월 = 3/1 → 3/1 직전 거래일 = 2월 말 거래일 ✓
+        # ※ 5/1 - 3개월 = 2/1 → 2/1 직전 거래일 = 1월 말. 1월 말은 4개월 전이므로 틀림.
+        ref_anchor = first_day_of_this_month - pd.DateOffset(months=2)
+        df_3m_ref = df[df.index < ref_anchor]
         ret_3m = round(((curr_p / df_3m_ref['Close'].iloc[-1]) - 1) * 100, 2) if not df_3m_ref.empty else 0.0
             
         return ret_1m, ret_3m
-    except: 
+    except Exception as e:
+        print(f"⚠️ get_idx_kr({target_date_str}) 오류: {e}")
         return 0.0, 0.0
 
 
