@@ -1,54 +1,18 @@
 import streamlit as st
 import pandas as pd
 import plotly.express as px
-from datetime import datetime, timedelta
+from datetime import datetime
 import os
-import FinanceDataReader as fdr
-import io
 
 st.set_page_config(page_title="KOSPI 200 모멘텀", layout="wide")
 
 from utils.data_loader import load_archive_data, get_folder_hash
-from utils.calculator import get_cycle_year, PRESIDENTIAL_DANGEROUS_MONTHS, get_kospi_ma_all, get_strategy_stocks_korea, run_backtest_k200, get_kospi_timing_for_backtest, get_idx_kr
-from utils.ui_components import inject_custom_css, apply_korea_styling, style_kospi_ma, get_styled_stats, get_mdd_history, get_monthly_heatmap, ma_cfg, main_cfg
+from utils.calculator import get_cycle_year, PRESIDENTIAL_DANGEROUS_MONTHS, get_kospi_ma_all, get_kosdaq_ma_all, get_strategy_stocks_korea, run_backtest_k200, get_kospi_timing_for_backtest, get_idx_kr
+from utils.ui_components import inject_custom_css, apply_korea_styling, style_kospi_ma, get_styled_stats, get_mdd_history, get_monthly_heatmap, ma_cfg, main_cfg, generate_excel_report_cached, render_vix_widget
 
 inject_custom_css()
 
-@st.cache_data(ttl=3600)
-def get_kosdaq_ma_all(target_date_str):
-    target_date = pd.to_datetime(target_date_str)
-    start_date = target_date - timedelta(days=450)
-    try:
-        df = fdr.DataReader('KQ11', start_date, target_date)
-        if df.empty: return 0, {}
-        curr_p = df['Close'].iloc[-1]
-        mas = {
-            4: round(df['Close'].rolling(80).mean().iloc[-1], 2),
-            5: round(df['Close'].rolling(100).mean().iloc[-1], 2),
-            6: round(df['Close'].rolling(120).mean().iloc[-1], 2),
-            10: round(df['Close'].rolling(200).mean().iloc[-1], 2),
-            12: round(df['Close'].rolling(240).mean().iloc[-1], 2)
-        }
-        return curr_p, mas
-    except: return 0, {}
-
-# 💡 [업그레이드] 종합 엑셀 리포트 생성기 캐시 함수 추가
-@st.cache_data(show_spinner=False)
-def generate_excel_report_cached(settings_tuple, df_stats, df_monthly, df_cum_ret, df_trade):
-    output = io.BytesIO()
-    with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
-        df_set = pd.DataFrame(list(settings_tuple), columns=['설정 항목', '값'])
-        df_set.to_excel(writer, sheet_name='요약_및_통계', index=False, startrow=0)
-        df_stats.to_excel(writer, sheet_name='요약_및_통계', index=False, startrow=len(df_set) + 2)
-        df_monthly.to_excel(writer, sheet_name='월별_수익률', index=False)
-        
-        df_mdd = ((df_cum_ret / df_cum_ret.cummax()) - 1) * 100
-        df_mdd.reset_index().to_excel(writer, sheet_name='전략별_MDD', index=False)
-        df_cum_ret.reset_index().to_excel(writer, sheet_name='누적_수익률', index=False)
-        
-        if not df_trade.empty:
-            df_trade.to_excel(writer, sheet_name='상세_매매내역', index=False)
-    return output.getvalue()
+# 💡 [중복 제거] get_kosdaq_ma_all, generate_excel_report_cached, render_vix_widget 모두 utils로 이동됨
 
 
 st.markdown('''
@@ -248,60 +212,12 @@ with tab2:
         reason_desc_d = ("하락장" if is_bad_market_d else "") + (" + " if is_bad_market_d and is_below_ma_d else "") + ("6개월선 이탈" if is_below_ma_d else "")
         if not is_bad_market_d and not is_below_ma_d: reason_desc_d = "안전"
 
-        vix_file = 'data/vix data.csv'
-        vix_latest_high = "데이터없음"
-        vix_latest_date_str = "" 
-        vix_35_date_str = "-"
-        vix_35_high = "-"
-        days_diff_str = "-"
-        is_vix_warning = False
-
-        if os.path.exists(vix_file):
-            try:
-                vix_df = pd.read_csv(vix_file)
-                vix_df['날짜'] = pd.to_datetime(vix_df['날짜'])
-                vix_df = vix_df.sort_values('날짜')
-                if not vix_df.empty:
-                    latest_row = vix_df.iloc[-1]
-                    vix_latest_high = f"{latest_row['고가']:.2f}"
-                    vix_latest_date = latest_row['날짜']
-                    vix_latest_date_str = f"{vix_latest_date.month}/{vix_latest_date.day}"
-                    
-                    high_35_df = vix_df[vix_df['고가'] >= 35.0]
-                    if not high_35_df.empty:
-                        last_35_row = high_35_df.iloc[-1]
-                        vix_35_date_str = last_35_row['날짜'].strftime('%y/%m/%d')
-                        vix_35_high = f"{last_35_row['고가']:.2f}"
-                        days_diff = (pd.to_datetime(safe_date) - last_35_row['날짜']).days
-                        days_diff_str = f"{days_diff}일 경과"
-                        if 0 <= days_diff <= 20:
-                            is_vix_warning = True
-            except: pass
-
         col1d, col2d, col3d, col4d, col5d, col6d = st.columns([0.9, 0.9, 1.0, 1.0, 1.4, 1.6])
         with col1d: st.metric("📈 KOSPI 1M", f"{kospi_1m_d}%")
         with col2d: st.metric("📈 KOSPI 3M", f"{kospi_3m_d}%")
         with col3d: st.metric("📉 1개월 하락", f"{neg_1m_d}개")
         with col4d: st.metric("📉 3개월 하락", f"{neg_3m_d}개")
-        
-        vix_bg = "#FFF0F0" if is_vix_warning else "#FFFFFF"
-        vix_border = "#FFCDD2" if is_vix_warning else "#d1d5db"
-        vix_title_color = "#C62828" if is_vix_warning else "#64748b"
-        vix_val_color = "#D84315" if is_vix_warning else "#333333"
-        vix_icon = "🚨" if is_vix_warning else "📊"
-        
-        vix_label = f"전일 ({vix_latest_date_str}일) 고가:" if vix_latest_date_str else "전일 고가:"
-        
-        vix_html = f'''
-        <a href="https://m.stock.naver.com/worldstock/index/.VIX/total" target="_blank" style="text-decoration: none; color: inherit;">
-            <div class="title-link" style="background-color: {vix_bg}; padding: 10px; border-radius: 10px; text-align: center; border: 1px solid {vix_border}; height: 95px; display: flex; flex-direction: column; justify-content: center;">
-                <div style="font-size: 12px; font-weight: bold; color: {vix_title_color}; margin-bottom: 2px;">{vix_icon} VIX 35 돌파</div>
-                <div style="font-size: 11px; font-weight: bold; color: {vix_title_color}; margin-bottom: 4px;">VIX {vix_35_high} - {vix_35_date_str}돌파 ({days_diff_str})</div>
-                <div style="font-size: 15px; color: {vix_val_color}; font-weight:900;">{vix_label} {vix_latest_high}</div>
-            </div>
-        </a>'''
-        
-        with col5d: st.markdown(vix_html, unsafe_allow_html=True)
+        with col5d: st.markdown(render_vix_widget(safe_date), unsafe_allow_html=True)
         with col6d: st.markdown(f'<div style="background-color: {box_d}; padding: 10px; border-radius: 10px; text-align: center; border: 1px solid {text_d}; height: 95px; display: flex; flex-direction: column; justify-content: center;"><p style="margin: 0; font-size: 12px; color: {text_d}; font-weight: bold;">오늘의 시장 상태 ({reason_desc_d})</p><div style="margin: 4px 0 0 0; font-size: 1.5rem; font-weight: 900; color: {text_d};">{status_d}</div></div>', unsafe_allow_html=True)
         st.markdown("<hr style='margin: 1rem 0;'>", unsafe_allow_html=True)
 
