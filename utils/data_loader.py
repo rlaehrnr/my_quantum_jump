@@ -29,7 +29,7 @@ def load_archive_data(folder_path, folder_hash=None):
             try:
                 df = pd.read_csv(filename, index_col=None, header=0, 
                                 dtype={'종목코드': str}, encoding='utf-8-sig')
-            except:
+            except UnicodeDecodeError:
                 df = pd.read_csv(filename, index_col=None, header=0, 
                                 dtype={'종목코드': str}, encoding='cp949')
             
