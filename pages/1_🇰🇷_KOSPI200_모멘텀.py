@@ -351,7 +351,7 @@ with tab3:
     with st.spinner("엔진 구동 중..."):
         df_res, df_trades = cached_run_backtest_korea(df_master, start_year, end_year, ma_months_t3, apply_timing, (rank_p_s, rank_p_e), (rank_s_s, rank_s_e), perf_pct_t3, spec_12m_pct_t3, trading_cost_pct=trading_cost_pct_t3)
         if not df_res.empty:
-            s_cols = [c for c in df_res.columns if c not in ['투자월', 'invested']]
+            s_cols = [c for c in df_res.columns if c not in ['투자월', 'invested', '중지 사유']]
             df_cum = (1 + df_res.set_index('투자월')[s_cols] / 100).cumprod() * 100
             df_cum.loc[(pd.to_datetime(df_res['투자월'].iloc[0]) - pd.DateOffset(months=1)).strftime('%Y-%m')] = 100
             df_cum = df_cum.sort_index()
@@ -413,7 +413,11 @@ with tab3:
             with col_hm: st.dataframe(get_monthly_heatmap(df_res, analysis_strat_t3), use_container_width=True)
             with col_mdd: st.dataframe(get_mdd_history(df_cum[analysis_strat_t3]), use_container_width=True, hide_index=True)
             st.plotly_chart(px.line(df_cum.reset_index().melt(id_vars='투자월'), x='투자월', y='value', color='variable', log_y=True, title="누적 자산 성장 곡선 (Log Scale)"), use_container_width=True)
-            with st.expander("📝 월별 전체 상세 기록 보기"): st.dataframe(df_res.drop(columns=['invested']).set_index('투자월').style.format("{:.2f}%"), use_container_width=True)
+            with st.expander("📝 월별 전체 상세 기록 보기"): 
+                df_show = df_res.drop(columns=['invested']).set_index('투자월')
+                # 수익률 컬럼만 % 포맷 (중지 사유는 문자열이라 제외)
+                fmt_cols = {c: "{:.2f}%" for c in df_show.columns if c != '중지 사유'}
+                st.dataframe(df_show.style.format(fmt_cols), use_container_width=True)
 
 # ==========================================
 # 탭 4. 스코어 커스텀 백테스트
