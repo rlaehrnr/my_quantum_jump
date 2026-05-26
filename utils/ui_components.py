@@ -1,6 +1,39 @@
 import pandas as pd
 import streamlit as st
 import os
+import io
+
+
+# 💡 [중복 제거] page1, page2에 각각 정의되어 있던 엑셀 리포트 생성기를 utils로 이동.
+@st.cache_data(show_spinner=False)
+def generate_excel_report_cached(settings_tuple, df_stats, df_monthly, df_cum_ret, df_trade):
+    """
+    백테스트 결과를 종합 엑셀 리포트로 생성.
+    
+    Args:
+        settings_tuple: 설정 정보 tuple (캐시 키로 작동하려면 tuple이어야 함)
+        df_stats: 전략 핵심 통계 DataFrame
+        df_monthly: 월별 수익률 DataFrame (invested, 중지 사유 등 포함 가능)
+        df_cum_ret: 누적 수익률 DataFrame (인덱스: 투자월)
+        df_trade: 상세 매매 내역 DataFrame
+    
+    Returns:
+        bytes: 엑셀 파일 바이트
+    """
+    output = io.BytesIO()
+    with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
+        df_set = pd.DataFrame(list(settings_tuple), columns=['설정 항목', '값'])
+        df_set.to_excel(writer, sheet_name='요약_및_통계', index=False, startrow=0)
+        df_stats.to_excel(writer, sheet_name='요약_및_통계', index=False, startrow=len(df_set) + 2)
+        df_monthly.to_excel(writer, sheet_name='월별_수익률', index=False)
+        
+        df_mdd = ((df_cum_ret / df_cum_ret.cummax()) - 1) * 100
+        df_mdd.reset_index().to_excel(writer, sheet_name='전략별_MDD', index=False)
+        df_cum_ret.reset_index().to_excel(writer, sheet_name='누적_수익률', index=False)
+        
+        if not df_trade.empty:
+            df_trade.to_excel(writer, sheet_name='상세_매매내역', index=False)
+    return output.getvalue()
 
 def inject_custom_css():
     st.markdown("""
@@ -237,7 +270,8 @@ def render_vix_widget(safe_date):
                     days_diff = (pd.to_datetime(safe_date) - last_35_row['날짜']).days
                     days_diff_str = f"{days_diff}일 경과"
                     if 0 <= days_diff <= 20: is_vix_warning = True
-        except: pass
+        except Exception as e:
+            print(f"⚠️ render_vix_widget VIX 파일 파싱 오류: {e}")
         
     vix_bg = "#FFF0F0" if is_vix_warning else "#FFFFFF"
     vix_border = "#FFCDD2" if is_vix_warning else "#d1d5db"
