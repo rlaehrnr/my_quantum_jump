@@ -99,12 +99,10 @@ def cached_run_custom_backtest(df, start_year_c, end_year_c, ma_months_t4, apply
         df_calc = df[df['투자월'] == m_str].copy()
         if df_calc.empty: continue
         
-        base_ym_c = pd.to_datetime(df_calc['종목선정일'].iloc[0]).strftime('%Y-%m')
-        is_below_ma = timing_dict.get(base_ym_c, False)
-        neg_1m_c = (df_calc['1개월(%)'] < 0).sum()
-        neg_3m_c = (df_calc['3개월(%)'] < 0).sum()
-        is_bad_market_c = (neg_1m_c >= 100 and neg_3m_c >= 100)
-        mult_c = 0.0 if (apply_timing_c and (is_bad_market_c or is_below_ma)) else 1.0
+        # 💡 커스텀 백테스트는 MA 이탈만 마켓타이밍으로 사용 (1&3M 하락 100개 조건 미사용)
+        # MA 키는 전략조합과 동일하게 '투자월' 사용 (이전엔 종목선정일 기준으로 어긋남)
+        is_below_ma = timing_dict.get(m_str, False)
+        mult_c = 0.0 if (apply_timing_c and is_below_ma) else 1.0
         
         df_calc['스코어'] = (df_calc['1개월(%)']*w1) + (df_calc['3개월(%)']*w3) + (df_calc['6개월(%)']*w6) + (df_calc['12개월(%)']*w12)
         q_limit = df_calc['스코어'].quantile(1 - (custom_pct / 100.0))
