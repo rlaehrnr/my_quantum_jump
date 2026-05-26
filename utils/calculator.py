@@ -294,8 +294,19 @@ def run_backtest_k200(df, start_year, end_year, ma_months, apply_timing,
         if mult > 0:
             ret_total_dup -= cost_pct
 
+        # 💡 중지 사유 텍스트 생성 (엑셀 리포트용)
+        if not apply_timing:
+            stop_reason = ""
+        elif mult > 0:
+            stop_reason = ""
+        else:
+            parts = []
+            if is_bad_market: parts.append("하락장")
+            if is_below_ma: parts.append(f"{ma_months}개월선 이탈")
+            stop_reason = " + ".join(parts) if parts else ""
+
         records.append({
-            '투자월': m, 'invested': mult > 0, 
+            '투자월': m, 'invested': mult > 0, '중지 사유': stop_reason,
             f'🔥 퍼펙트 상승 ({rank_p[0]}~{rank_p[1]}위)': ret_p, 
             f'🐎 달리는 말 ({rank_s[0]}~{rank_s[1]}위)': ret_s, 
             '앙상블 (50:50 전략)': (ret_p+ret_s)/2,
