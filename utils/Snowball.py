@@ -1,0 +1,581 @@
+"""
+스노우볼 동적 자산배분 전략 — 계산 모듈
+============================================
+
+명세서 기반 구현. CSV 데이터를 읽어 신호 판정·백테스트를 수행한다.
+
+데이터 구조:
+  data/snowball/monthly/{TICKER}_과거_데이터.csv  — 월봉 (신호·백테스트용)
+  data/snowball/monthly/SP500_DIV.csv             — 배당수익률 (월별)
+  data/snowball/daily_snapshot.csv                — 일봉 (이번달 진행률만)
+
+CSV 형식 (investing.com KR 다운로드 형식):
+  컬럼: "날짜","종가","시가","고가","저가","거래량","변동 %"
+  날짜: "2026- 05- 01" (공백 포함 가능)
+  정렬: 최신이 위 (내림차순)
+  인코딩: UTF-8 with BOM
+"""
+
+import os
+import re
+import pandas as pd
+import numpy as np
+import streamlit as st
+
+# ==========================================
+# 자산 정의 (명세서 §1)
+# ==========================================
+
+# 조건1 모멘텀 신호용 (보유 안 함)
+SIGNAL_ASSETS = ['TIP', 'VWO', 'EFA', 'VIXY']
+
+# 공격 자산 (12개월 모멘텀 비교)
+OFFENSE_ASSETS = ['TQQQ', 'USD']
+
+# 방어 자산 (11개월 모멘텀 비교)
+DEFENSE_ASSETS = ['GLD', 'TLT', 'SQQQ', 'SLV']
+
+# 벤치마크
+BENCHMARK = 'SPY'
+
+# 모든 ETF 티커
+ALL_TICKERS = SIGNAL_ASSETS + OFFENSE_ASSETS + DEFENSE_ASSETS + [BENCHMARK]
+
+# CSH (현금 식별자)
+CASH = 'CASH'
+
+
+# ==========================================
+# 데이터 로딩
+# ==========================================
+
+def _parse_investing_date(date_str):
+    """
+    investing.com KR 다운로드 날짜 형식 파싱.
+    "2026- 05- 01" 같은 공백 포함 형식도 처리.
+    """
+    if pd.isna(date_str):
+        return pd.NaT
+    # 공백 제거 후 표준 형식으로
+    cleaned = re.sub(r'\s+', '', str(date_str))
+    try:
+        return pd.to_datetime(cleaned)
+    except Exception:
+        return pd.NaT
+
+
+@st.cache_data(ttl="1h", show_spinner=False)
+def load_monthly_prices(monthly_dir='data/snowball/monthly'):
+    """
+    모든 ETF의 월봉 데이터를 로드해 통합 DataFrame 반환.
+    
+    Returns:
+        DataFrame: index=YearMonth(Period), columns=tickers, values=종가
+        에러나 누락 티커가 있으면 빈 DataFrame
+    """
+    if not os.path.isdir(monthly_dir):
+        return pd.DataFrame()
+    
+    frames = []
+    missing = []
+    
+    for ticker in ALL_TICKERS:
+        # 파일명 후보 시도 (한글 띄어쓰기 차이 대비)
+        candidates = [
+            f"{ticker}_과거_데이터.csv",
+            f"{ticker} 과거 데이터.csv",
+            f"{ticker}.csv",
+        ]
+        found = None
+        for fname in candidates:
+            path = os.path.join(monthly_dir, fname)
+            if os.path.isfile(path):
+                found = path
+                break
+        
+        if found is None:
+            missing.append(ticker)
+            continue
+        
+        try:
+            # BOM 포함 utf-8 시도, 실패 시 cp949
+            try:
+                df = pd.read_csv(found, encoding='utf-8-sig')
+            except UnicodeDecodeError:
+                df = pd.read_csv(found, encoding='cp949')
+            
+            # 필수 컬럼: 날짜, 종가
+            if '날짜' not in df.columns or '종가' not in df.columns:
+                print(f"⚠️ {ticker}: 필수 컬럼(날짜/종가) 누락")
+                missing.append(ticker)
+                continue
+            
+            df['_date'] = df['날짜'].apply(_parse_investing_date)
+            df['_close'] = pd.to_numeric(df['종가'].astype(str).str.replace(',', ''), errors='coerce')
+            df = df.dropna(subset=['_date', '_close'])
+            
+            # YearMonth 인덱스로 변환 (월봉이므로 month period로 정규화)
+            df['ym'] = df['_date'].dt.to_period('M')
+            # 같은 달 여러 행이면 마지막 거래일(가장 최근 _date) 값 사용
+            df = df.sort_values('_date').drop_duplicates('ym', keep='last')
+            
+            s = df.set_index('ym')['_close'].rename(ticker)
+            frames.append(s)
+        except Exception as e:
+            print(f"⚠️ {ticker} 로드 오류: {e}")
+            missing.append(ticker)
+    
+    if missing:
+        print(f"⚠️ 누락된 티커: {missing}")
+    
+    if not frames:
+        return pd.DataFrame()
+    
+    prices = pd.concat(frames, axis=1).sort_index()
+    return prices
+
+
+@st.cache_data(ttl="1h", show_spinner=False)
+def load_dividend_yield(monthly_dir='data/snowball/monthly'):
+    """
+    S&P 500 배당수익률 월별 시계열 로드.
+    
+    Returns:
+        Series: index=YearMonth(Period), values=배당수익률(%)
+    """
+    candidates = [
+        os.path.join(monthly_dir, 'SP500_DIV.csv'),
+        os.path.join(monthly_dir, 'SP500_DIV_과거_데이터.csv'),
+        os.path.join(monthly_dir, 'SP500_DIV 과거 데이터.csv'),
+    ]
+    path = next((p for p in candidates if os.path.isfile(p)), None)
+    if path is None:
+        return pd.Series(dtype=float)
+    
+    try:
+        try:
+            df = pd.read_csv(path, encoding='utf-8-sig')
+        except UnicodeDecodeError:
+            df = pd.read_csv(path, encoding='cp949')
+    except Exception as e:
+        print(f"⚠️ 배당수익률 파일 로드 오류: {e}")
+        return pd.Series(dtype=float)
+    
+    # 컬럼 자동 감지: 날짜·종가 형식이면 ETF와 동일하게 처리
+    date_col = '날짜' if '날짜' in df.columns else df.columns[0]
+    # 값 컬럼: '종가' 또는 'DividendYield' 등
+    val_col = None
+    for cand in ['종가', 'DividendYield', 'Dividend Yield', '배당수익률', 'Value']:
+        if cand in df.columns:
+            val_col = cand
+            break
+    if val_col is None:
+        # 두 번째 컬럼을 값으로 간주
+        if len(df.columns) >= 2:
+            val_col = df.columns[1]
+        else:
+            return pd.Series(dtype=float)
+    
+    df['_date'] = df[date_col].apply(_parse_investing_date)
+    # 값에서 %, †, 특수공백 제거 후 숫자 추출 (명세서 §2-2)
+    def _parse_pct(x):
+        if pd.isna(x):
+            return np.nan
+        s = str(x)
+        m = re.search(r'([\d.]+)', s)
+        return float(m.group(1)) if m else np.nan
+    df['_val'] = df[val_col].apply(_parse_pct)
+    df = df.dropna(subset=['_date', '_val'])
+    df['ym'] = df['_date'].dt.to_period('M')
+    df = df.sort_values('_date').drop_duplicates('ym', keep='last')
+    
+    return df.set_index('ym')['_val'].sort_index()
+
+
+def load_daily_snapshot(path='data/snowball/daily_snapshot.csv'):
+    """
+    오늘 종가 스냅샷 로드 (있으면).
+    
+    형식:
+        ticker,price,as_of
+        TQQQ,89.21,2026-05-31
+        ...
+    
+    Returns:
+        (dict {ticker: price}, as_of_date str) 또는 (None, None) 파일 없으면
+    """
+    if not os.path.isfile(path):
+        return None, None
+    try:
+        try:
+            df = pd.read_csv(path, encoding='utf-8-sig')
+        except UnicodeDecodeError:
+            df = pd.read_csv(path, encoding='cp949')
+        
+        if not {'ticker', 'price'}.issubset(df.columns):
+            return None, None
+        
+        df['price'] = pd.to_numeric(df['price'], errors='coerce')
+        df = df.dropna(subset=['price'])
+        
+        prices = dict(zip(df['ticker'], df['price']))
+        as_of = None
+        if 'as_of' in df.columns and not df['as_of'].isna().all():
+            as_of = str(df['as_of'].iloc[0])
+        return prices, as_of
+    except Exception as e:
+        print(f"⚠️ daily_snapshot 로드 오류: {e}")
+        return None, None
+
+
+# ==========================================
+# 신호 계산
+# ==========================================
+
+def compute_returns(prices, periods):
+    """
+    각 ticker의 N개월 수익률 계산.
+    
+    Args:
+        prices: DataFrame, monthly close
+        periods: int (개월)
+    
+    Returns:
+        DataFrame: 같은 shape, 값 = close/close.shift(periods) - 1
+    """
+    return prices / prices.shift(periods) - 1.0
+
+
+def compute_div_percentile(div_yield, window=60, min_pct=0.8):
+    """
+    명세서 §3-2 — 배당수익률의 5년 롤링 하위 백분위 신호.
+    
+    각 월 m에서, 직전 60개월(자신 포함, NaN 제외) 분포에서
+    현재값 이하인 비율(%)을 계산. 그 값이 10% 이하이면 cond2=True.
+    
+    Args:
+        div_yield: Series, index=YearMonth, values=배당수익률
+        window: 60 (5년)
+        min_pct: 0.8 (60×0.8=48개 유효 데이터 필요)
+    
+    Returns:
+        Series: 같은 인덱스, values=백분위(%). 워밍업 부족하면 NaN.
+    """
+    out = pd.Series(index=div_yield.index, dtype=float)
+    values = div_yield.values
+    min_n = int(window * min_pct)
+    
+    for i in range(len(values)):
+        start = max(0, i - window + 1)
+        window_vals = values[start:i+1]
+        # NaN 제외
+        valid = window_vals[~pd.isna(window_vals)]
+        cur = values[i]
+        if pd.isna(cur) or len(valid) < min_n:
+            out.iloc[i] = np.nan
+            continue
+        pct = (valid <= cur).sum() / len(valid) * 100
+        out.iloc[i] = pct
+    
+    return out
+
+
+def compute_signals(prices, div_yield):
+    """
+    매월 m에서의 신호와 보유 종목을 계산.
+    
+    Returns:
+        DataFrame, index=YearMonth, columns=[
+            'cond1', 'cond2', 'defensive',
+            'div_pct',
+            'ret6_TIP','ret6_VWO','ret6_EFA','ret6_VIXY',
+            'ret11_GLD','ret11_TLT','ret11_SQQQ','ret11_SLV',
+            'ret12_TQQQ','ret12_USD',
+            'hold',  # 보유 종목 티커 (또는 'CASH')
+            'reason',  # 판정 사유 텍스트
+        ]
+    """
+    ret6 = compute_returns(prices, 6)
+    ret11 = compute_returns(prices, 11)
+    ret12 = compute_returns(prices, 12)
+    
+    # cond1: 신호자산 4종 모두 6M < 0
+    cond1 = pd.Series(False, index=prices.index)
+    if all(t in ret6.columns for t in SIGNAL_ASSETS):
+        cond1 = (ret6[SIGNAL_ASSETS] < 0).all(axis=1)
+    
+    # cond2: 배당 5년 롤링 백분위 ≤ 10%
+    if not div_yield.empty:
+        # 인덱스 정렬
+        div_aligned = div_yield.reindex(prices.index)
+        div_pct = compute_div_percentile(div_aligned, window=60, min_pct=0.8)
+        cond2 = (div_pct <= 10).fillna(False)
+    else:
+        div_pct = pd.Series(np.nan, index=prices.index)
+        cond2 = pd.Series(False, index=prices.index)
+    
+    defensive = cond1 | cond2
+    
+    # 보유 종목 결정
+    holds = []
+    reasons = []
+    
+    for m in prices.index:
+        cond1_m = bool(cond1.loc[m]) if m in cond1.index else False
+        cond2_m = bool(cond2.loc[m]) if m in cond2.index else False
+        defensive_m = cond1_m or cond2_m
+        
+        if defensive_m:
+            # 방어 모드: 4종 ret11 비교
+            ret11_vals = {t: ret11[t].loc[m] for t in DEFENSE_ASSETS if t in ret11.columns}
+            if not ret11_vals or any(pd.isna(v) for v in ret11_vals.values()):
+                holds.append(None)
+                reasons.append("데이터 부족")
+                continue
+            # 모두 ≤ 0이면 현금
+            if all(v <= 0 for v in ret11_vals.values()):
+                holds.append(CASH)
+                reason = "방어모드 & 4종 11M ≤0 → 현금"
+            else:
+                best = max(ret11_vals, key=ret11_vals.get)
+                holds.append(best)
+                reason = f"방어모드 → {best} (11M={ret11_vals[best]*100:.1f}%)"
+            
+            cause = []
+            if cond1_m: cause.append("cond1(4종 6M<0)")
+            if cond2_m: cause.append(f"cond2(배당 {div_pct.loc[m]:.1f}%ile)")
+            reasons.append(f"{' & '.join(cause)} | {reason}")
+        else:
+            # 공격 모드: TQQQ vs USD ret12
+            ret12_vals = {t: ret12[t].loc[m] for t in OFFENSE_ASSETS if t in ret12.columns}
+            if not ret12_vals or any(pd.isna(v) for v in ret12_vals.values()):
+                holds.append(None)
+                reasons.append("데이터 부족")
+                continue
+            tqqq_v = ret12_vals.get('TQQQ', -np.inf)
+            usd_v = ret12_vals.get('USD', -np.inf)
+            if tqqq_v >= usd_v:
+                holds.append('TQQQ')
+                reasons.append(f"공격모드 → TQQQ (12M={tqqq_v*100:.1f}% ≥ USD {usd_v*100:.1f}%)")
+            else:
+                holds.append('USD')
+                reasons.append(f"공격모드 → USD (12M={usd_v*100:.1f}% > TQQQ {tqqq_v*100:.1f}%)")
+    
+    sig = pd.DataFrame({
+        'cond1': cond1,
+        'cond2': cond2,
+        'defensive': defensive,
+        'div_pct': div_pct,
+        'hold': holds,
+        'reason': reasons,
+    }, index=prices.index)
+    
+    # 보조 컬럼 (UI 표시용)
+    for t in SIGNAL_ASSETS:
+        if t in ret6.columns:
+            sig[f'ret6_{t}'] = ret6[t]
+    for t in DEFENSE_ASSETS:
+        if t in ret11.columns:
+            sig[f'ret11_{t}'] = ret11[t]
+    for t in OFFENSE_ASSETS:
+        if t in ret12.columns:
+            sig[f'ret12_{t}'] = ret12[t]
+    
+    return sig
+
+
+# ==========================================
+# 백테스트
+# ==========================================
+
+def run_backtest(prices, signals):
+    """
+    명세서 §5 — 월별 백테스트 루프.
+    
+    신호월 m의 신호로 m+1(보유월) 한 달 보유.
+    수익률 = price[hold][m+1] / price[hold][m] - 1
+    
+    Args:
+        prices: DataFrame, monthly close
+        signals: DataFrame from compute_signals
+    
+    Returns:
+        DataFrame, index=보유월(nm), columns=[
+            'signal_month', 'defensive', 'hold', 'reason',
+            'ret_strategy', 'ret_spy', 'cum_strategy', 'cum_spy', 'dd_strategy'
+        ]
+    """
+    months = list(prices.index)
+    records = []
+    
+    for i, m in enumerate(months[:-1]):
+        nm = months[i+1]
+        hold = signals.loc[m, 'hold']
+        defensive = bool(signals.loc[m, 'defensive'])
+        reason = signals.loc[m, 'reason']
+        
+        if hold is None:
+            # 데이터 부족 → skip
+            continue
+        
+        if hold == CASH:
+            ret_strat = 0.0
+        else:
+            p0 = prices.loc[m, hold] if hold in prices.columns else np.nan
+            p1 = prices.loc[nm, hold] if hold in prices.columns else np.nan
+            if pd.isna(p0) or pd.isna(p1) or p0 == 0:
+                continue
+            ret_strat = p1 / p0 - 1.0
+        
+        # SPY 벤치마크
+        if BENCHMARK in prices.columns:
+            p0s = prices.loc[m, BENCHMARK]
+            p1s = prices.loc[nm, BENCHMARK]
+            ret_spy = (p1s / p0s - 1.0) if (pd.notna(p0s) and pd.notna(p1s) and p0s != 0) else np.nan
+        else:
+            ret_spy = np.nan
+        
+        records.append({
+            'signal_month': str(m),
+            'hold_month': str(nm),
+            'defensive': defensive,
+            'hold': hold,
+            'reason': reason,
+            'ret_strategy': ret_strat,
+            'ret_spy': ret_spy,
+        })
+    
+    if not records:
+        return pd.DataFrame()
+    
+    bt = pd.DataFrame(records)
+    bt['cum_strategy'] = (1 + bt['ret_strategy']).cumprod()
+    bt['cum_spy'] = (1 + bt['ret_spy'].fillna(0)).cumprod()
+    bt['dd_strategy'] = bt['cum_strategy'] / bt['cum_strategy'].cummax() - 1.0
+    
+    return bt
+
+
+def compute_performance(bt):
+    """
+    명세서 §6 — 성과지표 계산.
+    
+    Returns:
+        dict: CAGR, cum_return, MDD, sharpe, vol, win_rate, offense_pct, n_months
+    """
+    if bt.empty:
+        return {}
+    
+    n = len(bt)
+    cum = bt['cum_strategy'].iloc[-1]
+    cagr = cum ** (12.0/n) - 1.0 if cum > 0 else -1.0
+    
+    rets = bt['ret_strategy']
+    vol = rets.std() * np.sqrt(12)
+    sharpe = (rets.mean() / rets.std() * np.sqrt(12)) if rets.std() > 0 else 0.0
+    mdd = bt['dd_strategy'].min()
+    win_rate = (rets > 0).mean()
+    offense_pct = (~bt['defensive']).mean()
+    
+    # SPY 비교
+    spy_cum = bt['cum_spy'].iloc[-1]
+    spy_cagr = spy_cum ** (12.0/n) - 1.0 if spy_cum > 0 else -1.0
+    spy_dd = (bt['cum_spy'] / bt['cum_spy'].cummax() - 1.0).min()
+    spy_vol = bt['ret_spy'].std() * np.sqrt(12)
+    spy_sharpe = (bt['ret_spy'].mean() / bt['ret_spy'].std() * np.sqrt(12)) if bt['ret_spy'].std() > 0 else 0.0
+    
+    return {
+        'n_months': n,
+        'cum_return': cum - 1.0,
+        'cagr': cagr,
+        'vol': vol,
+        'sharpe': sharpe,
+        'mdd': mdd,
+        'win_rate': win_rate,
+        'offense_pct': offense_pct,
+        'spy_cum_return': spy_cum - 1.0,
+        'spy_cagr': spy_cagr,
+        'spy_mdd': spy_dd,
+        'spy_vol': spy_vol,
+        'spy_sharpe': spy_sharpe,
+    }
+
+
+# ==========================================
+# 이번 달 진행률 (daily_snapshot 활용)
+# ==========================================
+
+def compute_current_month_progress(prices, signals, snapshot_prices, snapshot_date):
+    """
+    이번 달 진행률 계산.
+    
+    Args:
+        prices: monthly DataFrame
+        signals: compute_signals 결과
+        snapshot_prices: {ticker: price} 또는 None
+        snapshot_date: as_of 문자열 또는 None
+    
+    Returns:
+        dict: {
+            'prev_month': '2026-04',   # 신호월 (전월말)
+            'curr_month': '2026-05',   # 보유 중인 달
+            'hold': 'TQQQ' or 'CASH' or None,
+            'reason': '...',
+            'prev_close': float,       # 전월 말 종가
+            'today_price': float,      # 오늘 가격
+            'mtd_return': float,       # 이번달 진행률 (오늘/전월말 - 1)
+            'as_of': '2026-05-30',
+        }
+        snapshot 없으면 today_price/mtd_return은 None
+    """
+    if prices.empty or signals.empty:
+        return None
+    
+    # 가장 최근 month period
+    last_m = prices.index[-1]
+    # 신호월의 'hold'가 다음 달에 보유 중인 종목
+    # 즉 last_m이 신호월이면 last_m+1이 보유월 (=이번 달이 아직 안 끝났다면)
+    
+    # 보유 중인 달은: 마지막 prices 인덱스 = 신호월의 다음 달일 수도, 같은 달일 수도
+    # 일반적으로: 이번달=금월(now), 신호월=전월
+    # 데이터가 어디까지 있느냐에 따라 처리 변형 필요
+    
+    # 단순화: prices.index[-1]가 "이번달" 또는 "지난달" 중 어느 쪽인지는
+    # 호출자가 today 기준으로 판단. 여기서는 두 가지를 모두 계산해 둠.
+    # 보통 패턴: 월말에 데이터 갱신 → prices.index[-1]이 막 끝난 달.
+    # 그러면 그 달이 "신호월", 이번 달(지금)이 "보유월".
+    
+    sig_month = last_m  # 마지막 데이터가 신호월
+    hold = signals.loc[sig_month, 'hold']
+    reason = signals.loc[sig_month, 'reason']
+    
+    if hold is None:
+        return None
+    
+    # 전월 말 종가 (= 마지막 prices 행)
+    if hold == CASH:
+        prev_close = None
+        today_price = None
+        mtd_ret = 0.0
+    else:
+        if hold not in prices.columns:
+            return None
+        prev_close = prices.loc[sig_month, hold]
+        today_price = None
+        mtd_ret = None
+        if snapshot_prices and hold in snapshot_prices and pd.notna(prev_close) and prev_close > 0:
+            today_price = snapshot_prices[hold]
+            mtd_ret = today_price / prev_close - 1.0
+    
+    curr_month = (sig_month + 1)  # 보유월
+    
+    return {
+        'prev_month': str(sig_month),
+        'curr_month': str(curr_month),
+        'hold': hold,
+        'reason': reason,
+        'prev_close': prev_close,
+        'today_price': today_price,
+        'mtd_return': mtd_ret,
+        'as_of': snapshot_date,
+    }
