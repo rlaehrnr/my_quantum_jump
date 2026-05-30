@@ -76,22 +76,33 @@ def load_monthly_prices(monthly_dir='data/snowball/monthly'):
     if not os.path.isdir(monthly_dir):
         return pd.DataFrame()
     
+    # 폴더의 모든 CSV 파일 스캔
+    all_files = [f for f in os.listdir(monthly_dir) if f.lower().endswith('.csv')]
+    
+    def _normalize(s):
+        """공백/특수공백/언더스코어 제거 + 소문자 — 파일명 매칭 관대화.
+        'TIP 과거 데이터.csv', 'TIP_과거_데이터.csv', 'TIP  과거  데이터.csv'
+        모두 'tip과거데이터.csv'로 정규화되어 같다고 판정."""
+        # 공백류 + 언더스코어 모두 제거
+        s = re.sub(r'[\s_]+', '', s)
+        return s.lower()
+    
+    # 각 ticker에 대해 "ticker"가 정규화된 파일명에 포함되어 있고
+    # 정규화된 파일명이 "ticker과거데이터.csv" 또는 "ticker.csv"로 끝나는지 체크
+    def _find_file(ticker):
+        norm_target_a = _normalize(f"{ticker}_과거_데이터.csv")  # "tip과거데이터.csv"
+        norm_target_b = _normalize(f"{ticker}.csv")              # "tip.csv"
+        for fname in all_files:
+            n = _normalize(fname)
+            if n == norm_target_a or n == norm_target_b:
+                return os.path.join(monthly_dir, fname)
+        return None
+    
     frames = []
     missing = []
     
     for ticker in ALL_TICKERS:
-        # 파일명 후보 시도 (한글 띄어쓰기 차이 대비)
-        candidates = [
-            f"{ticker}_과거_데이터.csv",
-            f"{ticker} 과거 데이터.csv",
-            f"{ticker}.csv",
-        ]
-        found = None
-        for fname in candidates:
-            path = os.path.join(monthly_dir, fname)
-            if os.path.isfile(path):
-                found = path
-                break
+        found = _find_file(ticker)
         
         if found is None:
             missing.append(ticker)
@@ -106,7 +117,7 @@ def load_monthly_prices(monthly_dir='data/snowball/monthly'):
             
             # 필수 컬럼: 날짜, 종가
             if '날짜' not in df.columns or '종가' not in df.columns:
-                print(f"⚠️ {ticker}: 필수 컬럼(날짜/종가) 누락")
+                print(f"⚠️ {ticker}: 필수 컬럼(날짜/종가) 누락. 실제 컬럼: {list(df.columns)}")
                 missing.append(ticker)
                 continue
             
@@ -127,6 +138,7 @@ def load_monthly_prices(monthly_dir='data/snowball/monthly'):
     
     if missing:
         print(f"⚠️ 누락된 티커: {missing}")
+        print(f"   폴더({monthly_dir})에 있는 파일들: {all_files}")
     
     if not frames:
         return pd.DataFrame()
@@ -143,12 +155,28 @@ def load_dividend_yield(monthly_dir='data/snowball/monthly'):
     Returns:
         Series: index=YearMonth(Period), values=배당수익률(%)
     """
-    candidates = [
-        os.path.join(monthly_dir, 'SP500_DIV.csv'),
-        os.path.join(monthly_dir, 'SP500_DIV_과거_데이터.csv'),
-        os.path.join(monthly_dir, 'SP500_DIV 과거 데이터.csv'),
-    ]
-    path = next((p for p in candidates if os.path.isfile(p)), None)
+    if not os.path.isdir(monthly_dir):
+        return pd.Series(dtype=float)
+    
+    # 파일명 자동 탐색 (공백/언더스코어/대소문자 무시)
+    all_files = [f for f in os.listdir(monthly_dir) if f.lower().endswith('.csv')]
+    
+    def _normalize(s):
+        s = re.sub(r'[\s_]+', '', s)
+        return s.lower()
+    
+    candidates_norm = {
+        _normalize('SP500_DIV.csv'),
+        _normalize('SP500_DIV_과거_데이터.csv'),
+        _normalize('SP500DIV.csv'),
+    }
+    
+    path = None
+    for fname in all_files:
+        if _normalize(fname) in candidates_norm:
+            path = os.path.join(monthly_dir, fname)
+            break
+    
     if path is None:
         return pd.Series(dtype=float)
     
