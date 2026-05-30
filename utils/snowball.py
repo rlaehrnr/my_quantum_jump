@@ -152,28 +152,44 @@ def load_dividend_yield(monthly_dir='data/snowball/monthly'):
     """
     S&P 500 배당수익률 월별 시계열 로드.
     
+    지원 형식:
+    - .csv (utf-8 또는 cp949)
+    - .xlsx (Excel)
+    
+    파일명 자동 탐색 (대소문자/공백/언더스코어 무시):
+    - SP500_DIV.csv / SP500_DIV.xlsx
+    - SP500_DIV_과거_데이터.csv 등
+    
+    데이터 형식: 'Date' 또는 '날짜' 컬럼 + 값 컬럼.
+    값 컬럼은 자동 감지 ('종가', 'Value', 'Unnamed: 2' 등).
+    † 같은 특수문자 자동 제거.
+    
     Returns:
         Series: index=YearMonth(Period), values=배당수익률(%)
     """
     if not os.path.isdir(monthly_dir):
         return pd.Series(dtype=float)
     
-    # 파일명 자동 탐색 (공백/언더스코어/대소문자 무시)
-    all_files = [f for f in os.listdir(monthly_dir) if f.lower().endswith('.csv')]
+    # 파일명 자동 탐색 (.csv 또는 .xlsx)
+    all_files = [f for f in os.listdir(monthly_dir) 
+                 if f.lower().endswith(('.csv', '.xlsx', '.xls'))]
     
     def _normalize(s):
         s = re.sub(r'[\s_]+', '', s)
         return s.lower()
     
-    candidates_norm = {
-        _normalize('SP500_DIV.csv'),
-        _normalize('SP500_DIV_과거_데이터.csv'),
-        _normalize('SP500DIV.csv'),
+    # 확장자 제외한 정규화 타겟 (.csv/.xlsx 어느 쪽이든 매칭)
+    candidates_norm_stems = {
+        _normalize('SP500_DIV'),
+        _normalize('SP500_DIV_과거_데이터'),
+        _normalize('SP500DIV'),
     }
     
     path = None
     for fname in all_files:
-        if _normalize(fname) in candidates_norm:
+        # 확장자 떼고 정규화
+        stem = os.path.splitext(fname)[0]
+        if _normalize(stem) in candidates_norm_stems:
             path = os.path.join(monthly_dir, fname)
             break
     
@@ -181,39 +197,68 @@ def load_dividend_yield(monthly_dir='data/snowball/monthly'):
         return pd.Series(dtype=float)
     
     try:
-        try:
-            df = pd.read_csv(path, encoding='utf-8-sig')
-        except UnicodeDecodeError:
-            df = pd.read_csv(path, encoding='cp949')
+        if path.lower().endswith(('.xlsx', '.xls')):
+            df = pd.read_excel(path)
+        else:
+            try:
+                df = pd.read_csv(path, encoding='utf-8-sig')
+            except UnicodeDecodeError:
+                df = pd.read_csv(path, encoding='cp949')
     except Exception as e:
         print(f"⚠️ 배당수익률 파일 로드 오류: {e}")
         return pd.Series(dtype=float)
     
-    # 컬럼 자동 감지: 날짜·종가 형식이면 ETF와 동일하게 처리
-    date_col = '날짜' if '날짜' in df.columns else df.columns[0]
-    # 값 컬럼: '종가' 또는 'DividendYield' 등
+    # 날짜 컬럼 자동 감지
+    date_col = None
+    for cand in ['날짜', 'Date', 'date', 'DATE']:
+        if cand in df.columns:
+            date_col = cand
+            break
+    if date_col is None:
+        date_col = df.columns[0]
+    
+    # 값 컬럼 자동 감지 — Unnamed:2 (깨끗한 숫자) 우선
     val_col = None
-    for cand in ['종가', 'DividendYield', 'Dividend Yield', '배당수익률', 'Value']:
+    # 1순위: 이미 숫자만 있는 컬럼 (Unnamed:2 패턴)
+    for cand in ['Unnamed: 2']:
         if cand in df.columns:
             val_col = cand
             break
+    # 2순위: 일반적인 컬럼명
     if val_col is None:
-        # 두 번째 컬럼을 값으로 간주
-        if len(df.columns) >= 2:
-            val_col = df.columns[1]
-        else:
-            return pd.Series(dtype=float)
+        for cand in ['종가', 'DividendYield', 'Dividend Yield', '배당수익률', 'Value', 'value']:
+            if cand in df.columns:
+                val_col = cand
+                break
+    # 3순위: 두 번째 컬럼
+    if val_col is None and len(df.columns) >= 2:
+        val_col = df.columns[1]
     
-    df['_date'] = df[date_col].apply(_parse_investing_date)
-    # 값에서 %, †, 특수공백 제거 후 숫자 추출 (명세서 §2-2)
+    if val_col is None:
+        return pd.Series(dtype=float)
+    
+    # 날짜 파싱 (ISO, "May 31, 1871" 등 다양한 형식 자동 처리)
+    df['_date'] = pd.to_datetime(df[date_col], errors='coerce')
+    # 만약 위에서 NaT가 많이 나오면 investing.com 형식("2026- 05- 01") 시도
+    if df['_date'].isna().sum() > len(df) * 0.5:
+        df['_date'] = df[date_col].apply(_parse_investing_date)
+    
+    # 값에서 †, %, 특수공백 제거 후 숫자 추출 (명세서 §2-2)
     def _parse_pct(x):
         if pd.isna(x):
             return np.nan
+        if isinstance(x, (int, float)):
+            return float(x)
         s = str(x)
         m = re.search(r'([\d.]+)', s)
         return float(m.group(1)) if m else np.nan
+    
     df['_val'] = df[val_col].apply(_parse_pct)
     df = df.dropna(subset=['_date', '_val'])
+    
+    if df.empty:
+        return pd.Series(dtype=float)
+    
     df['ym'] = df['_date'].dt.to_period('M')
     df = df.sort_values('_date').drop_duplicates('ym', keep='last')
     
