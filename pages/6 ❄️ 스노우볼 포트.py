@@ -34,7 +34,7 @@ ASSET_COLORS = {
     'GLD':  '#FBBF24',   # 금
     'TLT':  '#3B82F6',   # 채권 파랑
     'SQQQ': '#EF4444',   # 빨강 (인버스)
-    'SLV':  '#9CA3AF',   # 은
+    'SLV':  '#71717A',   # 진한 회색 (은) — 흰 글씨 가독성 확보
     'CASH': '#6B7280',   # 회색
     'SPY':  '#8B5CF6',   # 보라 (벤치마크)
 }
@@ -144,7 +144,8 @@ def _style_asset_df(assets, ret_prefix, active, selected_ticker):
         n = len(row)
         if active and row['자산'] == selected_ticker:
             a_color = ASSET_COLORS.get(selected_ticker, '#6B7280')
-            return [f'background-color: {a_color}33; font-weight: 800;'] * n
+            # 선택 행: 진한 배경 + 흰 글씨 (수익률 포함 전체 흰색으로 통일)
+            return [f'background-color: {a_color}; color: #FFFFFF; font-weight: 800;'] * n
         if not active:
             return ['color: #9CA3AF;'] * n  # 비활성: 흐리게
         return [''] * n
@@ -154,7 +155,12 @@ def _style_asset_df(assets, ret_prefix, active, selected_ticker):
             return 'N/A'
         return f"{v*100:+.2f}%"
 
-    def _color_ret(v):
+    def _color_ret(row):
+        """수익률 컬럼 색상. 단, 선택 행은 흰 글씨 유지 위해 건드리지 않음."""
+        v = row['수익률']
+        # 선택 행이면 _row_style의 흰 글씨 유지
+        if active and row['자산'] == selected_ticker:
+            return ''
         if pd.isna(v):
             return 'color: #9CA3AF;'
         if v > 0:
@@ -163,9 +169,16 @@ def _style_asset_df(assets, ret_prefix, active, selected_ticker):
             return 'color: #1976D2; font-weight: bold;'
         return ''
 
+    def _apply_ret_color(df_inner):
+        # 수익률 컬럼에만 색 적용
+        styles = pd.DataFrame('', index=df_inner.index, columns=df_inner.columns)
+        for idx in df_inner.index:
+            styles.loc[idx, '수익률'] = _color_ret(df_inner.loc[idx])
+        return styles
+
     styler = (df.style
               .apply(_row_style, axis=1)
-              .map(_color_ret, subset=['수익률'])
+              .apply(_apply_ret_color, axis=None)
               .format({'수익률': _fmt_ret}))
     return styler, df
 
@@ -257,6 +270,7 @@ with col_c2:
     )
     div_pct_val = last_signal['div_pct']
     div_val = last_signal['div_value'] if 'div_value' in last_signal else np.nan
+    div_thr = last_signal['div_threshold'] if 'div_threshold' in last_signal else np.nan
     if pd.notna(div_pct_val):
         mcol1, mcol2 = st.columns(2)
         with mcol1:
@@ -269,10 +283,30 @@ with col_c2:
         with mcol2:
             if pd.notna(div_val):
                 st.metric("현재 배당수익률", f"{div_val:.2f}%")
+        # 10% 기준점과 직접 비교
+        if pd.notna(div_thr) and pd.notna(div_val):
+            if div_val <= div_thr:
+                cmp_color = "#EF4444"
+                cmp_sign = "≤"
+                cmp_msg = "현재 배당이 기준점보다 낮음 → 비싼 구간 (발동)"
+            else:
+                cmp_color = "#10B981"
+                cmp_sign = ">"
+                cmp_msg = "현재 배당이 기준점보다 높음 → 안전"
+            st.markdown(
+                f"<div style='background:{cmp_color}15; border:1.5px solid {cmp_color}; "
+                f"border-radius:8px; padding:10px 14px; margin-top:8px;'>"
+                f"<span style='font-size:18px; font-weight:900; color:{cmp_color};'>"
+                f"{div_val:.2f}% {cmp_sign} {div_thr:.2f}%</span>"
+                f"<span style='font-size:12px; color:#6B7280; margin-left:10px;'>"
+                f"(현재 배당 {cmp_sign} 하위 10% 기준점)</span>"
+                f"<div style='font-size:11px; color:#6B7280; margin-top:3px;'>{cmp_msg}</div>"
+                f"</div>",
+                unsafe_allow_html=True
+            )
         st.caption(
-            "ℹ️ **백분위**: 지난 60개월 중 현재 배당수익률보다 낮았던 비율. "
-            "1.7%면 '5년 중 1.7%의 기간만 지금보다 배당이 낮았다' = 역사적으로 매우 비싼 구간. "
-            "**배당수익률 원본값**(예: 1.13%)과는 다른 수치입니다."
+            "ℹ️ **하위 10% 기준점**: 지난 60개월 배당수익률 분포의 10번째 백분위수. "
+            "현재 배당수익률이 이 기준점보다 낮으면 '역사적으로 비싼 구간'으로 보고 조건2 발동."
         )
     else:
         st.info("배당 데이터 부족 (60개월 워밍업 또는 파일 없음)")
