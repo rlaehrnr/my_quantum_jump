@@ -105,88 +105,96 @@ else:
     mode_color = "#10B981"
 selected_hold = last_signal['hold']  # 실제 선택된 종목 (또는 CASH)
 
-# 제목 + 모드 뱃지 (한 줄)
+# 제목
 st.markdown(
-    f"<div style='display:flex; align-items:center; gap:14px; margin-bottom:10px;'>"
-    f"<span style='font-size:1.5rem; font-weight:800;'>공격 · 방어 자산 현황</span>"
-    f"<span style='font-size:15px; font-weight:900; color:{mode_color}; background:{mode_color}18; "
-    f"padding:5px 14px; border-radius:8px; border:1.5px solid {mode_color};'>{mode_text}</span>"
-    f"<span style='font-size:12px; color:#9CA3AF;'>(기준: {last_signal_month} 월말)</span>"
+    f"<div style='font-size:1.5rem; font-weight:800; margin-bottom:8px;'>"
+    f"공격 · 방어 자산 현황 "
+    f"<span style='font-size:12px; color:#9CA3AF; font-weight:500;'>(기준: {last_signal_month} 월말)</span>"
+    f"</div>",
+    unsafe_allow_html=True
+)
+
+# 모드 뱃지 — 옆으로 길게 (full width)
+st.markdown(
+    f"<div style='width:100%; background:{mode_color}18; border:2px solid {mode_color}; "
+    f"border-radius:10px; padding:12px 20px; margin-bottom:14px; text-align:center;'>"
+    f"<span style='font-size:22px; font-weight:900; color:{mode_color}; letter-spacing:1px;'>{mode_text}</span>"
+    f"<span style='font-size:14px; color:#6B7280; margin-left:12px;'>"
+    f"현재 보유: <b style='color:{ASSET_COLORS.get(selected_hold, '#6B7280')};'>{selected_hold}</b>"
+    f"</span>"
     f"</div>",
     unsafe_allow_html=True
 )
 
 
-def _build_asset_table(title, assets, ret_prefix, period_label,
-                       highlight_outer, selected_ticker):
+def _style_asset_df(assets, ret_prefix, active, selected_ticker):
     """
-    자산 모멘텀 표를 HTML로 생성.
-    highlight_outer=True면 표 외곽선을 모드 색으로, 선택 종목 행을 색칠.
+    자산 모멘텀 DataFrame을 만들고 Styler 반환.
+    active=True면 선택 종목 행을 모드색으로 강조.
+    active=False면 전체를 흐리게.
     """
-    # 데이터 수집
     rows = []
     for t in assets:
         col = f'{ret_prefix}_{t}'
         v = last_signal[col] if col in last_signal else np.nan
-        rows.append((t, v))
-    # 수익률 내림차순 정렬
-    rows.sort(key=lambda x: (x[1] if pd.notna(x[1]) else -np.inf), reverse=True)
+        rows.append({'자산': t, '수익률': v})
+    df = pd.DataFrame(rows).sort_values('수익률', ascending=False, na_position='last').reset_index(drop=True)
 
-    outer_color = mode_color if highlight_outer else "#E5E7EB"
-    outer_width = "3px" if highlight_outer else "1px"
+    def _row_style(row):
+        n = len(row)
+        if active and row['자산'] == selected_ticker:
+            a_color = ASSET_COLORS.get(selected_ticker, '#6B7280')
+            return [f'background-color: {a_color}33; font-weight: 800;'] * n
+        if not active:
+            return ['color: #9CA3AF;'] * n  # 비활성: 흐리게
+        return [''] * n
 
-    html = (
-        f"<div style='border:{outer_width} solid {outer_color}; border-radius:10px; "
-        f"overflow:hidden; margin-bottom:6px;'>"
-        f"<div style='background:{outer_color}15; padding:8px 12px; font-weight:800; font-size:14px;'>{title}</div>"
-        f"<table style='width:100%; border-collapse:collapse; font-size:14px;'>"
-    )
-    for t, v in rows:
-        is_selected = highlight_outer and (t == selected_ticker)
-        a_color = ASSET_COLORS.get(t, '#6B7280')
-        row_bg = f"{a_color}22" if is_selected else "transparent"
-        weight = "900" if is_selected else "500"
-        check = " ✅" if is_selected else ""
-        if pd.notna(v):
-            v_pct = v * 100
-            v_color = "#D32F2F" if v_pct > 0 else ("#1976D2" if v_pct < 0 else "#6B7280")
-            v_str = f"{v_pct:+.2f}%"
-        else:
-            v_color = "#9CA3AF"
-            v_str = "N/A"
-        html += (
-            f"<tr style='background:{row_bg}; border-top:1px solid #F0F0F0;'>"
-            f"<td style='padding:8px 12px; font-weight:{weight}; color:{a_color};'>{t}{check}</td>"
-            f"<td style='padding:8px 12px; text-align:right; font-weight:{weight}; color:{v_color};'>{v_str}</td>"
-            f"</tr>"
-        )
-    html += "</table></div>"
-    return html
+    def _fmt_ret(v):
+        if pd.isna(v):
+            return 'N/A'
+        return f"{v*100:+.2f}%"
+
+    def _color_ret(v):
+        if pd.isna(v):
+            return 'color: #9CA3AF;'
+        if v > 0:
+            return 'color: #D32F2F; font-weight: bold;'
+        if v < 0:
+            return 'color: #1976D2; font-weight: bold;'
+        return ''
+
+    styler = (df.style
+              .apply(_row_style, axis=1)
+              .map(_color_ret, subset=['수익률'])
+              .format({'수익률': _fmt_ret}))
+    return styler, df
 
 
 col_off, col_def = st.columns(2)
 
 with col_off:
-    # 공격모드일 때만 외곽선+선택 강조
-    off_selected = selected_hold if (not defensive_now) else None
+    is_active = (not defensive_now)
+    label = "⚔️ 공격 자산 (12개월 수익률)" + ("" if is_active else "  · 비활성")
     st.markdown(
-        _build_asset_table(
-            "⚔️ 공격 자산 (12개월 수익률)", OFFENSE_ASSETS, 'ret12', '12M',
-            highlight_outer=(not defensive_now), selected_ticker=off_selected
-        ),
+        f"<div style='font-weight:800; font-size:14px; margin-bottom:4px; "
+        f"color:{'#111827' if is_active else '#9CA3AF'};'>{label}</div>",
         unsafe_allow_html=True
     )
+    off_styler, _ = _style_asset_df(OFFENSE_ASSETS, 'ret12', is_active,
+                                    selected_hold if is_active else None)
+    st.dataframe(off_styler, hide_index=True, use_container_width=True)
 
 with col_def:
-    # 방어모드일 때만 외곽선+선택 강조
-    def_selected = selected_hold if defensive_now else None
+    is_active = defensive_now
+    label = "🛡️ 방어 자산 (11개월 수익률)" + ("" if is_active else "  · 비활성")
     st.markdown(
-        _build_asset_table(
-            "🛡️ 방어 자산 (11개월 수익률)", DEFENSE_ASSETS, 'ret11', '11M',
-            highlight_outer=defensive_now, selected_ticker=def_selected
-        ),
+        f"<div style='font-weight:800; font-size:14px; margin-bottom:4px; "
+        f"color:{'#111827' if is_active else '#9CA3AF'};'>{label}</div>",
         unsafe_allow_html=True
     )
+    def_styler, _ = _style_asset_df(DEFENSE_ASSETS, 'ret11', is_active,
+                                    selected_hold if is_active else None)
+    st.dataframe(def_styler, hide_index=True, use_container_width=True)
 
 # 방어모드 & 현금 보유 시 안내
 if defensive_now and selected_hold == CASH:
@@ -248,12 +256,23 @@ with col_c2:
         unsafe_allow_html=True
     )
     div_pct_val = last_signal['div_pct']
+    div_val = last_signal['div_value'] if 'div_value' in last_signal else np.nan
     if pd.notna(div_pct_val):
-        st.metric(
-            "현재 배당 백분위 (5Y 롤링)",
-            f"{div_pct_val:.1f}%",
-            delta=f"{'10% 이하 ⚠️' if div_pct_val <= 10 else '안전 구간'}",
-            delta_color="inverse" if div_pct_val <= 10 else "off"
+        mcol1, mcol2 = st.columns(2)
+        with mcol1:
+            st.metric(
+                "5Y 백분위 (낮을수록 비쌈)",
+                f"{div_pct_val:.1f}%",
+                delta=f"{'10% 이하 ⚠️ 발동' if div_pct_val <= 10 else '안전 구간'}",
+                delta_color="inverse" if div_pct_val <= 10 else "off"
+            )
+        with mcol2:
+            if pd.notna(div_val):
+                st.metric("현재 배당수익률", f"{div_val:.2f}%")
+        st.caption(
+            "ℹ️ **백분위**: 지난 60개월 중 현재 배당수익률보다 낮았던 비율. "
+            "1.7%면 '5년 중 1.7%의 기간만 지금보다 배당이 낮았다' = 역사적으로 매우 비싼 구간. "
+            "**배당수익률 원본값**(예: 1.13%)과는 다른 수치입니다."
         )
     else:
         st.info("배당 데이터 부족 (60개월 워밍업 또는 파일 없음)")
