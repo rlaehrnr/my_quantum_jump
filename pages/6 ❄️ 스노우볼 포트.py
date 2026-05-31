@@ -144,8 +144,8 @@ def _style_asset_df(assets, ret_prefix, active, selected_ticker):
         n = len(row)
         if active and row['자산'] == selected_ticker:
             a_color = ASSET_COLORS.get(selected_ticker, '#6B7280')
-            # 선택 행: 진한 배경 + 흰 글씨 (수익률 포함 전체 흰색으로 통일)
-            return [f'background-color: {a_color}; color: #FFFFFF; font-weight: 800;'] * n
+            # 선택 행: 반투명 배경 + 굵게 (글자색은 건드리지 않아 수익률 빨강/파랑 유지)
+            return [f'background-color: {a_color}55; font-weight: 800;'] * n
         if not active:
             return ['color: #9CA3AF;'] * n  # 비활성: 흐리게
         return [''] * n
@@ -156,17 +156,14 @@ def _style_asset_df(assets, ret_prefix, active, selected_ticker):
         return f"{v*100:+.2f}%"
 
     def _color_ret(row):
-        """수익률 컬럼 색상. 단, 선택 행은 흰 글씨 유지 위해 건드리지 않음."""
+        """수익률 컬럼 색상 — 항상 빨강(양수)/파랑(음수)."""
         v = row['수익률']
-        # 선택 행이면 _row_style의 흰 글씨 유지
-        if active and row['자산'] == selected_ticker:
-            return ''
         if pd.isna(v):
-            return 'color: #9CA3AF;'
+            return 'color: #9CA3AF; font-weight: bold;'
         if v > 0:
-            return 'color: #D32F2F; font-weight: bold;'
+            return 'color: #FF5252; font-weight: bold;'
         if v < 0:
-            return 'color: #1976D2; font-weight: bold;'
+            return 'color: #5C9DFF; font-weight: bold;'
         return ''
 
     def _apply_ret_color(df_inner):
@@ -284,19 +281,26 @@ with col_c2:
             )
         with mcol2:
             if pd.notna(div_val):
-                # 10% 기준점은 보조값(delta) + 툴팁으로
+                help_txt = (
+                    f"하위 10% 기준점 = 지난 60개월 배당수익률 분포의 10번째 백분위수 ({div_thr:.2f}%). "
+                    f"현재 배당({div_val:.2f}%)이 이 값보다 낮으면 역사적으로 비싼 구간 → 조건2 발동."
+                ) if pd.notna(div_thr) else None
+                st.metric("현재 배당수익률", f"{div_val:.2f}%", help=help_txt)
+                # 기준점 부등호 비교 뱃지 (화살표 없이)
                 if pd.notna(div_thr):
-                    delta_txt = f"기준점 {div_thr:.2f}%"
-                    # 현재 배당 ≤ 기준점이면 발동(비쌈) → inverse 색
-                    delta_clr = "inverse" if div_val <= div_thr else "off"
-                    help_txt = (
-                        f"하위 10% 기준점 = 지난 60개월 배당수익률 분포의 10번째 백분위수 ({div_thr:.2f}%). "
-                        f"현재 배당({div_val:.2f}%)이 이 값보다 낮으면 역사적으로 비싼 구간 → 조건2 발동."
+                    if div_val <= div_thr:
+                        cmp_color = "#EF4444"   # 발동(비쌈)
+                        cmp_sign = "≤"
+                    else:
+                        cmp_color = "#10B981"   # 안전
+                        cmp_sign = ">"
+                    st.markdown(
+                        f"<div style='display:inline-block; font-size:13px; font-weight:800; "
+                        f"color:{cmp_color}; background:{cmp_color}18; padding:3px 10px; "
+                        f"border-radius:6px; margin-top:2px;'>"
+                        f"{div_val:.2f}% {cmp_sign} 기준점 {div_thr:.2f}%</div>",
+                        unsafe_allow_html=True
                     )
-                    st.metric("현재 배당수익률", f"{div_val:.2f}%",
-                              delta=delta_txt, delta_color=delta_clr, help=help_txt)
-                else:
-                    st.metric("현재 배당수익률", f"{div_val:.2f}%")
     else:
         st.info("배당 데이터 부족 (60개월 워밍업 또는 파일 없음)")
 
