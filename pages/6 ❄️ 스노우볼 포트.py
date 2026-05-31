@@ -188,9 +188,10 @@ col_off, col_def = st.columns(2)
 with col_off:
     is_active = (not defensive_now)
     label = "⚔️ 공격 자산 (12개월 수익률)" + ("" if is_active else "  · 비활성")
+    title_color = "#10B981" if is_active else "#9CA3AF"  # 활성: 초록, 비활성: 회색
     st.markdown(
-        f"<div style='font-weight:800; font-size:14px; margin-bottom:4px; "
-        f"color:{'#111827' if is_active else '#9CA3AF'};'>{label}</div>",
+        f"<div style='font-weight:800; font-size:15px; margin-bottom:4px; "
+        f"color:{title_color};'>{label}</div>",
         unsafe_allow_html=True
     )
     off_styler, _ = _style_asset_df(OFFENSE_ASSETS, 'ret12', is_active,
@@ -200,9 +201,10 @@ with col_off:
 with col_def:
     is_active = defensive_now
     label = "🛡️ 방어 자산 (11개월 수익률)" + ("" if is_active else "  · 비활성")
+    title_color = "#EF4444" if is_active else "#9CA3AF"  # 활성: 빨강, 비활성: 회색
     st.markdown(
-        f"<div style='font-weight:800; font-size:14px; margin-bottom:4px; "
-        f"color:{'#111827' if is_active else '#9CA3AF'};'>{label}</div>",
+        f"<div style='font-weight:800; font-size:15px; margin-bottom:4px; "
+        f"color:{title_color};'>{label}</div>",
         unsafe_allow_html=True
     )
     def_styler, _ = _style_asset_df(DEFENSE_ASSETS, 'ret11', is_active,
@@ -282,32 +284,19 @@ with col_c2:
             )
         with mcol2:
             if pd.notna(div_val):
-                st.metric("현재 배당수익률", f"{div_val:.2f}%")
-        # 10% 기준점과 직접 비교
-        if pd.notna(div_thr) and pd.notna(div_val):
-            if div_val <= div_thr:
-                cmp_color = "#EF4444"
-                cmp_sign = "≤"
-                cmp_msg = "현재 배당이 기준점보다 낮음 → 비싼 구간 (발동)"
-            else:
-                cmp_color = "#10B981"
-                cmp_sign = ">"
-                cmp_msg = "현재 배당이 기준점보다 높음 → 안전"
-            st.markdown(
-                f"<div style='background:{cmp_color}15; border:1.5px solid {cmp_color}; "
-                f"border-radius:8px; padding:10px 14px; margin-top:8px;'>"
-                f"<span style='font-size:18px; font-weight:900; color:{cmp_color};'>"
-                f"{div_val:.2f}% {cmp_sign} {div_thr:.2f}%</span>"
-                f"<span style='font-size:12px; color:#6B7280; margin-left:10px;'>"
-                f"(현재 배당 {cmp_sign} 하위 10% 기준점)</span>"
-                f"<div style='font-size:11px; color:#6B7280; margin-top:3px;'>{cmp_msg}</div>"
-                f"</div>",
-                unsafe_allow_html=True
-            )
-        st.caption(
-            "ℹ️ **하위 10% 기준점**: 지난 60개월 배당수익률 분포의 10번째 백분위수. "
-            "현재 배당수익률이 이 기준점보다 낮으면 '역사적으로 비싼 구간'으로 보고 조건2 발동."
-        )
+                # 10% 기준점은 보조값(delta) + 툴팁으로
+                if pd.notna(div_thr):
+                    delta_txt = f"기준점 {div_thr:.2f}%"
+                    # 현재 배당 ≤ 기준점이면 발동(비쌈) → inverse 색
+                    delta_clr = "inverse" if div_val <= div_thr else "off"
+                    help_txt = (
+                        f"하위 10% 기준점 = 지난 60개월 배당수익률 분포의 10번째 백분위수 ({div_thr:.2f}%). "
+                        f"현재 배당({div_val:.2f}%)이 이 값보다 낮으면 역사적으로 비싼 구간 → 조건2 발동."
+                    )
+                    st.metric("현재 배당수익률", f"{div_val:.2f}%",
+                              delta=delta_txt, delta_color=delta_clr, help=help_txt)
+                else:
+                    st.metric("현재 배당수익률", f"{div_val:.2f}%")
     else:
         st.info("배당 데이터 부족 (60개월 워밍업 또는 파일 없음)")
 
