@@ -296,9 +296,13 @@ def compute_div_percentile(div_yield, window=60, min_pct=0.8):
         min_pct: 0.8 (60×0.8=48개 유효 데이터 필요)
     
     Returns:
-        Series: 같은 인덱스, values=백분위(%). 워밍업 부족하면 NaN.
+        (pct_series, threshold_series)
+        - pct_series: 백분위(%). 워밍업 부족하면 NaN.
+        - threshold_series: 그 시점의 "하위 10% 경계 배당수익률" (quantile 0.1). 워밍업 부족 시 NaN.
+          현재 배당수익률이 이 값보다 낮거나 같으면 cond2 발동.
     """
     out = pd.Series(index=div_yield.index, dtype=float)
+    thr = pd.Series(index=div_yield.index, dtype=float)
     values = div_yield.values
     min_n = int(window * min_pct)
     
@@ -310,11 +314,14 @@ def compute_div_percentile(div_yield, window=60, min_pct=0.8):
         cur = values[i]
         if pd.isna(cur) or len(valid) < min_n:
             out.iloc[i] = np.nan
+            thr.iloc[i] = np.nan
             continue
         pct = (valid <= cur).sum() / len(valid) * 100
         out.iloc[i] = pct
+        # 하위 10% 경계값 (이 값 이하이면 백분위 10% 이내에 해당)
+        thr.iloc[i] = np.quantile(valid, 0.10)
     
-    return out
+    return out, thr
 
 
 def compute_signals(prices, div_yield):
@@ -366,10 +373,11 @@ def compute_signals(prices, div_yield):
     if not div_yield.empty:
         # 인덱스 정렬
         div_aligned = div_yield.reindex(prices.index)
-        div_pct = compute_div_percentile(div_aligned, window=60, min_pct=0.8)
+        div_pct, div_thr = compute_div_percentile(div_aligned, window=60, min_pct=0.8)
         cond2 = (div_pct <= 10).fillna(False)
     else:
         div_pct = pd.Series(np.nan, index=prices.index)
+        div_thr = pd.Series(np.nan, index=prices.index)
         cond2 = pd.Series(False, index=prices.index)
     
     defensive = cond1 | cond2
@@ -437,6 +445,7 @@ def compute_signals(prices, div_yield):
         'defensive': defensive,
         'div_pct': div_pct,
         'div_value': div_value_series,
+        'div_threshold': div_thr,
         'hold': holds,
         'reason': reasons,
     }, index=prices.index)
