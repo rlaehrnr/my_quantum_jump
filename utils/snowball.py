@@ -336,6 +336,27 @@ def compute_signals(prices, div_yield):
     ret11 = compute_returns(prices, 11)
     ret12 = compute_returns(prices, 12)
     
+    # 💡 [명세서 §5 시작 조건] 각 월이 백테스트 가능한지 판정.
+    # 다음이 모두 계산 가능(NaN 아님)해야 그 달의 신호가 유효:
+    #   - 신호 4종(TIP/VWO/EFA/VIXY) 6M 수익률
+    #   - 방어 4종(GLD/TLT/SQQQ/SLV) 11M 수익률
+    #   - 공격 2종(TQQQ/USD) 12M 수익률
+    # (배당 60개월 백분위는 워밍업 전이면 cond2=False로 처리하고 진행 — 명세서 §5)
+    ready_cols_6 = [t for t in SIGNAL_ASSETS if t in ret6.columns]
+    ready_cols_11 = [t for t in DEFENSE_ASSETS if t in ret11.columns]
+    ready_cols_12 = [t for t in OFFENSE_ASSETS if t in ret12.columns]
+    
+    data_ready = pd.Series(True, index=prices.index)
+    if ready_cols_6:
+        data_ready &= ret6[ready_cols_6].notna().all(axis=1)
+    if ready_cols_11:
+        data_ready &= ret11[ready_cols_11].notna().all(axis=1)
+    if ready_cols_12:
+        data_ready &= ret12[ready_cols_12].notna().all(axis=1)
+    # 필수 자산 컬럼 자체가 누락이면 전부 False
+    if len(ready_cols_6) < len(SIGNAL_ASSETS) or len(ready_cols_11) < len(DEFENSE_ASSETS) or len(ready_cols_12) < len(OFFENSE_ASSETS):
+        data_ready &= False
+    
     # cond1: 신호자산 4종 모두 6M < 0
     cond1 = pd.Series(False, index=prices.index)
     if all(t in ret6.columns for t in SIGNAL_ASSETS):
@@ -358,6 +379,12 @@ def compute_signals(prices, div_yield):
     reasons = []
     
     for m in prices.index:
+        # 💡 데이터 미충족 달은 신호 무효 (백테스트에서 제외됨)
+        if not bool(data_ready.loc[m]):
+            holds.append(None)
+            reasons.append("데이터 부족 (워밍업 구간)")
+            continue
+        
         cond1_m = bool(cond1.loc[m]) if m in cond1.index else False
         cond2_m = bool(cond2.loc[m]) if m in cond2.index else False
         defensive_m = cond1_m or cond2_m
@@ -398,11 +425,18 @@ def compute_signals(prices, div_yield):
                 holds.append('USD')
                 reasons.append(f"공격모드 → USD (12M={usd_v*100:.1f}% > TQQQ {tqqq_v*100:.1f}%)")
     
+    # 배당수익률 원본값 (UI 표시용)
+    if not div_yield.empty:
+        div_value_series = div_yield.reindex(prices.index)
+    else:
+        div_value_series = pd.Series(np.nan, index=prices.index)
+    
     sig = pd.DataFrame({
         'cond1': cond1,
         'cond2': cond2,
         'defensive': defensive,
         'div_pct': div_pct,
+        'div_value': div_value_series,
         'hold': holds,
         'reason': reasons,
     }, index=prices.index)
@@ -508,8 +542,10 @@ def compute_performance(bt):
     cagr = cum ** (12.0/n) - 1.0 if cum > 0 else -1.0
     
     rets = bt['ret_strategy']
-    vol = rets.std() * np.sqrt(12)
-    sharpe = (rets.mean() / rets.std() * np.sqrt(12)) if rets.std() > 0 else 0.0
+    # 정답지와 동일하게 모표준편차(ddof=0) 사용
+    std_strat = rets.std(ddof=0)
+    vol = std_strat * np.sqrt(12)
+    sharpe = (rets.mean() / std_strat * np.sqrt(12)) if std_strat > 0 else 0.0
     mdd = bt['dd_strategy'].min()
     win_rate = (rets > 0).mean()
     offense_pct = (~bt['defensive']).mean()
@@ -518,8 +554,9 @@ def compute_performance(bt):
     spy_cum = bt['cum_spy'].iloc[-1]
     spy_cagr = spy_cum ** (12.0/n) - 1.0 if spy_cum > 0 else -1.0
     spy_dd = (bt['cum_spy'] / bt['cum_spy'].cummax() - 1.0).min()
-    spy_vol = bt['ret_spy'].std() * np.sqrt(12)
-    spy_sharpe = (bt['ret_spy'].mean() / bt['ret_spy'].std() * np.sqrt(12)) if bt['ret_spy'].std() > 0 else 0.0
+    spy_std = bt['ret_spy'].std(ddof=0)
+    spy_vol = spy_std * np.sqrt(12)
+    spy_sharpe = (bt['ret_spy'].mean() / spy_std * np.sqrt(12)) if spy_std > 0 else 0.0
     
     return {
         'n_months': n,
