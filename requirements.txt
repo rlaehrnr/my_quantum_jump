@@ -6,3 +6,4 @@ plotly
 yfinance
 xlsxwriter
 gspread
+openpyxl
