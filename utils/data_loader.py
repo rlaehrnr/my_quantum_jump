@@ -105,3 +105,25 @@ def _validate_archive(df):
             print(issue)
     else:
         print(f"✅ 데이터 검증 완료: {df['투자월'].nunique()}개월, {len(df)}행")
+
+
+
+    # ==========================================
+    # 💡 데일리 데이터: GitHub raw에서 직접 로드
+    # Streamlit Cloud 재배포 여부와 무관하게 항상 최신본을 가져온다.
+    # ==========================================
+    DAILY_RAW_URL = "https://raw.githubusercontent.com/<USER>/<REPO>/<BRANCH>/data/momentum_data_daily.csv"
+    
+    @st.cache_data(ttl=600, show_spinner=False)  # 10분마다 최신본 확인
+    def load_daily_data(raw_url=DAILY_RAW_URL, local_path="data/momentum_data_daily.csv"):
+        """1순위: GitHub raw(재배포 의존 X), 2순위: 로컬 파일 폴백."""
+        if raw_url and "<USER>" not in raw_url:
+            try:
+                df = pd.read_csv(raw_url, dtype={'종목코드': str})
+                if not df.empty:
+                    return df
+            except Exception as e:
+                print(f"⚠️ GitHub raw 로드 실패, 로컬 폴백: {e}")
+        if os.path.exists(local_path):
+            return pd.read_csv(local_path, dtype={'종목코드': str})
+        return pd.DataFrame()
