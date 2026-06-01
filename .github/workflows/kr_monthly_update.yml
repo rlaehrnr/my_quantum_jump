@@ -2,7 +2,7 @@ name: KR Monthly Archive
 
 on:
   schedule:
-    - cron: '0 14 1 * *'  # 💡 매월 1일 UTC 14시 = 한국 시간 매월 1일 밤 11시
+    - cron: '0 0 1 * *'  # 💡 매월 1일 UTC 0시 = 한국 시간 매월 1일 오전 9시
   workflow_dispatch:
 
 jobs:
