@@ -1,306 +1,38 @@
-"""
-update_snowball.py — 스노우볼 포트 데이터 자동 업데이트
-========================================================
+name: Snowball Monthly Data Update
 
-매월 말 실행되어 다음을 갱신:
-1. ETF 11종 월봉 → data/snowball/monthly/{TICKER}_과거_데이터.csv
-   - fdr 우선, 실패 시 yfinance 폴백
-2. S&P 500 배당수익률 → data/snowball/monthly/SP500_DIV.csv
-   - 여러 소스 폴백 체인. 전부 실패하면 기존 파일 보존.
+on:
+  schedule:
+    # 💡 매월 1일 UTC 06:00 = 한국 시간 매월 1일 오후 3시
+    #    (미국 시장 전월 말 마감 데이터가 반영된 후 실행)
+    - cron: '0 6 1 * *'
+  workflow_dispatch:   # 수동 실행 버튼
 
-설계 원칙:
-- 안전 우선: 새 데이터를 못 받으면 기존 파일을 절대 덮어쓰지 않음.
-- 기존 형식 유지: investing.com KR 형식("날짜","종가",...)과 호환.
-- 멱등성: 같은 달 여러 번 실행해도 결과 동일 (해당 월 행 갱신/추가).
-"""
+jobs:
+  update-snowball:
+    runs-on: ubuntu-latest
+    env:
+      TZ: Asia/Seoul
 
-import os
-import sys
-import pandas as pd
-import numpy as np
-from datetime import datetime
+    steps:
+    - name: 1. 저장소 코드 불러오기
+      uses: actions/checkout@v4
 
-MONTHLY_DIR = 'data/snowball/monthly'
+    - name: 2. 파이썬 환경 세팅
+      uses: actions/setup-python@v5
+      with:
+        python-version: '3.11'
 
-# 스노우볼 자산 (snowball.py와 동일하게 유지)
-ALL_TICKERS = ['TIP', 'VWO', 'EFA', 'VIXY', 'TQQQ', 'USD', 'GLD', 'TLT', 'SQQQ', 'SLV', 'SPY']
+    - name: 3. 라이브러리 설치
+      run: |
+        python -m pip install --upgrade pip
+        pip install pandas numpy finance-datareader yfinance requests beautifulsoup4 lxml openpyxl
 
+    - name: 4. 스노우볼 데이터 업데이트 스크립트 실행
+      run: python update_snowball.py
 
-# ==========================================
-# ETF 월봉 수집
-# ==========================================
-
-def fetch_etf_fdr(ticker, start='2005-01-01'):
-    """FinanceDataReader로 ETF 일봉 받아 월봉(월말 종가)으로 변환."""
-    import FinanceDataReader as fdr
-    df = fdr.DataReader(ticker, start)
-    if df is None or df.empty or 'Close' not in df.columns:
-        return None
-    if df.index.tz is not None:
-        df.index = df.index.tz_localize(None)
-    # 월말 종가로 리샘플
-    monthly = df['Close'].resample('ME').last().dropna()
-    return monthly
-
-
-def fetch_etf_yfinance(ticker, start='2005-01-01'):
-    """yfinance 폴백."""
-    import yfinance as yf
-    df = yf.download(ticker, start=start, progress=False, auto_adjust=False)
-    if df is None or df.empty:
-        return None
-    close = df['Close']
-    if isinstance(close, pd.DataFrame):
-        close = close.iloc[:, 0]
-    if getattr(close.index, 'tz', None) is not None:
-        close.index = close.index.tz_localize(None)
-    monthly = close.resample('ME').last().dropna()
-    return monthly
-
-
-def fetch_etf(ticker):
-    """fdr 우선, 실패 시 yfinance. 둘 다 실패하면 None."""
-    for name, fn in [('fdr', fetch_etf_fdr), ('yfinance', fetch_etf_yfinance)]:
-        try:
-            s = fn(ticker)
-            if s is not None and len(s) > 12:
-                print(f"  ✅ {ticker}: {name}로 {len(s)}개월 수집 (최근 {s.index[-1].date()})")
-                return s
-            else:
-                print(f"  ⚠️ {ticker}: {name} 결과 부족")
-        except Exception as e:
-            print(f"  ⚠️ {ticker}: {name} 실패 ({type(e).__name__}: {e})")
-    return None
-
-
-def save_etf_csv(ticker, monthly_series):
-    """
-    월봉 Series를 investing.com KR 형식 CSV로 저장.
-    형식: "날짜","종가","시가","고가","저가","거래량","변동 %"
-    (종가만 실제 값, 나머지는 종가로 채움 — snowball.py는 종가만 사용)
-    """
-    df = pd.DataFrame({
-        '날짜': monthly_series.index.strftime('%Y-%m-%d'),
-        '종가': monthly_series.values.round(2),
-        '시가': monthly_series.values.round(2),
-        '고가': monthly_series.values.round(2),
-        '저가': monthly_series.values.round(2),
-        '거래량': 0,
-        '변동 %': '0%',
-    })
-    # 최신이 위로 (investing.com 관행)
-    df = df.iloc[::-1].reset_index(drop=True)
-    path = os.path.join(MONTHLY_DIR, f"{ticker}_과거_데이터.csv")
-    df.to_csv(path, index=False, encoding='utf-8-sig')
-    return path
-
-
-def update_all_etfs():
-    """모든 ETF 갱신. 실패한 ticker는 기존 파일 유지."""
-    print("📈 ETF 월봉 데이터 수집 시작...")
-    ok, fail = [], []
-    for ticker in ALL_TICKERS:
-        s = fetch_etf(ticker)
-        if s is not None:
-            save_etf_csv(ticker, s)
-            ok.append(ticker)
-        else:
-            fail.append(ticker)
-            print(f"  ❌ {ticker}: 수집 실패 → 기존 파일 유지")
-    print(f"📈 ETF 완료: 성공 {len(ok)}개, 실패 {len(fail)}개")
-    if fail:
-        print(f"   실패 목록: {fail}")
-    return ok, fail
-
-
-# ==========================================
-# S&P 500 배당수익률 수집 (폴백 체인)
-# ==========================================
-
-def _http_get(url, timeout=20):
-    import requests
-    headers = {
-        'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 '
-                      '(KHTML, like Gecko) Chrome/120.0 Safari/537.36',
-        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
-        'Accept-Language': 'en-US,en;q=0.9',
-        'Referer': 'https://www.google.com/',
-    }
-    r = requests.get(url, headers=headers, timeout=timeout)
-    r.raise_for_status()
-    return r.text
-
-
-def fetch_div_multpl():
-    """
-    multpl.com에서 월별 배당수익률 테이블 파싱.
-    Returns: Series(index=Timestamp(월말), values=배당%) 또는 None
-    """
-    from bs4 import BeautifulSoup
-    html = _http_get("https://www.multpl.com/s-p-500-dividend-yield/table/by-month")
-    soup = BeautifulSoup(html, 'lxml')
-    table = soup.find('table', id='datatable')
-    if not table:
-        return None
-    records = []
-    for tr in table.find_all('tr'):
-        cells = [td.get_text(strip=True) for td in tr.find_all('td')]
-        if len(cells) >= 2:
-            date_str, val_str = cells[0], cells[1]
-            try:
-                date = pd.to_datetime(date_str)
-                val = float(val_str.replace('%', '').replace('†', '').replace('estimate', '').strip())
-                records.append((date, val))
-            except (ValueError, TypeError):
-                continue
-    if not records:
-        return None
-    s = pd.Series({d: v for d, v in records}).sort_index()
-    return s
-
-
-def fetch_div_dqydj():
-    """
-    dqydj.com에서 배당수익률 파싱 (테이블 또는 임베디드 데이터).
-    Returns: Series 또는 None
-    """
-    from bs4 import BeautifulSoup
-    html = _http_get("https://dqydj.com/sp-500-dividend-yield/")
-    soup = BeautifulSoup(html, 'lxml')
-    # dqydj는 테이블 형태로 제공
-    for table in soup.find_all('table'):
-        records = []
-        for tr in table.find_all('tr'):
-            cells = [td.get_text(strip=True) for td in tr.find_all('td')]
-            if len(cells) >= 2:
-                try:
-                    date = pd.to_datetime(cells[0])
-                    val = float(cells[1].replace('%', '').strip())
-                    records.append((date, val))
-                except (ValueError, TypeError):
-                    continue
-        if len(records) > 12:  # 충분한 데이터가 있는 테이블
-            return pd.Series({d: v for d, v in records}).sort_index()
-    return None
-
-
-def update_dividend():
-    """
-    배당수익률 갱신. 폴백 체인으로 시도.
-    전부 실패하면 기존 파일 보존 (False 반환).
-    성공하면 기존 데이터와 병합 후 저장 (True 반환).
-    """
-    print("💰 S&P 500 배당수익률 수집 시작...")
-    
-    new_series = None
-    for name, fn in [('multpl', fetch_div_multpl), ('dqydj', fetch_div_dqydj)]:
-        try:
-            s = fn()
-            if s is not None and len(s) > 0:
-                print(f"  ✅ {name}로 {len(s)}개 데이터 수집 (최근 {s.index[-1].date()}={s.iloc[-1]}%)")
-                new_series = s
-                break
-            else:
-                print(f"  ⚠️ {name}: 데이터 없음")
-        except Exception as e:
-            print(f"  ⚠️ {name} 실패 ({type(e).__name__}: {e})")
-    
-    if new_series is None:
-        print("  ❌ 모든 배당 소스 실패 → 기존 SP500_DIV.csv 보존")
-        return False
-    
-    # 기존 파일과 병합 (기존 과거 데이터 보존 + 새 데이터로 갱신)
-    path_csv = os.path.join(MONTHLY_DIR, 'SP500_DIV.csv')
-    path_xlsx = os.path.join(MONTHLY_DIR, 'SP500_DIV.xlsx')
-    
-    existing = None
-    try:
-        if os.path.isfile(path_xlsx):
-            edf = pd.read_excel(path_xlsx)
-            existing = _parse_existing_div(edf)
-        elif os.path.isfile(path_csv):
-            edf = pd.read_csv(path_csv, encoding='utf-8-sig')
-            existing = _parse_existing_div(edf)
-    except Exception as e:
-        print(f"  ⚠️ 기존 배당 파일 읽기 실패 ({e}) — 새 데이터만 사용")
-    
-    # 월 단위로 병합 (새 데이터 우선)
-    new_monthly = new_series.copy()
-    new_monthly.index = pd.to_datetime(new_monthly.index).to_period('M')
-    new_monthly = new_monthly[~new_monthly.index.duplicated(keep='last')]
-    
-    if existing is not None and len(existing) > 0:
-        existing.index = pd.to_datetime(existing.index).to_period('M')
-        existing = existing[~existing.index.duplicated(keep='last')]
-        # 기존을 베이스로, 새 데이터로 덮어쓰기 (combine_first 반대 방향)
-        merged = new_monthly.combine_first(existing).sort_index()
-    else:
-        merged = new_monthly.sort_index()
-    
-    # 저장 (CSV, 간단 형식: 날짜, 종가)
-    out = pd.DataFrame({
-        '날짜': merged.index.to_timestamp('M').strftime('%Y-%m-%d'),
-        '종가': merged.values.round(2),
-    })
-    out = out.iloc[::-1].reset_index(drop=True)  # 최신이 위로
-    out.to_csv(path_csv, index=False, encoding='utf-8-sig')
-    print(f"  ✅ SP500_DIV.csv 저장 ({len(out)}개월, 최신 {out['날짜'].iloc[0]}={out['종가'].iloc[0]}%)")
-    return True
-
-
-def _parse_existing_div(df):
-    """기존 배당 파일(xlsx/csv)에서 (월말 날짜, 값) Series 추출."""
-    import re
-    # 날짜 컬럼
-    date_col = '날짜' if '날짜' in df.columns else ('Date' if 'Date' in df.columns else df.columns[0])
-    # 값 컬럼: Unnamed:2(깨끗한 숫자) 우선
-    val_col = None
-    for c in ['Unnamed: 2', '종가', 'Value', 'value', 'DividendYield']:
-        if c in df.columns:
-            val_col = c
-            break
-    if val_col is None and len(df.columns) >= 2:
-        val_col = df.columns[1]
-    
-    def parse_pct(x):
-        if pd.isna(x):
-            return np.nan
-        if isinstance(x, (int, float)):
-            return float(x)
-        m = re.search(r'([\d.]+)', str(x))
-        return float(m.group(1)) if m else np.nan
-    
-    dates = pd.to_datetime(df[date_col], errors='coerce')
-    vals = df[val_col].apply(parse_pct)
-    s = pd.Series(vals.values, index=dates).dropna()
-    return s
-
-
-# ==========================================
-# 메인
-# ==========================================
-
-def main():
-    print("=" * 60)
-    print(f"🚀 스노우볼 데이터 자동 업데이트 시작 — {datetime.now()}")
-    print("=" * 60)
-    
-    os.makedirs(MONTHLY_DIR, exist_ok=True)
-    
-    etf_ok, etf_fail = update_all_etfs()
-    print()
-    div_ok = update_dividend()
-    
-    print()
-    print("=" * 60)
-    print(f"📊 요약: ETF {len(etf_ok)}/{len(ALL_TICKERS)} 성공, 배당 {'성공' if div_ok else '실패(기존 유지)'}")
-    print("=" * 60)
-    
-    # ETF가 절반 이상 실패하면 비정상 종료 (Actions에서 알림)
-    if len(etf_fail) > len(ALL_TICKERS) // 2:
-        print("❌ ETF 수집 실패가 과반 — 비정상 상황")
-        sys.exit(1)
-
-
-if __name__ == "__main__":
-    main()
+    - name: 5. 깃허브에 변경사항 커밋 & 푸시
+      run: |
+        git config --local user.email "action@github.com"
+        git config --local user.name "GitHub Action Bot"
+        git add data/snowball/
+        git diff --quiet && git diff --staged --quiet || (git commit -m "🤖 [Snowball] 매월 데이터 자동 업데이트" && git push)
