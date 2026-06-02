@@ -198,7 +198,13 @@ with tab2:
         if '시가총액' in df_daily.columns and df_daily['시가총액'].max() > 10000000:
             df_daily['시가총액'] = df_daily['시가총액'] / 100000000
         
-        st.markdown(f"<div style='margin-bottom: 5px; font-size:0.95rem; font-weight:600;'><b>🕒 실시간 데일리 순위</b> <span style='font-size: 0.85rem; color: #9ca3af; font-weight:normal;'>&nbsp;&nbsp;💡 기준일: {b_date_d}</span></div>", unsafe_allow_html=True)
+        col_hd, col_rf = st.columns([8, 1.2], vertical_alignment="center")
+        with col_hd:
+            st.markdown(f"<div style='font-size:0.95rem; font-weight:600;'><b>🕒 실시간 데일리 순위</b> <span style='font-size: 0.85rem; color: #9ca3af; font-weight:normal;'>&nbsp;&nbsp;💡 기준일: {b_date_d}</span></div>", unsafe_allow_html=True)
+        with col_rf:
+            if st.button("🔄 새로고침", key="daily_refresh_korea", use_container_width=True):
+                st.cache_data.clear()
+                st.rerun()
         
         safe_date = b_date_d if b_date_d != "오늘" else datetime.today().strftime('%Y-%m-%d')
         
