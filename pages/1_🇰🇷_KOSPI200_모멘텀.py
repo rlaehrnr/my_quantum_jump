@@ -9,6 +9,7 @@ st.set_page_config(page_title="KOSPI 200 모멘텀", layout="wide")
 from utils.data_loader import load_archive_data, get_folder_hash
 from utils.calculator import get_cycle_year, PRESIDENTIAL_DANGEROUS_MONTHS, get_kospi_ma_all, get_kosdaq_ma_all, get_strategy_stocks_korea, run_backtest_k200, get_kospi_timing_for_backtest, get_idx_kr
 from utils.ui_components import inject_custom_css, apply_korea_styling, style_kospi_ma, get_styled_stats, get_mdd_history, get_monthly_heatmap, ma_cfg, main_cfg, generate_excel_report_cached, render_vix_widget
+from utils.data_loader import load_archive_data, get_folder_hash, load_daily_data
 
 inject_custom_css()
 
@@ -171,8 +172,15 @@ with tab1:
         st.dataframe(df_korea_t1.style.apply(apply_korea_styling, axis=1), use_container_width=True, height=600, hide_index=True, column_order=cols_m, column_config=main_cfg)
 
 with tab2:
-    if os.path.exists(f_daily):
-        df_daily = pd.read_csv(f_daily, dtype={'종목코드': str})
+    # 🔄 수동 새로고침 (즉시 갱신용)
+    col_rf, _ = st.columns([1.2, 8.8])
+    with col_rf:
+        if st.button("🔄 새로고침", key="daily_refresh_k200"):  # KOREA 페이지는 key="daily_refresh_korea"
+            st.cache_data.clear()
+            st.rerun()
+
+    df_daily = load_daily_data("momentum_data_daily.csv")
+    if not df_daily.empty:
         df_daily['종목코드'] = df_daily['종목코드'].astype(str).str.zfill(6)
         b_date_d = df_daily['기준일'].iloc[0] if '기준일' in df_daily.columns else "오늘"
         safe_date = b_date_d if b_date_d != "오늘" else datetime.today().strftime('%Y-%m-%d')
