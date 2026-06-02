@@ -175,8 +175,15 @@ with tab1:
         st.dataframe(df_korea_t1.style.apply(apply_korea_styling, axis=1), use_container_width=True, height=600, hide_index=True, column_order=cols_m, column_config=main_cfg)
 
 with tab2:
-    if os.path.exists(f_daily):
-        df_daily = pd.read_csv(f_daily, dtype={'종목코드': str})
+    # 🔄 수동 새로고침 (즉시 갱신용)
+    col_rf, _ = st.columns([1.2, 8.8])
+    with col_rf:
+        if st.button("🔄 새로고침", key="daily_refresh_k200"):  # KOREA 페이지는 key="daily_refresh_korea"
+            st.cache_data.clear()
+            st.rerun()
+
+    df_daily = load_daily_data("momentum_data_daily_korea.csv")
+    if not df_daily.empty:
         df_daily['종목코드'] = df_daily['종목코드'].astype(str).str.zfill(6)
         b_date_d = df_daily['기준일'].iloc[0] if '기준일' in df_daily.columns else "오늘"
         
