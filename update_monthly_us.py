@@ -46,11 +46,17 @@ def get_top_us_stocks(market, limit=150):
     try:
         df = fdr.StockListing(market)
         if df.empty: return pd.DataFrame()
+
+        # 💡 [수정] FDR 최신 버전의 NASDAQ/NYSE 목록에는 시가총액 컬럼이 없고,
+        #          이미 시가총액 내림차순으로 정렬되어 제공됨.
+        #          → 시총 컬럼이 있으면 그걸로 정렬(하위 호환), 없으면 목록 순서대로 상위 limit개 사용.
         cap_col = [c for c in df.columns if '시가총액' in c or ('mar' in c.lower() and 'cap' in c.lower())]
-        if not cap_col: return pd.DataFrame()
-        
-        df['시가총액_raw'] = pd.to_numeric(df[cap_col[0]].astype(str).str.replace(',', '').str.replace('.0', '', regex=False), errors='coerce')
-        df = df.dropna(subset=['시가총액_raw']).sort_values('시가총액_raw', ascending=False).head(limit)
+        if cap_col:
+            df['시가총액_raw'] = pd.to_numeric(df[cap_col[0]].astype(str).str.replace(',', '').str.replace('.0', '', regex=False), errors='coerce')
+            df = df.dropna(subset=['시가총액_raw']).sort_values('시가총액_raw', ascending=False)
+        else:
+            df['시가총액_raw'] = 0  # 시총값 없음(SP500과 동일 처리). 선정은 목록 순서(시총순)를 신뢰.
+        df = df.head(limit)
         
         code_col = 'Code' if 'Code' in df.columns else 'Symbol'
         name_col = 'Name' if 'Name' in df.columns else 'Company'
@@ -100,8 +106,8 @@ def generate_sp500(base_date, dates, start_date, base_date_str, invest_year, inv
             if res: results.append(res)
             
     if results:
-        # 💡 [한국 방식 동일] S&P500의 파일명 규칙(only_momentum_YYYY_MM.csv)도 '현재 월' 기준으로 저장
-        output_file = f"archive_sp500/only_momentum_{invest_month_str}.csv"
+        # 💡 [수정] S&P500 파일명 규칙을 과거 파일과 동일하게 only_sp500_YYYY_MM.csv 로 통일 + '현재 월' 기준 저장
+        output_file = f"archive_sp500/only_sp500_{invest_month_str}.csv"
         pd.DataFrame(results).to_csv(output_file, index=False, encoding='utf-8-sig')
         print(f"✅ [S&P 500] 월간 데이터 저장 완료: {output_file}")
 
