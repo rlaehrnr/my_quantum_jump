@@ -572,6 +572,7 @@ def compute_performance(bt):
     mdd = bt['dd_strategy'].min()
     win_rate = (rets > 0).mean()
     offense_pct = (~bt['defensive']).mean()
+    offense_months = int((~bt['defensive']).sum())
     
     # SPY 비교
     spy_cum = bt['cum_spy'].iloc[-1]
@@ -590,6 +591,7 @@ def compute_performance(bt):
         'mdd': mdd,
         'win_rate': win_rate,
         'offense_pct': offense_pct,
+        'offense_months': offense_months,
         'spy_cum_return': spy_cum - 1.0,
         'spy_cagr': spy_cagr,
         'spy_mdd': spy_dd,
