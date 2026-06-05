@@ -296,13 +296,18 @@ def compute_div_percentile(div_yield, window=60, min_pct=0.8):
         min_pct: 0.8 (60×0.8=48개 유효 데이터 필요)
     
     Returns:
-        (pct_series, threshold_series)
+        (pct_series, threshold_series, rank_series, total_series)
         - pct_series: 백분위(%). 워밍업 부족하면 NaN.
         - threshold_series: 그 시점의 "하위 10% 경계 배당수익률" (quantile 0.1). 워밍업 부족 시 NaN.
           현재 배당수익률이 이 값보다 낮거나 같으면 cond2 발동.
+        - rank_series: 표본 내 "비쌈 순위". 현재 배당수익률 이하(=동일하거나 더 비쌈)인
+          개월 수 = (valid <= cur).sum(). 1등이면 표본 중 가장 비쌈. 워밍업 부족 시 NaN.
+        - total_series: 백분위 계산에 쓴 유효 표본 개월 수 (보통 60). 워밍업 부족 시 NaN.
     """
     out = pd.Series(index=div_yield.index, dtype=float)
     thr = pd.Series(index=div_yield.index, dtype=float)
+    rank = pd.Series(index=div_yield.index, dtype=float)
+    total = pd.Series(index=div_yield.index, dtype=float)
     values = div_yield.values
     min_n = int(window * min_pct)
     
@@ -315,13 +320,18 @@ def compute_div_percentile(div_yield, window=60, min_pct=0.8):
         if pd.isna(cur) or len(valid) < min_n:
             out.iloc[i] = np.nan
             thr.iloc[i] = np.nan
+            rank.iloc[i] = np.nan
+            total.iloc[i] = np.nan
             continue
-        pct = (valid <= cur).sum() / len(valid) * 100
-        out.iloc[i] = pct
+        # 현재값 이하(동일·더 비쌈)인 표본 수 = 비쌈 순위 (1=가장 비쌈)
+        n_le = int((valid <= cur).sum())
+        out.iloc[i] = n_le / len(valid) * 100
         # 하위 10% 경계값 (이 값 이하이면 백분위 10% 이내에 해당)
         thr.iloc[i] = np.quantile(valid, 0.10)
+        rank.iloc[i] = n_le
+        total.iloc[i] = len(valid)
     
-    return out, thr
+    return out, thr, rank, total
 
 
 def compute_signals(prices, div_yield):
@@ -373,11 +383,13 @@ def compute_signals(prices, div_yield):
     if not div_yield.empty:
         # 인덱스 정렬
         div_aligned = div_yield.reindex(prices.index)
-        div_pct, div_thr = compute_div_percentile(div_aligned, window=60, min_pct=0.8)
+        div_pct, div_thr, div_rank, div_total = compute_div_percentile(div_aligned, window=60, min_pct=0.8)
         cond2 = (div_pct <= 10).fillna(False)
     else:
         div_pct = pd.Series(np.nan, index=prices.index)
         div_thr = pd.Series(np.nan, index=prices.index)
+        div_rank = pd.Series(np.nan, index=prices.index)
+        div_total = pd.Series(np.nan, index=prices.index)
         cond2 = pd.Series(False, index=prices.index)
     
     defensive = cond1 | cond2
@@ -446,6 +458,8 @@ def compute_signals(prices, div_yield):
         'div_pct': div_pct,
         'div_value': div_value_series,
         'div_threshold': div_thr,
+        'div_rank': div_rank,
+        'div_total': div_total,
         'hold': holds,
         'reason': reasons,
     }, index=prices.index)
