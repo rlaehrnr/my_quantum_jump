@@ -298,22 +298,20 @@ with col_c2:
                     f"하위 10% 기준점 = 지난 60개월 배당수익률 분포의 10번째 백분위수 ({div_thr:.2f}%). "
                     f"현재 배당({div_val:.2f}%)이 이 값보다 낮으면 역사적으로 비싼 구간 → 조건2 발동."
                 ) if pd.notna(div_thr) else None
-                st.metric("현재 배당수익률", f"{div_val:.2f}%", help=help_txt)
-                # 기준점 부등호 비교 뱃지 (화살표 없이)
+                # 왼쪽(5Y 밸류 순위)과 동일한 delta 서식으로 기준점 비교 표시
                 if pd.notna(div_thr):
-                    if div_val <= div_thr:
-                        cmp_color = "#EF4444"   # 발동(비쌈)
-                        cmp_sign = "≤"
-                    else:
-                        cmp_color = "#10B981"   # 안전
-                        cmp_sign = ">"
-                    st.markdown(
-                        f"<div style='display:inline-block; font-size:13px; font-weight:800; "
-                        f"color:{cmp_color}; background:{cmp_color}18; padding:3px 10px; "
-                        f"border-radius:6px; margin-top:2px;'>"
-                        f"{div_val:.2f}% {cmp_sign} 기준점 {div_thr:.2f}%</div>",
-                        unsafe_allow_html=True
+                    cheap = div_val <= div_thr  # True면 발동(비쌈)
+                    cmp_sign = "≤" if cheap else ">"
+                    cmp_delta = f"{div_val:.2f}% {cmp_sign} 기준점 {div_thr:.2f}%"
+                    st.metric(
+                        "현재 배당수익률",
+                        f"{div_val:.2f}%",
+                        delta=cmp_delta,
+                        delta_color="inverse" if cheap else "off",
+                        help=help_txt
                     )
+                else:
+                    st.metric("현재 배당수익률", f"{div_val:.2f}%", help=help_txt)
     else:
         st.info("배당 데이터 부족 (60개월 워밍업 또는 파일 없음)")
 
@@ -334,7 +332,11 @@ c1.metric("CAGR", f"{perf['cagr']*100:.1f}%", delta=f"vs SPY {perf['spy_cagr']*1
 c2.metric("MDD", f"{perf['mdd']*100:.1f}%", delta=f"vs SPY {perf['spy_mdd']*100:.1f}%", delta_color="inverse")
 c3.metric("샤프 비율", f"{perf['sharpe']:.2f}", delta=f"vs SPY {perf['spy_sharpe']:.2f}")
 c4.metric("누적 수익", f"{perf['cum_return']*100:,.0f}%")
-c5.metric("공격 비중", f"{perf['offense_pct']*100:.0f}%", delta=f"{perf['n_months']}개월")
+c5.metric(
+    "공격 비중",
+    f"{perf['offense_pct']*100:.0f}%",
+    delta=f"{perf.get('offense_months', round(perf['offense_pct']*perf['n_months']))}개월 / {perf['n_months']}개월",
+)
 
 # 자산 곡선 (log scale)
 st.markdown("#### 📉 자산 곡선 (Log Scale)")
