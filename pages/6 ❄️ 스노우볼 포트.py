@@ -270,14 +270,27 @@ with col_c2:
     div_pct_val = last_signal['div_pct']
     div_val = last_signal['div_value'] if 'div_value' in last_signal else np.nan
     div_thr = last_signal['div_threshold'] if 'div_threshold' in last_signal else np.nan
+    div_rank_val = last_signal['div_rank'] if 'div_rank' in last_signal else np.nan
+    div_total_val = last_signal['div_total'] if 'div_total' in last_signal else np.nan
     if pd.notna(div_pct_val):
         mcol1, mcol2 = st.columns(2)
         with mcol1:
+            # 큰 숫자: "N등 / M개월" (순위 데이터 없으면 백분위로 폴백)
+            if pd.notna(div_rank_val) and pd.notna(div_total_val):
+                rank_str = f"{int(div_rank_val)}등 / {int(div_total_val)}개월"
+            else:
+                rank_str = f"{div_pct_val:.1f}%"
+            # 하단: 원래 백분위 값 + 발동/안전 표시
+            triggered = div_pct_val <= 10
+            delta_str = (
+                f"{div_pct_val:.1f}% → 10% 이하 발동" if triggered
+                else f"{div_pct_val:.1f}% → 안전 구간"
+            )
             st.metric(
-                "5Y 백분위 (낮을수록 비쌈)",
-                f"{div_pct_val:.1f}%",
-                delta=f"{'10% 이하 ⚠️ 발동' if div_pct_val <= 10 else '안전 구간'}",
-                delta_color="inverse" if div_pct_val <= 10 else "off"
+                "5Y 밸류 순위 (1등=가장 비쌈)",
+                rank_str,
+                delta=delta_str,
+                delta_color="inverse" if triggered else "off"
             )
         with mcol2:
             if pd.notna(div_val):
