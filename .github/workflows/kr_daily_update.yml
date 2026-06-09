@@ -23,7 +23,7 @@ jobs:
     - name: 3. 라이브러리 설치
       run: |
         python -m pip install --upgrade pip
-        pip install pandas finance-datareader requests pykrx
+        pip install pandas finance-datareader requests
 
     - name: 4. 🇰🇷 한국 데일리 수집 스크립트 실행
       run: python update_daily_kr.py
