@@ -1,48 +1,43 @@
 import pandas as pd
 import FinanceDataReader as fdr
-from pykrx import stock as pykrx_stock
 from datetime import datetime
 import os
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
 # ==========================================
-# 🇰🇷 KRX 종목 리스팅 (FDR StockListing 대체 → pykrx)
-# FDR의 KrxMarcapListingCache 원격 캐시가 404로 깨져서 pykrx로 직접 조회.
-# 반환 컬럼: Code(6자리 str), Marcap(시가총액), Close(종가)
+# 🇰🇷 KRX 종목 리스팅 (fdr.StockListing 대체)
+# FDR 캐시 CSV를 직접 받되, 해당 날짜가 없으면 최근 영업일로 거슬러 올라간다.
+# KRX 실시간 질의가 없으므로 클라우드/CI IP 차단과 무관.
+# 반환 컬럼: Code(6자리 str), Name, Marcap(시가총액), Close(종가)
 # ==========================================
+FDR_CACHE_BASE = "https://raw.githubusercontent.com/FinanceData/fdr_krx_data_cache/refs/heads/master/data/listing/krx"
+_MARKET_ID = {'KOSPI': 'STK', 'KOSDAQ': 'KSQ', 'KONEX': 'KNX'}
+
 def fetch_krx_listing(market, ref_date_str):
     base = pd.to_datetime(str(ref_date_str).replace('-', ''), format='%Y%m%d')
     df = None
-    for back in range(0, 8):  # 휴장일이면 최대 7일 거슬러 올라가며 조회
-        day = (base - pd.Timedelta(days=back)).strftime('%Y%m%d')
+    used_day = None
+    for back in range(0, 11):  # 캐시 파일이 빈 날짜면 최대 10일 거슬러 올라감
+        day = (base - pd.Timedelta(days=back)).strftime('%Y-%m-%d')
+        url = f"{FDR_CACHE_BASE}/{day}.csv"
         try:
-            tmp = pykrx_stock.get_market_cap(day, market=market)
+            tmp = pd.read_csv(url, index_col=0, dtype={'Code': str, 'MarketId': str})
         except Exception:
             tmp = None
         if tmp is not None and not tmp.empty:
-            df = tmp
+            df, used_day = tmp, day
             break
-    if df is None or df.empty:
-        raise RuntimeError(f"KRX {market} 시가총액 조회 실패 (기준일: {ref_date_str})")
-    df = df.reset_index()
-    ticker_col = '티커' if '티커' in df.columns else df.columns[0]
+    if df is None:
+        raise RuntimeError(f"KRX 리스팅 캐시 조회 실패 (기준일 {ref_date_str} 부근 파일 없음)")
+    if used_day != base.strftime('%Y-%m-%d'):
+        print(f"   ↳ {market}: {ref_date_str} 캐시 없음 → {used_day} 사용")
+    df = df[df['MarketId'] == _MARKET_ID[market]].copy()
     return pd.DataFrame({
-        'Code': df[ticker_col].astype(str).str.zfill(6),
-        'Marcap': pd.to_numeric(df['시가총액'], errors='coerce').fillna(0).astype('int64'),
-        'Close': pd.to_numeric(df['종가'], errors='coerce').fillna(0.0),
+        'Code': df['Code'].astype(str).str.zfill(6),
+        'Name': df['Name'].astype(str),
+        'Marcap': pd.to_numeric(df['Marcap'], errors='coerce').fillna(0).astype('int64'),
+        'Close': pd.to_numeric(df['Close'], errors='coerce').fillna(0.0),
     })
-
-def attach_names(df):
-    # 최종 대상 종목에 한해서만 종목명 조회 (조회 건수 최소화)
-    names = {}
-    for c in df['Code'].unique():
-        try:
-            names[c] = pykrx_stock.get_market_ticker_name(c)
-        except Exception:
-            names[c] = c
-    out = df.copy()
-    out['Name'] = out['Code'].map(names)
-    return out
 
 def get_end_of_month(dt, months_ago):
     first_of_current = dt.replace(day=1)
@@ -114,7 +109,7 @@ def generate_monthly_archive_kr():
     dates = {'1개월': get_end_of_month(base_date, 1), '3개월': get_end_of_month(base_date, 3), '6개월': get_end_of_month(base_date, 6), '12개월': get_end_of_month(base_date, 12)}
     start_date = dates['12개월'] - pd.Timedelta(days=15)
 
-    print("🔄 한국 거래소 종목 마스터 데이터 구축 중... (pykrx)")
+    print("🔄 한국 거래소 종목 마스터 데이터 구축 중... (FDR 캐시 직접 조회)")
     df_kospi = fetch_krx_listing('KOSPI', base_date_str)
     df_kosdaq = fetch_krx_listing('KOSDAQ', base_date_str)
     df_kospi['Code'], df_kosdaq['Code'] = df_kospi['Code'].astype(str).str.zfill(6), df_kosdaq['Code'].astype(str).str.zfill(6)
@@ -124,7 +119,6 @@ def generate_monthly_archive_kr():
     df_korea_f = pd.concat([df_kospi.sort_values('Marcap', ascending=False).head(150), df_kosdaq.sort_values('Marcap', ascending=False).head(150)]).drop_duplicates(subset=['Code'])
     
     all_target_df = pd.concat([df_kospi_f, df_korea_f]).drop_duplicates(subset=['Code']).copy()
-    all_target_df = attach_names(all_target_df)  # 종목명 부여 (pykrx)
 
     print(f"📊 총 {len(all_target_df)}개 한국 종목 모멘텀 계산 중...")
     monthly_records_dict = {}
