@@ -302,6 +302,9 @@ with tab3:
                 else:
                     win_months, win_rate, avg_ret_str = 0, 0.0, "0.00%"
                 inv_ratio = invested_months / total_months * 100 if total_months > 0 else 0
+                # 💡 전체월 승률: 방어(금/현금) 달 포함, 모든 달 중 +수익 비율
+                total_win_months = int((df_res[col] > 0).sum())
+                total_win_rate = total_win_months / total_months * 100 if total_months > 0 else 0.0
                 
                 stats.append({
                     "전략명": col, 
@@ -309,7 +312,8 @@ with tab3:
                     "총 누적수익률": f"{final_val-100:,.1f}%", 
                     "MDD (최대낙폭)": f"{mdd:.1f}%", 
                     "투자월 비율": f"{inv_ratio:.1f}% ({invested_months}/{total_months})", 
-                    "월별 승률": f"{win_rate:.1f}% ({win_months}/{invested_months})", 
+                    "투자월 승률": f"{win_rate:.1f}% ({win_months}/{invested_months})", 
+                    "전체월 승률": f"{total_win_rate:.1f}% ({total_win_months}/{total_months})", 
                     "평균 수익률": avg_ret_str
                 })
             
