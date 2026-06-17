@@ -7,7 +7,7 @@ import os
 st.set_page_config(page_title="KOSPI 200 모멘텀", layout="wide")
 
 from utils.data_loader import load_archive_data, get_folder_hash
-from utils.calculator import get_cycle_year, PRESIDENTIAL_DANGEROUS_MONTHS, get_kospi_ma_all, get_kosdaq_ma_all, get_strategy_stocks_korea, run_backtest_k200, get_kospi_timing_for_backtest, get_idx_kr
+from utils.calculator import get_cycle_year, PRESIDENTIAL_DANGEROUS_MONTHS, get_kospi_ma_all, get_kosdaq_ma_all, get_strategy_stocks_korea, run_backtest_k200, get_kospi_timing_for_backtest, get_idx_kr, get_gold_krw_monthly
 from utils.ui_components import inject_custom_css, apply_korea_styling, style_kospi_ma, get_styled_stats, get_mdd_history, get_monthly_heatmap, ma_cfg, main_cfg, generate_excel_report_cached, render_vix_widget
 from utils.data_loader import load_archive_data, get_folder_hash, load_daily_data
 
@@ -51,8 +51,8 @@ years_list = sorted(df_master['투자연도'].unique().astype(int))
 min_y, max_y = min(years_list), max(years_list)
 
 @st.cache_data(show_spinner=False)
-def cached_run_backtest_korea(df, start_year, end_year, ma_months, apply_timing, rank_p, rank_s, perf_pct, spec_12m_pct, trading_cost_pct=0.25):
-    return run_backtest_k200(df, start_year, end_year, ma_months, apply_timing, rank_p, rank_s, perf_pct, spec_12m_pct, trading_cost_pct=trading_cost_pct)
+def cached_run_backtest_korea(df, start_year, end_year, ma_months, apply_timing, rank_p, rank_s, perf_pct, spec_12m_pct, trading_cost_pct=0.25, use_gold=False, _gold_returns=None):
+    return run_backtest_k200(df, start_year, end_year, ma_months, apply_timing, rank_p, rank_s, perf_pct, spec_12m_pct, trading_cost_pct=trading_cost_pct, gold_returns=_gold_returns, use_gold=use_gold)
 
 @st.cache_data(show_spinner=False)
 def cached_run_custom_backtest(df, start_year_c, end_year_c, ma_months_t4, apply_timing_c, w1, w3, w6, w12, custom_pct, rank_c_s, rank_c_e):
@@ -122,7 +122,7 @@ with tab1:
         
         is_bad_market = (neg_1m_cnt >= 100) and (neg_3m_cnt >= 100)
         is_below_ma = (kospi_curr > 0) and (kospi_curr < kospi_mas.get(6, 0))
-        status, box_c, text_c = ("🛑 투자 중지", "#FFEBEE", "#C62828") if (is_bad_market or is_below_ma) else ("✅ 투자 진행", "#E8F5E9", "#2E7D32")
+        status, box_c, text_c = ("🛑 투자 중지 (금 투자)", "#FFEBEE", "#C62828") if (is_bad_market or is_below_ma) else ("✅ 투자 진행", "#E8F5E9", "#2E7D32")
         reason_desc = ("하락장" if is_bad_market else "") + (" + " if is_bad_market and is_below_ma else "") + ("6개월선 이탈" if is_below_ma else "")
         if not is_bad_market and not is_below_ma: reason_desc = "안전"
 
@@ -215,7 +215,7 @@ with tab2:
 
         is_below_ma_d = (kospi_curr_d > 0) and (kospi_curr_d < kospi_mas_d.get(6, 0))
         is_bad_market_d = (neg_1m_d >= 100) and (neg_3m_d >= 100)
-        status_d, box_d, text_d = ("🛑 투자 중지", "#FFEBEE", "#C62828") if (is_bad_market_d or is_below_ma_d) else ("✅ 투자 진행", "#E8F5E9", "#2E7D32")
+        status_d, box_d, text_d = ("🛑 투자 중지 (금 투자)", "#FFEBEE", "#C62828") if (is_bad_market_d or is_below_ma_d) else ("✅ 투자 진행", "#E8F5E9", "#2E7D32")
         reason_desc_d = ("하락장" if is_bad_market_d else "") + (" + " if is_bad_market_d and is_below_ma_d else "") + ("6개월선 이탈" if is_below_ma_d else "")
         if not is_bad_market_d and not is_below_ma_d: reason_desc_d = "안전"
 
@@ -263,6 +263,7 @@ with tab3:
     with c_chk:
         st.markdown("<div style='margin-top: 35px;'></div>", unsafe_allow_html=True)
         apply_timing = st.checkbox("🛑 마켓타이밍 적용 (1&3M 하락 100개↑ & MA 이탈 시 현금)", value=True, key='t3_chk')
+        use_gold_t3 = st.checkbox("🥇 방어 시 금 투자 (하락장 사유면 재개 첫 달도 금 1개월 연장)", value=True, key='t3_gold')
     
     st.markdown("<hr style='margin: 10px 0px;'>", unsafe_allow_html=True)
     c2, c3, c4, c5 = st.columns([1, 1, 1, 1])
@@ -271,8 +272,13 @@ with tab3:
     with c4: spec_12m_pct_t3 = st.slider("🐎 달리는말 상위 %", 5, 50, 30, step=5)
     with c5: rank_s_s, rank_s_e = st.slider("🐎 달리는말 매수 순위", 1, 30, (1, 2))
 
+    # 🥇 금(XAU/KRW, 환노출) 월수익률 로드 — 방어 구간 대체용
+    gold_returns_t3 = get_gold_krw_monthly() if use_gold_t3 else {}
+    if use_gold_t3 and not gold_returns_t3:
+        st.warning("⚠️ 금(XAU/KRW) 데이터를 불러오지 못해 방어 구간이 현금(0%)으로 처리됩니다. FDR(GC=F·USD/KRW) 또는 `data/gold_krw.csv`(date, gold_krw_per_g) 폴백을 확인하세요.")
+
     with st.spinner("엔진 구동 중..."):
-        df_res, df_trades = cached_run_backtest_korea(df_master, start_year, end_year, ma_months_t3, apply_timing, (rank_p_s, rank_p_e), (rank_s_s, rank_s_e), perf_pct_t3, spec_12m_pct_t3, trading_cost_pct=trading_cost_pct_t3)
+        df_res, df_trades = cached_run_backtest_korea(df_master, start_year, end_year, ma_months_t3, apply_timing, (rank_p_s, rank_p_e), (rank_s_s, rank_s_e), perf_pct_t3, spec_12m_pct_t3, trading_cost_pct=trading_cost_pct_t3, use_gold=use_gold_t3, _gold_returns=gold_returns_t3)
         if not df_res.empty:
             s_cols = [c for c in df_res.columns if c not in ['투자월', 'invested', '중지 사유']]
             df_cum = (1 + df_res.set_index('투자월')[s_cols] / 100).cumprod() * 100
@@ -315,6 +321,7 @@ with tab3:
                 '테스트 종료 연도': f"{end_year}년",
                 '마켓타이밍 (개월선)': f"{ma_months_t3}개월선",
                 '마켓타이밍 적용': "적용(현금)" if apply_timing else "미적용",
+                '방어 자산': "금(XAU/KRW, 하락장 1개월 연장)" if use_gold_t3 else "현금",
                 '퍼펙트 상위 %': f"상위 {perf_pct_t3}% 이내",
                 '퍼펙트 매수 순위': f"{rank_p_s}위 ~ {rank_p_e}위",
                 '달리는말 상위 %': f"상위 {spec_12m_pct_t3}% 이내",
