@@ -128,6 +128,56 @@ def get_idx_kr(target_date_str):
 
 
 # ==========================================
+# 🥇 금(XAU/KRW, 환노출) 월별 수익률
+#
+# 미래에셋 금현물계좌(KRX 금시장, 환노출)의 벤치마크로 사용.
+# 1순위: 국제 금(USD/oz) × USD/KRW ÷ 31.1035 → 원/g (FDR 라이브)
+# 2순위: data/gold_krw.csv (date=YYYY-MM, gold_krw_per_g) 폴백
+#
+# ⚠️ 반드시 '환노출' 금을 쓴다. 환헤지(H) 금 ETF(예: 132030)는 성격이 다름.
+# 반환: {'YYYY-MM': 월수익률(%)}  ← 해당 '투자월'을 금으로 보유했을 때의 수익률(%)
+#       (예: 3.21 = +3.21%). 데이터가 없으면 {} 반환.
+# ==========================================
+@st.cache_data(ttl="6h", show_spinner=False)
+def get_gold_krw_monthly():
+    """XAU/KRW(환노출, 원/g) 월말 가격 → 월별 수익률(%) dict 반환."""
+    import os
+
+    # ── 1순위: FDR 라이브 계산 (국제 금 × 원달러) ──
+    try:
+        import FinanceDataReader as fdr
+        gold = fdr.DataReader('GC=F', '2003-01-01')['Close'].dropna()   # 금 USD/oz
+        fx = fdr.DataReader('USD/KRW', '2003-01-01')['Close'].dropna()  # 원/달러
+        if not gold.empty and not fx.empty:
+            gold.index = pd.to_datetime(gold.index)
+            fx.index = pd.to_datetime(fx.index)
+            merged = pd.DataFrame({'gold_usd_oz': gold, 'usdkrw': fx}).sort_index().ffill().dropna()
+            merged['krw_per_g'] = merged['gold_usd_oz'] * merged['usdkrw'] / 31.1035
+            # 월말 종가 → 월수익률(%) ('M'/'ME' resample 버전 이슈 회피 위해 period 사용)
+            monthly = merged['krw_per_g'].groupby(merged.index.to_period('M')).last()
+            rets = (monthly.pct_change() * 100.0).dropna()
+            rets.index = rets.index.astype(str)  # 'YYYY-MM'
+            out = {k: float(v) for k, v in rets.items()}
+            if out:
+                return out
+    except Exception as e:
+        print(f"⚠️ get_gold_krw_monthly FDR 계산 오류: {e}")
+
+    # ── 2순위: data/gold_krw.csv 폴백 ──
+    try:
+        path = 'data/gold_krw.csv'
+        if os.path.exists(path):
+            g = pd.read_csv(path).dropna(subset=['date', 'gold_krw_per_g']).sort_values('date')
+            g['date'] = g['date'].astype(str).str.slice(0, 7)  # YYYY-MM
+            g['ret'] = g['gold_krw_per_g'].pct_change() * 100.0
+            return {r['date']: float(r['ret']) for _, r in g.dropna(subset=['ret']).iterrows()}
+    except Exception as e:
+        print(f"⚠️ get_gold_krw_monthly CSV 폴백 오류: {e}")
+
+    return {}
+
+
+# ==========================================
 # KOSPI 마켓타이밍 (백테스트용)
 # 
 # 핵심 수정 사항 (look-ahead bias 제거):
@@ -239,7 +289,7 @@ def get_strategy_stocks_korea(df):
 # ==========================================
 def run_backtest_k200(df, start_year, end_year, ma_months, apply_timing, 
                      rank_p, rank_s, perf_pct, spec_12m_pct,
-                     trading_cost_pct=0.25):
+                     trading_cost_pct=0.25, gold_returns=None, use_gold=False):
     """
     Args:
         df: 한국 데이터프레임
@@ -251,13 +301,22 @@ def run_backtest_k200(df, start_year, end_year, ma_months, apply_timing,
         perf_pct: 퍼펙트 컷오프 (%) — 30 = 상위 30%
         spec_12m_pct: 달리는말 12개월 컷오프 (%)
         trading_cost_pct: 편도 거래비용 (%). 기본 0.25%. 0이면 비용 무시.
+        gold_returns: {'YYYY-MM': 월수익률(%)} 금(XAU/KRW) 월수익률 dict. get_gold_krw_monthly() 결과.
+        use_gold: True면 '방어(투자중지)' 구간을 현금(0%) 대신 금으로 보유.
+                  추가로, 직전 달이 '하락장' 포함 사유로 방어였으면 재개 첫 달도 금 1개월 연장.
     """
     timing_dict = get_kospi_timing_for_backtest(ma_months, df_korea=df) if apply_timing else {}
     records, trade_logs = [], []
     
     # 거래비용: 매월 풀 리밸런싱 가정 → 왕복 = 편도 × 2
     cost_pct = trading_cost_pct * 2.0  # 매월 차감되는 비용 (%)
-    
+
+    # 🥇 금 오버레이용: 직전 '처리된' 달의 원시(raw) 신호 추적
+    #    (raw = 금 오버레이 적용 전의 순수 마켓타이밍 신호)
+    gold_map = gold_returns if isinstance(gold_returns, dict) else {}
+    prev_raw_invested = None   # 직전 달 주식 투자 신호(True/False)
+    prev_raw_reason = ""       # 직전 달 방어 사유(raw)
+
     for m in sorted(df['투자월'].dropna().unique()):
         m_yr = int(m.split('-')[0])
         if not (start_year <= m_yr <= end_year): continue
@@ -319,29 +378,60 @@ def run_backtest_k200(df, start_year, end_year, ma_months, apply_timing,
         if mult > 0:
             ret_total_dup -= cost_pct
 
-        # 💡 중지 사유 텍스트 생성 (엑셀 리포트용)
+        # 💡 중지 사유 텍스트 생성 (엑셀 리포트용) — 금 오버레이 전의 '원시(raw)' 사유
         if not apply_timing:
-            stop_reason = ""
+            raw_reason = ""
         elif mult > 0:
-            stop_reason = ""
+            raw_reason = ""
         else:
             parts = []
             if is_bad_market: parts.append("하락장")
             if is_below_ma: parts.append(f"{ma_months}개월선 이탈")
-            stop_reason = " + ".join(parts) if parts else ""
+            raw_reason = " + ".join(parts) if parts else ""
 
-        records.append({
-            '투자월': m, 'invested': mult > 0, '중지 사유': stop_reason,
-            f'🔥 퍼펙트 상승 ({rank_p[0]}~{rank_p[1]}위)': ret_p, 
-            f'🐎 달리는 말 ({rank_s[0]}~{rank_s[1]}위)': ret_s, 
-            '앙상블 (50:50 전략)': (ret_p+ret_s)/2,
+        # ===== 🥇 금 방어 오버레이 =====
+        raw_invested = (mult > 0)                       # 순수 주식 투자 신호
+        is_defense = (not raw_invested)                 # 이번 달 방어(투자중지)?
+        # 직전 달이 '하락장' 포함 사유로 방어였고, 이번 달은 재개 신호 → 금 1개월 연장
+        is_extension = (use_gold and raw_invested
+                        and (prev_raw_invested is False)
+                        and ("하락장" in str(prev_raw_reason)))
+        is_gold = use_gold and (is_defense or is_extension)
+
+        # 전략별 수익(%) 묶음
+        strat_vals = {
+            f'🔥 퍼펙트 상승 ({rank_p[0]}~{rank_p[1]}위)': ret_p,
+            f'🐎 달리는 말 ({rank_s[0]}~{rank_s[1]}위)': ret_s,
+            '앙상블 (50:50 전략)': (ret_p + ret_s) / 2,
             '앙상블 (달리는말 우선 50:50)': ret_ensemble_priority,
             '통합 전략 (중복 제외 1/N)': ret_total_unique,
-            '통합 전략 (중복 인정 1/N)': ret_total_dup
-        })
+            '통합 전략 (중복 인정 1/N)': ret_total_dup,
+        }
+
+        if is_gold:
+            g = gold_map.get(m)
+            gold_ret = 0.0 if (g is None or pd.isna(g)) else float(g)
+            gold_ret -= cost_pct  # 금 매매도 동일 비용(편도 0.25% × 왕복) 차감
+            for kc in strat_vals:
+                strat_vals[kc] = gold_ret
+            record_invested = False  # 금 보유는 '주식 투자월'에서 제외 (승률/투자비율은 순수 주식 기준)
+            if is_extension:
+                rec_reason = "하락장 연장 (금 투자)"
+            else:
+                rec_reason = (raw_reason + " (금 투자)") if raw_reason else "방어 (금 투자)"
+        else:
+            record_invested = raw_invested
+            rec_reason = raw_reason
+
+        rec = {'투자월': m, 'invested': record_invested, '중지 사유': rec_reason}
+        rec.update(strat_vals)
+        records.append(rec)
 
         # 거래 로그
-        if mult > 0:
+        if is_gold:
+            trade_logs.append({'투자월': m, '전략': '금 방어', '순위': '-',
+                              '종목명': '금 보유(GOLD)', '수익률(%)': round(gold_ret, 2)})
+        elif record_invested:
             for i, (_, r) in enumerate(target_p.iterrows()):
                 trade_logs.append({'투자월': m, '전략': '퍼펙트', '순위': f"{i+rank_p[0]}위", 
                                   '종목명': r.get('종목명', r['종목코드']), '수익률(%)': r[ret_col]})
@@ -351,7 +441,11 @@ def run_backtest_k200(df, start_year, end_year, ma_months, apply_timing,
         else:
             trade_logs.append({'투자월': m, '전략': '마켓타이밍', '순위': '-', 
                               '종목명': '현금보유(CASH)', '수익률(%)': 0.0})
-            
+
+        # 다음 달 연장 판정을 위해 '원시 신호' 기준으로 갱신 (연장 달은 raw_invested=True라 체인 안 됨)
+        prev_raw_invested = raw_invested
+        prev_raw_reason = raw_reason
+
     return pd.DataFrame(records), pd.DataFrame(trade_logs)
 
 
