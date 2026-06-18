@@ -23,7 +23,7 @@ from datetime import datetime
 MONTHLY_DIR = 'data/snowball/monthly'
 
 # 스노우볼 자산 (snowball.py와 동일하게 유지)
-ALL_TICKERS = ['TIP', 'VWO', 'EFA', 'VIXY', 'TQQQ', 'USD', 'GLD', 'TLT', 'SQQQ', 'SLV', 'SPY']
+ALL_TICKERS = ['TIP', 'VWO', 'VEA', 'VIXY', 'TQQQ', 'USD', 'GLD', 'TLT', 'SQQQ', 'SLV', 'SPY']
 
 
 # ==========================================
