@@ -92,7 +92,15 @@ perf = compute_performance(bt) if not bt.empty else {}
 # ==========================================
 # 섹션 1: 공격/방어 자산 현황
 # ==========================================
-last_signal_month = prices.index[-1]
+# 💡 데이터가 모두 갖춰져 보유 종목이 결정된(hold != None) 마지막 달을 "현재 신호월"로 사용.
+#    일부 ETF CSV가 다른 파일보다 한 달 더 최신이면(예: 진행 중인 이번달 부분 데이터 포함)
+#    prices.index[-1]에는 그 ETF만 값이 있고 나머지는 NaN이라 표가 전부 None으로 보인다.
+#    유효 신호월로 보정하면 이런 정렬 어긋남에 영향받지 않는다.
+valid_signal_months = signals.index[signals['hold'].notna()]
+if len(valid_signal_months) == 0:
+    st.error("유효한 신호월이 없습니다. (데이터 워밍업 부족 또는 ETF 파일 누락)")
+    st.stop()
+last_signal_month = valid_signal_months[-1]
 last_signal = signals.loc[last_signal_month]
 defensive_now = bool(last_signal['defensive'])
 
