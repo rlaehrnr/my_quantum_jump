@@ -66,7 +66,7 @@ if prices.empty:
     st.error(
         f"📁 데이터 파일이 없습니다.\n\n"
         f"`{MONTHLY_DIR}/` 폴더에 다음 파일들을 넣어주세요:\n"
-        f"- ETF 11종: TIP, VWO, EFA, VIXY, TQQQ, USD, GLD, TLT, SQQQ, SLV, SPY (각각 `{{TICKER}}_과거_데이터.csv`)\n"
+        f"- ETF 11종: TIP, VWO, VEA, VIXY, TQQQ, USD, GLD, TLT, SQQQ, SLV, SPY (각각 `{{TICKER}}_과거_데이터.csv`)\n"
         f"- 배당수익률: `SP500_DIV.csv`\n\n"
         f"형식: investing.com KR 다운로드 형식 (월봉)"
     )
