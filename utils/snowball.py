@@ -27,7 +27,7 @@ import streamlit as st
 # ==========================================
 
 # 조건1 모멘텀 신호용 (보유 안 함)
-SIGNAL_ASSETS = ['TIP', 'VWO', 'EFA', 'VIXY']
+SIGNAL_ASSETS = ['TIP', 'VWO', 'VEA', 'VIXY']
 
 # 공격 자산 (12개월 모멘텀 비교)
 OFFENSE_ASSETS = ['TQQQ', 'USD']
@@ -342,7 +342,7 @@ def compute_signals(prices, div_yield):
         DataFrame, index=YearMonth, columns=[
             'cond1', 'cond2', 'defensive',
             'div_pct',
-            'ret6_TIP','ret6_VWO','ret6_EFA','ret6_VIXY',
+            'ret6_TIP','ret6_VWO','ret6_VEA','ret6_VIXY',
             'ret11_GLD','ret11_TLT','ret11_SQQQ','ret11_SLV',
             'ret12_TQQQ','ret12_USD',
             'hold',  # 보유 종목 티커 (또는 'CASH')
@@ -355,7 +355,7 @@ def compute_signals(prices, div_yield):
     
     # 💡 [명세서 §5 시작 조건] 각 월이 백테스트 가능한지 판정.
     # 다음이 모두 계산 가능(NaN 아님)해야 그 달의 신호가 유효:
-    #   - 신호 4종(TIP/VWO/EFA/VIXY) 6M 수익률
+    #   - 신호 4종(TIP/VWO/VEA/VIXY) 6M 수익률
     #   - 방어 4종(GLD/TLT/SQQQ/SLV) 11M 수익률
     #   - 공격 2종(TQQQ/USD) 12M 수익률
     # (배당 60개월 백분위는 워밍업 전이면 cond2=False로 처리하고 진행 — 명세서 §5)
