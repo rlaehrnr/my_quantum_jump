@@ -303,19 +303,21 @@ with col_c2:
         with mcol2:
             if pd.notna(div_val):
                 help_txt = (
-                    f"하위 10% 기준점 = 지난 60개월 배당수익률 분포의 10번째 백분위수 ({div_thr:.2f}%). "
-                    f"현재 배당({div_val:.2f}%)이 이 값보다 낮으면 역사적으로 비싼 구간 → 조건2 발동."
-                ) if pd.notna(div_thr) else None
-                # 왼쪽(5Y 밸류 순위)과 동일한 delta 서식으로 기준점 비교 표시
+                    f"하위 10% 기준점 = 지난 {int(div_total_val)}개월 중 '이 값 이하면 발동'이 성립하는 "
+                    f"가장 높은 배당수익률 ({div_thr:.2f}%). 현재 배당({div_val:.2f}%)이 이 값 이하면 "
+                    f"역사적으로 비싼 구간 → 조건2 발동."
+                ) if (pd.notna(div_thr) and pd.notna(div_total_val)) else None
+                # 발동 여부는 실제 신호와 동일하게 백분위(div_pct<=10)로 판정 → 좌측·실제 신호와 항상 일치.
+                # 기준점은 개수 규칙과 정확히 일치하도록 계산돼 있어 부등호도 이 판정과 어긋나지 않는다.
                 if pd.notna(div_thr):
-                    cheap = div_val <= div_thr  # True면 발동(비쌈)
-                    cmp_sign = "≤" if cheap else ">"
+                    triggered = bool(div_pct_val <= 10)  # 단일 진실원천 (cond2와 동일)
+                    cmp_sign = "≤" if triggered else ">"
                     cmp_delta = f"{div_val:.2f}% {cmp_sign} 기준점 {div_thr:.2f}%"
                     st.metric(
                         "현재 배당수익률",
                         f"{div_val:.2f}%",
                         delta=cmp_delta,
-                        delta_color="inverse" if cheap else "off",
+                        delta_color="inverse" if triggered else "off",
                         help=help_txt
                     )
                 else:
