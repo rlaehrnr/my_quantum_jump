@@ -326,8 +326,18 @@ def compute_div_percentile(div_yield, window=60, min_pct=0.8):
         # 현재값 이하(동일·더 비쌈)인 표본 수 = 비쌈 순위 (1=가장 비쌈)
         n_le = int((valid <= cur).sum())
         out.iloc[i] = n_le / len(valid) * 100
-        # 하위 10% 경계값 (이 값 이하이면 백분위 10% 이내에 해당)
-        thr.iloc[i] = np.quantile(valid, 0.10)
+        # 하위 10% 경계값 — 실제 발동 규칙(n_le/len*100 <= 10)과 정확히 일치하도록 계산.
+        #   "이 값 이하이면 발동"이 성립하는 가장 높은 배당수익률.
+        #   np.quantile은 선형 보간이라 동점 경계에서 발동 규칙과 어긋날 수 있어 사용하지 않는다.
+        #   = count(valid <= v)/len*100 <= 10 을 만족하는 가장 큰 v.
+        limit = len(valid) * 0.10  # 발동 허용 최대 개수 (예: 60개월 → 6)
+        boundary = np.nan
+        for v in np.unique(valid):  # 오름차순
+            if int((valid <= v).sum()) <= limit:
+                boundary = v
+            else:
+                break
+        thr.iloc[i] = boundary
         rank.iloc[i] = n_le
         total.iloc[i] = len(valid)
     
