@@ -79,6 +79,20 @@ def cached_run_custom_backtest(df, start_year_c, end_year_c, ma_months_t4, apply
 
 tab1, tab2, tab3, tab4 = st.tabs(["📅 월별 상세 분석", "🕒 실시간 데일리 순위", "📈 전략 조합 백테스트", "🏅 스코어 커스텀 백테스트"])
 
+# 🥇 라이브 신호용 금 방어 라벨: 해당 '투자월'에 금이 N개월 MA 위면 '금 투자', 아래면 '현금'
+#    (실제 운용 규칙 = 금 3개월 MA. 백테스트 탭의 슬라이더와 별개)
+GOLD_MA_MONTHS_LIVE = 3
+def gold_defense_label(month_key, ma_months=GOLD_MA_MONTHS_LIVE):
+    try:
+        sig = get_gold_signal(ma_months)
+        s = sig.get(month_key)
+        if not isinstance(s, dict) and sig:  # 정확한 키 없으면 가장 최근 신호로 폴백
+            s = sig[sorted(sig.keys())[-1]]
+        hold = bool(s['above_ma']) if isinstance(s, dict) else True
+    except Exception:
+        hold = True
+    return "금 투자" if hold else "현금"
+
 with tab1:
     avail_years = sorted(df_master['투자연도'].unique().astype(str), reverse=True)
     c_y, c_m = st.columns([1.2, 8.8])
@@ -122,7 +136,8 @@ with tab1:
         
         is_bad_market = (neg_1m_cnt >= 100) and (neg_3m_cnt >= 100)
         is_below_ma = (kospi_curr > 0) and (kospi_curr < kospi_mas.get(6, 0))
-        status, box_c, text_c = ("🛑 투자 중지 (금 투자)", "#FFEBEE", "#C62828") if (is_bad_market or is_below_ma) else ("✅ 투자 진행", "#E8F5E9", "#2E7D32")
+        _defense_tag = gold_defense_label(target_month_str)
+        status, box_c, text_c = (f"🛑 투자 중지 ({_defense_tag})", "#FFEBEE", "#C62828") if (is_bad_market or is_below_ma) else ("✅ 투자 진행", "#E8F5E9", "#2E7D32")
         reason_desc = ("하락장" if is_bad_market else "") + (" + " if is_bad_market and is_below_ma else "") + ("6개월선 이탈" if is_below_ma else "")
         if not is_bad_market and not is_below_ma: reason_desc = "안전"
 
@@ -215,7 +230,8 @@ with tab2:
 
         is_below_ma_d = (kospi_curr_d > 0) and (kospi_curr_d < kospi_mas_d.get(6, 0))
         is_bad_market_d = (neg_1m_d >= 100) and (neg_3m_d >= 100)
-        status_d, box_d, text_d = ("🛑 투자 중지 (금 투자)", "#FFEBEE", "#C62828") if (is_bad_market_d or is_below_ma_d) else ("✅ 투자 진행", "#E8F5E9", "#2E7D32")
+        _defense_tag_d = gold_defense_label(pd.to_datetime(safe_date).strftime('%Y-%m'))
+        status_d, box_d, text_d = (f"🛑 투자 중지 ({_defense_tag_d})", "#FFEBEE", "#C62828") if (is_bad_market_d or is_below_ma_d) else ("✅ 투자 진행", "#E8F5E9", "#2E7D32")
         reason_desc_d = ("하락장" if is_bad_market_d else "") + (" + " if is_bad_market_d and is_below_ma_d else "") + ("6개월선 이탈" if is_below_ma_d else "")
         if not is_bad_market_d and not is_below_ma_d: reason_desc_d = "안전"
 
