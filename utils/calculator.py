@@ -205,7 +205,7 @@ def get_gold_signal(ma_months):
     ma_excl = p.shift(1).rolling(N).mean()
     sig_decision = (p >= ma_excl).where(ma_excl.notna(), True)  # MA 미정의 초기구간 → 보유 허용
     # '투자월 m' 신호 = 결정 시점(m-1)의 판정값 → 한 칸 shift
-    above_signal = sig_decision.shift(1)
+    above_signal = sig_decision
     above_signal = above_signal.where(above_signal.notna(), True)  # 최초월 → 보유 허용
 
     out = {}
