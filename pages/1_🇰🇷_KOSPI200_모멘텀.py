@@ -51,7 +51,7 @@ years_list = sorted(df_master['투자연도'].unique().astype(int))
 min_y, max_y = min(years_list), max(years_list)
 
 @st.cache_data(show_spinner=False)
-def cached_run_backtest_korea(df, start_year, end_year, ma_months, apply_timing, rank_p, rank_s, perf_pct, spec_12m_pct, trading_cost_pct=0.25, use_gold=False, gold_ma_months=3, _gold_signal=None):
+def cached_run_backtest_korea(df, start_year, end_year, ma_months, apply_timing, rank_p, rank_s, perf_pct, spec_12m_pct, trading_cost_pct=0.25, use_gold=False, gold_ma_days=60, _gold_signal=None):
     return run_backtest_k200(df, start_year, end_year, ma_months, apply_timing, rank_p, rank_s, perf_pct, spec_12m_pct, trading_cost_pct=trading_cost_pct, gold_signal=_gold_signal, use_gold=use_gold)
 
 @st.cache_data(show_spinner=False)
@@ -79,12 +79,12 @@ def cached_run_custom_backtest(df, start_year_c, end_year_c, ma_months_t4, apply
 
 tab1, tab2, tab3, tab4 = st.tabs(["📅 월별 상세 분석", "🕒 실시간 데일리 순위", "📈 전략 조합 백테스트", "🏅 스코어 커스텀 백테스트"])
 
-# 🥇 라이브 신호용 금 방어 라벨: 해당 '투자월'에 금이 N개월 MA 위면 '금 투자', 아래면 '현금'
-#    (실제 운용 규칙 = 금 3개월 MA. 백테스트 탭의 슬라이더와 별개)
-GOLD_MA_MONTHS_LIVE = 3
-def gold_defense_label(month_key, ma_months=GOLD_MA_MONTHS_LIVE):
+# 🥇 라이브 신호용 금 방어 라벨: 해당 '투자월'에 금이 60일선 위면 '금 투자', 아래면 '현금'
+#    (실제 운용 규칙 = 금 60일선. 백테스트 탭 슬라이더와 별개)
+GOLD_MA_DAYS_LIVE = 60
+def gold_defense_label(month_key, window_days=GOLD_MA_DAYS_LIVE):
     try:
-        sig = get_gold_signal(ma_months)
+        sig = get_gold_signal(window_days)
         s = sig.get(month_key)
         if not isinstance(s, dict) and sig:  # 정확한 키 없으면 가장 최근 신호로 폴백
             s = sig[sorted(sig.keys())[-1]]
@@ -276,11 +276,11 @@ with tab3:
     with c1: start_year, end_year = st.slider("📅 테스트 기간", min_y, max_y, (min_y, max_y), key='t3_yr')
     with c_ma: ma_months_t3 = st.slider("📉 마켓타이밍 (개월선)", 1, 12, 6, key='t3_ma')
     with c_cost: trading_cost_pct_t3 = st.slider("💰 거래비용(편도%)", 0.0, 0.5, 0.25, 0.05, key='t3_cost')  
-    with c_gma: gold_ma_months_t3 = st.slider("🥇 금 MA필터(개월)", 1, 12, 3, key='t3_gold_ma')
+    with c_gma: gold_ma_days_t3 = st.slider("🥇 금 이동평균(일)", 20, 120, 60, step=5, key='t3_gold_ma')
     with c_chk:
         st.markdown("<div style='margin-top: 35px;'></div>", unsafe_allow_html=True)
         apply_timing = st.checkbox("🛑 마켓타이밍 적용 (1&3M 하락 100개↑ & MA 이탈 시 현금)", value=True, key='t3_chk')
-        use_gold_t3 = st.checkbox("🥇 방어 시 금 투자 (금이 N개월 MA 위일 때만, 아래면 현금 · 하락장 1개월 연장)", value=True, key='t3_gold')
+        use_gold_t3 = st.checkbox("🥇 방어 시 금 투자 (금이 60일선 위일 때만, 아래면 현금 · 하락장 1개월 연장)", value=True, key='t3_gold')
     
     st.markdown("<hr style='margin: 10px 0px;'>", unsafe_allow_html=True)
     c2, c3, c4, c5 = st.columns([1, 1, 1, 1])
@@ -289,13 +289,13 @@ with tab3:
     with c4: spec_12m_pct_t3 = st.slider("🐎 달리는말 상위 %", 5, 50, 30, step=5)
     with c5: rank_s_s, rank_s_e = st.slider("🐎 달리는말 매수 순위", 1, 30, (1, 2))
 
-    # 🥇 금(XAU/KRW, 환노출) 월별 신호(수익률 + N개월 MA 추세필터) 로드 — 방어 구간 대체용
-    gold_signal_t3 = get_gold_signal(gold_ma_months_t3) if use_gold_t3 else {}
+    # 🥇 금(KRX 환노출) 월별 신호(수익률 + 60일선 추세필터) 로드 — 방어 구간 대체용
+    gold_signal_t3 = get_gold_signal(gold_ma_days_t3) if use_gold_t3 else {}
     if use_gold_t3 and not gold_signal_t3:
-        st.warning("⚠️ 금(XAU/KRW) 데이터를 불러오지 못해 방어 구간이 현금(0%)으로 처리됩니다. FDR(GC=F·USD/KRW) 또는 `data/gold_krw.csv`(date, gold_krw_per_g) 폴백을 확인하세요.")
+        st.warning("⚠️ 금 데이터를 불러오지 못해 방어 구간이 현금(0%)으로 처리됩니다. `data/krx_gold_price.csv`(KRX 일별) 또는 FDR(GC=F·USD/KRW)를 확인하세요.")
 
     with st.spinner("엔진 구동 중..."):
-        df_res, df_trades = cached_run_backtest_korea(df_master, start_year, end_year, ma_months_t3, apply_timing, (rank_p_s, rank_p_e), (rank_s_s, rank_s_e), perf_pct_t3, spec_12m_pct_t3, trading_cost_pct=trading_cost_pct_t3, use_gold=use_gold_t3, gold_ma_months=gold_ma_months_t3, _gold_signal=gold_signal_t3)
+        df_res, df_trades = cached_run_backtest_korea(df_master, start_year, end_year, ma_months_t3, apply_timing, (rank_p_s, rank_p_e), (rank_s_s, rank_s_e), perf_pct_t3, spec_12m_pct_t3, trading_cost_pct=trading_cost_pct_t3, use_gold=use_gold_t3, gold_ma_days=gold_ma_days_t3, _gold_signal=gold_signal_t3)
         if not df_res.empty:
             s_cols = [c for c in df_res.columns if c not in ['투자월', 'invested', '중지 사유']]
             df_cum = (1 + df_res.set_index('투자월')[s_cols] / 100).cumprod() * 100
@@ -342,7 +342,7 @@ with tab3:
                 '테스트 종료 연도': f"{end_year}년",
                 '마켓타이밍 (개월선)': f"{ma_months_t3}개월선",
                 '마켓타이밍 적용': "적용(현금)" if apply_timing else "미적용",
-                '방어 자산': (f"금(XAU/KRW, {gold_ma_months_t3}개월 MA필터, 하락장 1개월 연장)" if use_gold_t3 else "현금"),
+                '방어 자산': (f"금(KRX 환노출, {gold_ma_days_t3}일선 필터, 하락장 1개월 연장)" if use_gold_t3 else "현금"),
                 '퍼펙트 상위 %': f"상위 {perf_pct_t3}% 이내",
                 '퍼펙트 매수 순위': f"{rank_p_s}위 ~ {rank_p_e}위",
                 '달리는말 상위 %': f"상위 {spec_12m_pct_t3}% 이내",
