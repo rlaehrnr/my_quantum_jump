@@ -230,7 +230,7 @@ def get_gold_signal(window_days=60):
     m_price.index = m_price.index.astype(str)
     m_above.index = m_above.index.astype(str)
 
-    ret = m_price.pct_change() * 100.0
+    ret = m_price.pct_change().shift(-1) * 100.0
     above_sig = m_above  # '투자월 m' 신호 = 직전월(m-1) 월말 판정
 
     out = {}
