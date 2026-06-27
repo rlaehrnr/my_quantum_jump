@@ -128,92 +128,118 @@ def get_idx_kr(target_date_str):
 
 
 # ==========================================
-# 🥇 금(XAU/KRW, 환노출) 월말 가격 · 수익률
+# 🥇 금(KRX 금시장, 환노출) 일별 가격 (원/g)
 #
-# 미래에셋 금현물계좌(KRX 금시장, 환노출)의 벤치마크로 사용.
-# 1순위: 국제 금(USD/oz) × USD/KRW ÷ 31.1035 → 원/g (FDR 라이브)
-# 2순위: data/gold_krw.csv (date=YYYY-MM, gold_krw_per_g) 폴백
+# 미래에셋 금현물계좌(KRX 금시장, 환노출)와 동일 성격.
+# 1순위: data/krx_gold_price.csv (실제 KRX 일별 종가, 가장 정확)
+#        + CSV 마지막일 이후는 FDR 일별로 자동 연장(레벨 비율보정)해 라이브 최신 유지
+# 2순위: CSV 없으면 FDR 일별(국제 금 GC=F × USD/KRW ÷ 31.1035)만 사용
 #
-# ⚠️ 반드시 '환노출' 금을 쓴다. 환헤지(H) 금 ETF(예: 132030)는 성격이 다름.
+# ⚠️ 반드시 '환노출' 금. 환헤지(H) 금 ETF(132030 등)는 성격이 다름.
+# 반환: pd.Series(index=DatetimeIndex, 원/g). 데이터 없으면 빈 Series.
+# ==========================================
+@st.cache_data(ttl="6h", show_spinner=False)
+def get_gold_krw_daily():
+    """KRX 금(환노출) 일별 종가(원/g) Series 반환. KRX CSV + FDR 일별 연장."""
+    import os
+
+    # ── FDR 일별(국제 금 × 원달러) : 폴백 또는 CSV 이후 연장용 ──
+    fdr_daily = None
+    try:
+        import FinanceDataReader as fdr
+        gold = fdr.DataReader('GC=F', '2003-01-01')['Close'].dropna()   # USD/oz
+        fx = fdr.DataReader('USD/KRW', '2003-01-01')['Close'].dropna()  # 원/달러
+        if not gold.empty and not fx.empty:
+            gd = pd.DataFrame({'g': gold, 'fx': fx})
+            gd.index = pd.to_datetime(gd.index)
+            gd = gd.sort_index().ffill().dropna()
+            fdr_daily = (gd['g'] * gd['fx'] / 31.1035).dropna()
+    except Exception as e:
+        print(f"⚠️ get_gold_krw_daily FDR 오류: {e}")
+
+    # ── KRX 실제 일별 CSV (가장 정확) ──
+    csv_daily = None
+    try:
+        path = 'data/krx_gold_price.csv'
+        if os.path.exists(path):
+            raw = pd.read_csv(path, encoding='utf-8-sig')  # BOM 처리
+            raw['날짜'] = pd.to_datetime(raw['날짜'])
+            s = raw.set_index('날짜')['종가'].astype(float).sort_index()
+            csv_daily = s[s > 0].dropna()
+    except Exception as e:
+        print(f"⚠️ get_gold_krw_daily CSV 오류: {e}")
+
+    # ── 결합: CSV(과거 정확) + FDR(CSV 이후 연장, 비율보정) ──
+    if csv_daily is not None and not csv_daily.empty:
+        if fdr_daily is not None and not fdr_daily.empty:
+            last = csv_daily.index.max()
+            ref = fdr_daily[fdr_daily.index <= last]
+            tail = fdr_daily[fdr_daily.index > last]
+            if not tail.empty and not ref.empty and ref.iloc[-1] > 0:
+                factor = csv_daily.iloc[-1] / ref.iloc[-1]  # 접합점 레벨 정합
+                csv_daily = pd.concat([csv_daily, tail * factor])
+        return csv_daily.sort_index()
+
+    if fdr_daily is not None and not fdr_daily.empty:
+        return fdr_daily.sort_index()
+    return pd.Series(dtype=float)
+
+
+# ==========================================
+# 🥇 금(환노출) 월말 가격 · 수익률 (일별에서 월말 집계)
 # 반환: DataFrame(index='YYYY-MM', columns=['price','ret'])
-#       price = 월말 원/g, ret = 월수익률(%). 데이터 없으면 빈 DataFrame.
-# ※ MA 필터와 수익률에 '같은 출처(price)'를 써서 일관성 유지.
 # ==========================================
 @st.cache_data(ttl="6h", show_spinner=False)
 def get_gold_krw_monthly():
-    """XAU/KRW(환노출, 원/g) 월말 가격·수익률(%) DataFrame 반환."""
-    import os
-
-    # ── 1순위: FDR 라이브 계산 (국제 금 × 원달러) ──
-    try:
-        import FinanceDataReader as fdr
-        gold = fdr.DataReader('GC=F', '2003-01-01')['Close'].dropna()   # 금 USD/oz
-        fx = fdr.DataReader('USD/KRW', '2003-01-01')['Close'].dropna()  # 원/달러
-        if not gold.empty and not fx.empty:
-            gold.index = pd.to_datetime(gold.index)
-            fx.index = pd.to_datetime(fx.index)
-            merged = pd.DataFrame({'gold_usd_oz': gold, 'usdkrw': fx}).sort_index().ffill().dropna()
-            merged['krw_per_g'] = merged['gold_usd_oz'] * merged['usdkrw'] / 31.1035
-            # 월말 종가 ('M'/'ME' resample 버전 이슈 회피 위해 period 사용)
-            monthly = merged['krw_per_g'].groupby(merged.index.to_period('M')).last()
-            out = monthly.to_frame('price')
-            out.index = out.index.astype(str)  # 'YYYY-MM'
-            out['ret'] = out['price'].pct_change() * 100.0
-            if not out.empty:
-                return out
-    except Exception as e:
-        print(f"⚠️ get_gold_krw_monthly FDR 계산 오류: {e}")
-
-    # ── 2순위: data/gold_krw.csv 폴백 ──
-    try:
-        path = 'data/gold_krw.csv'
-        if os.path.exists(path):
-            g = pd.read_csv(path).dropna(subset=['date', 'gold_krw_per_g']).copy()
-            g['date'] = g['date'].astype(str).str.slice(0, 7)  # YYYY-MM
-            g = g.sort_values('date').drop_duplicates('date', keep='last').set_index('date')
-            out = g[['gold_krw_per_g']].rename(columns={'gold_krw_per_g': 'price'})
-            out['ret'] = out['price'].pct_change() * 100.0
-            return out
-    except Exception as e:
-        print(f"⚠️ get_gold_krw_monthly CSV 폴백 오류: {e}")
-
-    return pd.DataFrame(columns=['price', 'ret'])
+    """금(환노출, 원/g) 월말 가격·수익률(%) DataFrame 반환."""
+    daily = get_gold_krw_daily()
+    if daily is None or daily.empty:
+        return pd.DataFrame(columns=['price', 'ret'])
+    monthly = daily.groupby(daily.index.to_period('M')).last()
+    out = monthly.to_frame('price')
+    out.index = out.index.astype(str)  # 'YYYY-MM'
+    out['ret'] = out['price'].pct_change() * 100.0
+    return out
 
 
 # ==========================================
-# 🥇 금 월별 신호 (수익률 + N개월 MA 추세필터)
+# 🥇 금 월별 신호 (수익률 + 60일선 추세필터)
 #
 # above_ma 규칙(미래참조 없음):
-#   '투자월 m'을 금으로 보유할지 결정 = 리밸런싱일(m-1 월말) 기준 판정.
-#   직전 달 종가 price[m-1]가 '그 이전 N개월 평균(현재월 제외)' 이상이면 금 보유,
-#   아니면 현금 대기.  →  above_ma[m] = price[m-1] >= mean(price[m-2 .. m-1-N])
+#   '투자월 m' 금 보유 여부 = 직전 달(m-1) 월말 시점에 판정.
+#   그 시점 일별 종가가 '직전 window_days 거래일 이동평균(60일선)' 이상이면 금 보유,
+#   아니면 현금 대기.  →  above_ma[m] = (m-1 월말 종가 ≥ 그날의 60일선)
+#   * 일별 60일선을 '월말에 한 번' 샘플링 → 매일 갱신 불필요, 월 1회 판정.
 # 반환: {'YYYY-MM': {'ret': 월수익률(%) or None, 'above_ma': bool}}
-#       데이터 없으면 {} 반환.
 # ==========================================
 @st.cache_data(ttl="6h", show_spinner=False)
-def get_gold_signal(ma_months):
-    """금(XAU/KRW) 월별 {ret, above_ma} 신호 dict 반환. ma_months: 추세필터 기간(개월)."""
-    gdf = get_gold_krw_monthly()
-    if gdf is None or gdf.empty:
+def get_gold_signal(window_days=60):
+    """금(환노출) 월별 {ret, above_ma} 신호 dict. window_days: 일별 이동평균 기간(거래일)."""
+    daily = get_gold_krw_daily()
+    if daily is None or daily.empty:
         return {}
 
-    g = gdf.sort_index().copy()
-    p = g['price'].astype(float)
-    N = max(1, int(ma_months))
+    daily = daily.sort_index().astype(float)
+    N = max(2, int(window_days))
+    ma = daily.rolling(N).mean()
+    above_daily = (daily >= ma).where(ma.notna(), True)  # MA 미정의 초기구간 → 보유 허용
 
-    # 리밸런싱(결정) 시점 판정: price[t] >= 직전 N개월 평균(현재월 제외)
-    ma_excl = p.shift(1).rolling(N).mean()
-    sig_decision = (p >= ma_excl).where(ma_excl.notna(), True)  # MA 미정의 초기구간 → 보유 허용
-    # '투자월 m' 신호 = 결정 시점(m-1)의 판정값 → 한 칸 shift
-    above_signal = sig_decision
-    above_signal = above_signal.where(above_signal.notna(), True)  # 최초월 → 보유 허용
+    # 월말 집계
+    m_price = daily.groupby(daily.index.to_period('M')).last()
+    m_above = above_daily.groupby(above_daily.index.to_period('M')).last()  # 그달 마지막 거래일 판정
+    m_price.index = m_price.index.astype(str)
+    m_above.index = m_above.index.astype(str)
+
+    ret = m_price.pct_change() * 100.0
+    above_sig = m_above.shift(1)  # '투자월 m' 신호 = 직전월(m-1) 월말 판정
 
     out = {}
-    for ym in g.index:
-        r = g.at[ym, 'ret']
+    for ym in m_price.index:
+        r = ret.get(ym)
+        a = above_sig.get(ym)
         out[ym] = {
-            'ret': (None if pd.isna(r) else float(r)),
-            'above_ma': bool(above_signal.at[ym]),
+            'ret': (None if (r is None or pd.isna(r)) else float(r)),
+            'above_ma': (True if (a is None or pd.isna(a)) else bool(a)),
         }
     return out
 
