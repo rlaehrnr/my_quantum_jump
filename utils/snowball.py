@@ -39,10 +39,11 @@ OFFENSE_ASSETS = ['TQQQ', 'USD']
 DEFENSE_ASSETS = ['GLD', 'TLT', 'SQQQ', 'SLV']
 
 # 벤치마크
-BENCHMARK = 'SPY'
+BENCHMARK = 'SPY'                      # (레거시, 현재 미사용)
+BENCHMARKS = ['QQQ', 'SOXX']           # 전략 비교용 벤치마크 (차트/로그/카드)
 
 # 모든 ETF 티커
-ALL_TICKERS = SIGNAL_ASSETS + OFFENSE_ASSETS + DEFENSE_ASSETS + [BENCHMARK]
+ALL_TICKERS = SIGNAL_ASSETS + OFFENSE_ASSETS + DEFENSE_ASSETS + BENCHMARKS
 
 # CSH (현금 식별자)
 CASH = 'CASH'
@@ -418,11 +419,21 @@ def compute_signals(prices, div_yield):
         vixy_trig = (vixy < 0) | (vixy >= VIXY_SPIKE)
         cond1 = (base_neg & vixy_trig).fillna(False)
     
-    # cond2: 배당 5년 롤링 백분위 ≤ 10%
+    # cond2: 배당 5년(60개월) 롤링 하위 백분위 ≤ 10%
+    #   ★ 전체 배당 이력으로 백분위를 먼저 계산한 뒤 가격 구간으로 reindex.
+    #     가격 데이터 시작(워밍업) 이전의 배당 이력까지 60개월 윈도에 활용되므로,
+    #     배당 파일이 충분히 길면 백테스트 시작 첫 달부터 cond2가 발동할 수 있다.
+    #     (기존엔 div를 prices.index로 먼저 자른 탓에 시작 후 ~5년간 cond2가 항상 False였음.)
     if not div_yield.empty:
-        # 인덱스 정렬
-        div_aligned = div_yield.reindex(prices.index)
-        div_pct, div_thr, div_rank, div_total = compute_div_percentile(div_aligned, window=60, min_pct=0.8)
+        # 전체 배당 이력을 연속 월 인덱스로 정렬(결측월=NaN, 윈도 내 NaN은 자동 제외)
+        full_idx = pd.period_range(div_yield.index.min(), div_yield.index.max(), freq='M')
+        div_full = div_yield.reindex(full_idx)
+        pct_f, thr_f, rank_f, total_f = compute_div_percentile(div_full, window=60, min_pct=0.8)
+        # 가격 구간으로 정렬
+        div_pct   = pct_f.reindex(prices.index)
+        div_thr   = thr_f.reindex(prices.index)
+        div_rank  = rank_f.reindex(prices.index)
+        div_total = total_f.reindex(prices.index)
         cond2 = (div_pct <= 10).fillna(False)
     else:
         div_pct = pd.Series(np.nan, index=prices.index)
@@ -528,7 +539,7 @@ def run_backtest(prices, signals, cost=0.0025):
         직전 보유월 대비 보유 종목이 바뀌는 달(= 매매 발생)에만 cost를 차감한다.
         첫 진입(직전 보유 없음)도 1회 차감. 같은 종목을 이어서 보유하면 비용 0.
         cost는 1회 교체(로테이션)당 비율 (기본 0.0025 = 0.25%).
-        벤치마크 SPY는 매수 후 보유로 보아 비용 미반영(총수익).
+        벤치마크(QQQ/SOXX)는 매수 후 보유로 보아 비용 미반영(총수익).
     
     Args:
         prices: DataFrame, monthly close
@@ -538,8 +549,8 @@ def run_backtest(prices, signals, cost=0.0025):
     Returns:
         DataFrame, index=보유월(nm), columns=[
             'signal_month', 'hold_month', 'defensive', 'hold', 'reason',
-            'ret_gross', 'cost', 'switched', 'ret_strategy', 'ret_spy',
-            'cum_strategy', 'cum_spy', 'dd_strategy'
+            'ret_gross', 'cost', 'switched', 'ret_strategy',
+            'ret_<benchmark>'..., 'cum_strategy', 'cum_<benchmark>'..., 'dd_strategy'
         ]
         ('ret_strategy'는 비용 차감 후 순수익)
     """
@@ -569,15 +580,7 @@ def run_backtest(prices, signals, cost=0.0025):
         tc = cost if switched else 0.0
         ret_strat = ret_gross - tc
         
-        # SPY 벤치마크 (매수 후 보유 → 비용 미반영)
-        if BENCHMARK in prices.columns:
-            p0s = prices.loc[m, BENCHMARK]
-            p1s = prices.loc[nm, BENCHMARK]
-            ret_spy = (p1s / p0s - 1.0) if (pd.notna(p0s) and pd.notna(p1s) and p0s != 0) else np.nan
-        else:
-            ret_spy = np.nan
-        
-        records.append({
+        rec = {
             'signal_month': str(m),
             'hold_month': str(nm),
             'defensive': defensive,
@@ -587,8 +590,16 @@ def run_backtest(prices, signals, cost=0.0025):
             'cost': tc,
             'switched': switched,
             'ret_strategy': ret_strat,
-            'ret_spy': ret_spy,
-        })
+        }
+        # 벤치마크 월수익률 (QQQ/SOXX, 매수 후 보유 → 비용 미반영)
+        for b in BENCHMARKS:
+            if b in prices.columns:
+                p0b = prices.loc[m, b]
+                p1b = prices.loc[nm, b]
+                rec[f'ret_{b}'] = (p1b / p0b - 1.0) if (pd.notna(p0b) and pd.notna(p1b) and p0b != 0) else np.nan
+            else:
+                rec[f'ret_{b}'] = np.nan
+        records.append(rec)
         prev_hold = hold
     
     if not records:
@@ -596,7 +607,8 @@ def run_backtest(prices, signals, cost=0.0025):
     
     bt = pd.DataFrame(records)
     bt['cum_strategy'] = (1 + bt['ret_strategy']).cumprod()
-    bt['cum_spy'] = (1 + bt['ret_spy'].fillna(0)).cumprod()
+    for b in BENCHMARKS:
+        bt[f'cum_{b}'] = (1 + bt[f'ret_{b}'].fillna(0)).cumprod()
     bt['dd_strategy'] = bt['cum_strategy'] / bt['cum_strategy'].cummax() - 1.0
     
     return bt
@@ -635,13 +647,24 @@ def compute_performance(bt):
     else:
         cum_gross = cum
     
-    # SPY 비교
-    spy_cum = bt['cum_spy'].iloc[-1]
-    spy_cagr = spy_cum ** (12.0/n) - 1.0 if spy_cum > 0 else -1.0
-    spy_dd = (bt['cum_spy'] / bt['cum_spy'].cummax() - 1.0).min()
-    spy_std = bt['ret_spy'].std(ddof=0)
-    spy_vol = spy_std * np.sqrt(12)
-    spy_sharpe = (bt['ret_spy'].mean() / spy_std * np.sqrt(12)) if spy_std > 0 else 0.0
+    # 벤치마크 비교 (QQQ, SOXX 등) — 매수 후 보유
+    benchmarks = {}
+    for b in BENCHMARKS:
+        cum_col, ret_col = f'cum_{b}', f'ret_{b}'
+        if cum_col not in bt.columns or ret_col not in bt.columns or bt[ret_col].notna().sum() == 0:
+            continue  # 데이터(파일) 없는 벤치마크는 제외
+        b_cum = bt[cum_col].iloc[-1]
+        b_cagr = b_cum ** (12.0/n) - 1.0 if b_cum > 0 else -1.0
+        b_dd = (bt[cum_col] / bt[cum_col].cummax() - 1.0).min()
+        b_std = bt[ret_col].std(ddof=0)
+        b_sharpe = (bt[ret_col].mean() / b_std * np.sqrt(12)) if b_std > 0 else 0.0
+        benchmarks[b] = {
+            'cum_return': b_cum - 1.0,
+            'cagr': b_cagr,
+            'mdd': b_dd,
+            'vol': b_std * np.sqrt(12),
+            'sharpe': b_sharpe,
+        }
     
     return {
         'n_months': n,
@@ -656,9 +679,5 @@ def compute_performance(bt):
         'n_switches': n_switches,
         'total_cost': total_cost,
         'cum_gross_return': cum_gross - 1.0,
-        'spy_cum_return': spy_cum - 1.0,
-        'spy_cagr': spy_cagr,
-        'spy_mdd': spy_dd,
-        'spy_vol': spy_vol,
-        'spy_sharpe': spy_sharpe,
+        'benchmarks': benchmarks,
     }
