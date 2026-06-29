@@ -18,7 +18,7 @@ import plotly.graph_objects as go
 from utils.snowball import (
     load_monthly_prices, load_dividend_yield,
     compute_signals, run_backtest, compute_performance,
-    SIGNAL_ASSETS, OFFENSE_ASSETS, DEFENSE_ASSETS, BENCHMARK,
+    SIGNAL_ASSETS, OFFENSE_ASSETS, DEFENSE_ASSETS, BENCHMARK, VIXY_SPIKE,
 )
 from utils.ui_components import inject_custom_css
 
@@ -239,7 +239,8 @@ with col_c1:
     )
     st.markdown(
         f"<div style='margin-bottom:6px;'>{badge1} "
-        f"<b>조건1: 모멘텀 신호</b> <span style='font-size:12px; color:#9CA3AF;'>(4종 6M 수익률 모두 &lt; 0)</span></div>",
+        f"<b>조건1: 모멘텀 신호</b> <span style='font-size:12px; color:#9CA3AF;'>"
+        f"(TIP·VWO·VEA 6M &lt; 0 &amp; VIXY 6M &lt; 0 또는 ≥{VIXY_SPIKE*100:.0f}%)</span></div>",
         unsafe_allow_html=True
     )
     cond1_data = []
@@ -248,13 +249,20 @@ with col_c1:
         if col_name in last_signal:
             v = last_signal[col_name]
             if pd.notna(v):
+                if t == 'VIXY':
+                    ok = (v < 0) or (v >= VIXY_SPIKE)
+                    cond_txt = f"<0 또는 ≥{VIXY_SPIKE*100:.0f}%"
+                else:
+                    ok = v < 0
+                    cond_txt = "<0"
                 cond1_data.append({
                     '자산': t,
                     '6M 수익률': f"{v*100:+.2f}%",
-                    '음수?': '✅' if v < 0 else '❌',
+                    '조건': cond_txt,
+                    '충족?': '✅' if ok else '❌',
                 })
             else:
-                cond1_data.append({'자산': t, '6M 수익률': 'N/A', '음수?': '⚠️'})
+                cond1_data.append({'자산': t, '6M 수익률': 'N/A', '조건': '-', '충족?': '⚠️'})
     if cond1_data:
         st.dataframe(pd.DataFrame(cond1_data), hide_index=True, use_container_width=True)
 
