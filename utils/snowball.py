@@ -28,6 +28,9 @@ import streamlit as st
 
 # 조건1 모멘텀 신호용 (보유 안 함)
 SIGNAL_ASSETS = ['TIP', 'VWO', 'VEA', 'VIXY']
+# 조건1 위험회피 판정 세부
+C1_RISK_ASSETS = ['TIP', 'VWO', 'VEA']   # 6M 수익률 음수 유지 대상
+VIXY_SPIKE = 0.40                         # VIXY 6M 수익률 급등 임계(변동성 스파이크)
 
 # 공격 자산 (12개월 모멘텀 비교)
 OFFENSE_ASSETS = ['TQQQ', 'USD']
@@ -406,10 +409,14 @@ def compute_signals(prices, div_yield):
     if len(ready_cols_6) < len(SIGNAL_ASSETS) or len(ready_cols_def) < len(DEFENSE_ASSETS) or len(ready_cols_12) < len(OFFENSE_ASSETS):
         data_ready &= False
     
-    # cond1: 신호자산 4종 모두 6M < 0
+    # cond1: TIP/VWO/VEA 6M<0  &  (VIXY 6M<0  또는  VIXY 6M ≥ 40%)
+    #   = 4종 모두 음수  또는  (TIP/VWO/VEA 음수 & VIXY 변동성 급등 ≥40%)
     cond1 = pd.Series(False, index=prices.index)
     if all(t in ret6.columns for t in SIGNAL_ASSETS):
-        cond1 = (ret6[SIGNAL_ASSETS] < 0).all(axis=1)
+        base_neg = (ret6[C1_RISK_ASSETS] < 0).all(axis=1)
+        vixy = ret6['VIXY']
+        vixy_trig = (vixy < 0) | (vixy >= VIXY_SPIKE)
+        cond1 = (base_neg & vixy_trig).fillna(False)
     
     # cond2: 배당 5년 롤링 백분위 ≤ 10%
     if not div_yield.empty:
@@ -454,7 +461,7 @@ def compute_signals(prices, div_yield):
             reason = f"방어모드 → {best} (12M MA 이격도={disp_vals[best]*100:.1f}%)"
             
             cause = []
-            if cond1_m: cause.append("cond1(4종 6M<0)")
+            if cond1_m: cause.append("cond1(TIP/VWO/VEA 6M<0 & VIXY<0|≥40%)")
             if cond2_m: cause.append(f"cond2(배당 {div_pct.loc[m]:.1f}%ile)")
             reasons.append(f"{' & '.join(cause)} | {reason}")
         else:
