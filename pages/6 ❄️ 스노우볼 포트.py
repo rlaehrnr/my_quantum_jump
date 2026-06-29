@@ -18,7 +18,7 @@ import plotly.graph_objects as go
 from utils.snowball import (
     load_monthly_prices, load_dividend_yield,
     compute_signals, run_backtest, compute_performance,
-    SIGNAL_ASSETS, OFFENSE_ASSETS, DEFENSE_ASSETS, BENCHMARK, VIXY_SPIKE,
+    SIGNAL_ASSETS, OFFENSE_ASSETS, DEFENSE_ASSETS, BENCHMARKS, VIXY_SPIKE,
 )
 from utils.ui_components import inject_custom_css
 
@@ -36,7 +36,9 @@ ASSET_COLORS = {
     'SQQQ': '#EF4444',   # 빨강 (인버스)
     'SLV':  '#71717A',   # 진한 회색 (은) — 흰 글씨 가독성 확보
     'CASH': '#6B7280',   # 회색
-    'SPY':  '#8B5CF6',   # 보라 (벤치마크)
+    'SPY':  '#8B5CF6',   # 보라 (레거시 벤치마크)
+    'QQQ':  '#8B5CF6',   # 보라 (벤치마크)
+    'SOXX': '#EC4899',   # 핑크 (벤치마크 — 반도체)
 }
 
 
@@ -66,16 +68,23 @@ if prices.empty:
     st.error(
         f"📁 데이터 파일이 없습니다.\n\n"
         f"`{MONTHLY_DIR}/` 폴더에 다음 파일들을 넣어주세요:\n"
-        f"- ETF 11종: TIP, VWO, VEA, VIXY, TQQQ, USD, GLD, TLT, SQQQ, SLV, SPY (각각 `{{TICKER}}_과거_데이터.csv`)\n"
+        f"- 핵심 ETF 10종: TIP, VWO, VEA, VIXY, TQQQ, USD, GLD, TLT, SQQQ, SLV\n"
+        f"- 벤치마크 2종: QQQ, SOXX (각각 `{{TICKER}}_과거_데이터.csv`)\n"
         f"- 배당수익률: `SP500_DIV.csv`\n\n"
         f"형식: investing.com KR 다운로드 형식 (월봉)"
     )
     st.stop()
 
-# 누락 티커 체크
-missing_tickers = [t for t in SIGNAL_ASSETS + OFFENSE_ASSETS + DEFENSE_ASSETS + [BENCHMARK] if t not in prices.columns]
-if missing_tickers:
-    st.warning(f"⚠️ 누락된 ETF 파일: {', '.join(missing_tickers)}. 정상 동작을 위해 모두 필요합니다.")
+# 누락 티커 체크 (핵심 / 벤치마크 분리)
+missing_core = [t for t in SIGNAL_ASSETS + OFFENSE_ASSETS + DEFENSE_ASSETS if t not in prices.columns]
+if missing_core:
+    st.warning(f"⚠️ 누락된 핵심 ETF 파일: {', '.join(missing_core)}. 정상 동작을 위해 모두 필요합니다.")
+missing_bm = [t for t in BENCHMARKS if t not in prices.columns]
+if missing_bm:
+    st.info(
+        f"ℹ️ 벤치마크 파일 없음: {', '.join(missing_bm)} — 차트/로그에서 해당 벤치마크는 비워집니다. "
+        f"`{MONTHLY_DIR}/`에 `{{TICKER}}_과거_데이터.csv`를 추가하세요."
+    )
 
 if div_yield.empty:
     st.info("ℹ️ 배당수익률 파일(SP500_DIV.csv)이 없거나 비어있어 조건2(밸류에이션)는 항상 False로 처리됩니다.")
@@ -335,18 +344,15 @@ with col_c2:
 # 섹션 3: 백테스트 성과 요약 + 자산곡선
 # ==========================================
 st.markdown("---")
-st.markdown("### 📈 백테스트 성과")
-
-# 거래비용 슬라이더 (턴오버 기반 — 종목 교체 시에만 차감)
-cost_pct = st.slider(
-    "거래비용 (종목 교체 1회당, %)",
-    min_value=0.0, max_value=1.0, value=0.25, step=0.05, format="%.2f%%",
-    help=(
-        "보유 종목이 바뀌는 달(매매 발생)에만 차감하는 턴오버 기반 비용입니다. "
-        "같은 종목을 이어 보유하면 비용 0, 첫 진입은 1회 차감. "
-        "0%로 두면 비용 미반영 '이론 상한'이 됩니다. SPY 벤치마크는 매수 후 보유로 비용 미반영."
-    ),
-)
+# 제목 + 거래비용 슬라이더 한 줄
+t_col, s_col = st.columns([2.2, 1])
+with t_col:
+    st.markdown("### 📈 백테스트 성과")
+with s_col:
+    cost_pct = st.slider(
+        "거래비용 %/교체", 0.0, 1.0, 0.25, 0.05, format="%.2f%%",
+        help="종목 교체 시에만 차감(턴오버). 0% = 비용 미반영. 벤치마크는 매수 후 보유로 비용 없음.",
+    )
 cost_rate = cost_pct / 100.0
 
 bt = run_backtest(prices, signals, cost=cost_rate)
@@ -356,11 +362,18 @@ if bt.empty:
     st.warning("백테스트 데이터가 충분하지 않습니다.")
     st.stop()
 
+# 벤치마크 (QQQ 우선 카드 비교용)
+bms = perf.get('benchmarks', {})
+qqq = bms.get('QQQ')
+
 # 요약 카드
 c1, c2, c3, c4, c5 = st.columns(5)
-c1.metric("CAGR", f"{perf['cagr']*100:.1f}%", delta=f"vs SPY {perf['spy_cagr']*100:.1f}%")
-c2.metric("MDD", f"{perf['mdd']*100:.1f}%", delta=f"vs SPY {perf['spy_mdd']*100:.1f}%", delta_color="inverse")
-c3.metric("샤프 비율", f"{perf['sharpe']:.2f}", delta=f"vs SPY {perf['spy_sharpe']:.2f}")
+c1.metric("CAGR", f"{perf['cagr']*100:.1f}%",
+          delta=(f"vs QQQ {qqq['cagr']*100:.1f}%" if qqq else None))
+c2.metric("MDD", f"{perf['mdd']*100:.1f}%",
+          delta=(f"vs QQQ {qqq['mdd']*100:.1f}%" if qqq else None), delta_color="inverse")
+c3.metric("샤프 비율", f"{perf['sharpe']:.2f}",
+          delta=(f"vs QQQ {qqq['sharpe']:.2f}" if qqq else None))
 c4.metric(
     "누적 수익",
     f"{perf['cum_return']*100:,.0f}%",
@@ -372,6 +385,14 @@ c5.metric(
     f"{perf['offense_pct']*100:.0f}%",
     delta=f"{perf.get('offense_months', round(perf['offense_pct']*perf['n_months']))}개월 / {perf['n_months']}개월",
 )
+
+# 벤치마크 전기간 요약 캡션
+if bms:
+    parts = [
+        f"{b} CAGR {v['cagr']*100:+.1f}% · MDD {v['mdd']*100:.1f}% · 누적 {v['cum_return']*100:,.0f}%"
+        for b, v in bms.items()
+    ]
+    st.caption("📊 벤치마크 전기간 — " + "  |  ".join(parts))
 
 # 거래비용 반영 요약
 if cost_rate > 0:
@@ -391,11 +412,14 @@ fig.add_trace(go.Scatter(
     mode='lines', name='스노우볼 전략',
     line=dict(color='#10B981', width=2.5),
 ))
-fig.add_trace(go.Scatter(
-    x=bt['hold_month'], y=bt['cum_spy'],
-    mode='lines', name='SPY (Buy & Hold)',
-    line=dict(color=ASSET_COLORS['SPY'], width=2, dash='dash'),
-))
+for b in BENCHMARKS:
+    col = f'cum_{b}'
+    if col in bt.columns and bt[f'ret_{b}'].notna().sum() > 0:
+        fig.add_trace(go.Scatter(
+            x=bt['hold_month'], y=bt[col],
+            mode='lines', name=f'{b} (Buy & Hold)',
+            line=dict(color=ASSET_COLORS.get(b, '#9CA3AF'), width=2, dash='dash'),
+        ))
 fig.update_layout(
     yaxis_type='log', height=420,
     hovermode='x unified', margin=dict(l=10, r=10, t=10, b=10),
@@ -411,24 +435,31 @@ st.plotly_chart(fig, use_container_width=True)
 st.markdown("#### 📋 전체 월별 로그")
 log_df = bt.copy()
 log_df['ret_strategy_str'] = log_df['ret_strategy'].apply(lambda x: f"{x*100:+.2f}%")
-log_df['ret_spy_str'] = log_df['ret_spy'].apply(lambda x: f"{x*100:+.2f}%" if pd.notna(x) else "-")
+# 전략 누적 수익률 (cum_strategy = 1에서 시작 → -1)
+log_df['cum_strategy_str'] = log_df['cum_strategy'].apply(lambda x: f"{(x-1)*100:+.1f}%")
 log_df['mode'] = log_df['defensive'].apply(lambda d: "🛡️ 방어" if d else "⚔️ 공격")
 log_df['dd_str'] = log_df['dd_strategy'].apply(lambda x: f"{x*100:.1f}%")
-# 종목 교체(거래비용 발생) 표시
-log_df['switch_str'] = log_df.apply(
-    lambda r: (f"🔁 -{r['cost']*100:.2f}%" if r.get('switched', False) and r.get('cost', 0) > 0
-               else ("🔁" if r.get('switched', False) else "")),
-    axis=1,
-)
 
-display_df = log_df[['hold_month', 'mode', 'hold', 'switch_str', 'ret_strategy_str', 'ret_spy_str', 'dd_str']].rename(columns={
+# 벤치마크(QQQ/SOXX) 월수익률 — 데이터 있는 것만 컬럼 추가
+cols = ['hold_month', 'mode', 'hold', 'ret_strategy_str', 'cum_strategy_str']
+rename_map = {
     'hold_month': '보유월',
     'mode': '국면',
     'hold': '보유',
-    'switch_str': '교체',
     'ret_strategy_str': '전략 수익률',
-    'ret_spy_str': 'SPY 수익률',
-    'dd_str': '낙폭',
-})
+    'cum_strategy_str': '누적 수익률',
+}
+for b in BENCHMARKS:
+    rcol = f'ret_{b}'
+    if rcol in log_df.columns and log_df[rcol].notna().sum() > 0:
+        scol = f'{b}_str'
+        log_df[scol] = log_df[rcol].apply(lambda x: f"{x*100:+.2f}%" if pd.notna(x) else "-")
+        cols.append(scol)
+        rename_map[scol] = f'{b} 수익률'
+
+cols.append('dd_str')
+rename_map['dd_str'] = '낙폭'
+
+display_df = log_df[cols].rename(columns=rename_map)
 # 최신이 위로 오도록 역순
 st.dataframe(display_df.iloc[::-1], hide_index=True, use_container_width=True, height=600)
