@@ -32,7 +32,7 @@ SIGNAL_ASSETS = ['TIP', 'VWO', 'VEA', 'VIXY']
 # 공격 자산 (12개월 모멘텀 비교)
 OFFENSE_ASSETS = ['TQQQ', 'USD']
 
-# 방어 자산 (11개월 모멘텀 비교)
+# 방어 자산 (12개월 이동평균 이격도 비교)
 DEFENSE_ASSETS = ['GLD', 'TLT', 'SQQQ', 'SLV']
 
 # 벤치마크
@@ -283,6 +283,28 @@ def compute_returns(prices, periods):
     return prices / prices.shift(periods) - 1.0
 
 
+def compute_ma_disparity(prices, window=12):
+    """
+    각 ticker의 N개월 이동평균 대비 이격도(disparity) 계산.
+
+    이격도 = 현재가 / N개월_이동평균 - 1
+
+    이동평균은 당월 종가를 포함한 최근 N개월 종가의 단순평균이다
+    (기존 11M 수익률과 동일하게 신호월 m의 종가를 사용 → 별도 shift 없음).
+    rolling(window)는 기본 min_periods=window라서 데이터가 N개월 미만이면 NaN.
+    (window=12면 12개월 모두 있어야 유효 → 11M 수익률과 워밍업 동일.)
+
+    Args:
+        prices: DataFrame, monthly close
+        window: int (개월), 기본 12
+
+    Returns:
+        DataFrame: 같은 shape, 값 = close / rolling_mean(window) - 1
+    """
+    ma = prices.rolling(window).mean()
+    return prices / ma - 1.0
+
+
 def compute_div_percentile(div_yield, window=60, min_pct=0.8):
     """
     명세서 §3-2 — 배당수익률의 5년 롤링 하위 백분위 신호.
@@ -353,35 +375,35 @@ def compute_signals(prices, div_yield):
             'cond1', 'cond2', 'defensive',
             'div_pct',
             'ret6_TIP','ret6_VWO','ret6_VEA','ret6_VIXY',
-            'ret11_GLD','ret11_TLT','ret11_SQQQ','ret11_SLV',
+            'disp12_GLD','disp12_TLT','disp12_SQQQ','disp12_SLV',
             'ret12_TQQQ','ret12_USD',
             'hold',  # 보유 종목 티커 (또는 'CASH')
             'reason',  # 판정 사유 텍스트
         ]
     """
     ret6 = compute_returns(prices, 6)
-    ret11 = compute_returns(prices, 11)
+    disp12 = compute_ma_disparity(prices, 12)   # 방어자산 선정용 (12M MA 이격도)
     ret12 = compute_returns(prices, 12)
     
     # 💡 [명세서 §5 시작 조건] 각 월이 백테스트 가능한지 판정.
     # 다음이 모두 계산 가능(NaN 아님)해야 그 달의 신호가 유효:
     #   - 신호 4종(TIP/VWO/VEA/VIXY) 6M 수익률
-    #   - 방어 4종(GLD/TLT/SQQQ/SLV) 11M 수익률
+    #   - 방어 4종(GLD/TLT/SQQQ/SLV) 12M MA 이격도 (12개월 종가 필요)
     #   - 공격 2종(TQQQ/USD) 12M 수익률
     # (배당 60개월 백분위는 워밍업 전이면 cond2=False로 처리하고 진행 — 명세서 §5)
     ready_cols_6 = [t for t in SIGNAL_ASSETS if t in ret6.columns]
-    ready_cols_11 = [t for t in DEFENSE_ASSETS if t in ret11.columns]
+    ready_cols_def = [t for t in DEFENSE_ASSETS if t in disp12.columns]
     ready_cols_12 = [t for t in OFFENSE_ASSETS if t in ret12.columns]
     
     data_ready = pd.Series(True, index=prices.index)
     if ready_cols_6:
         data_ready &= ret6[ready_cols_6].notna().all(axis=1)
-    if ready_cols_11:
-        data_ready &= ret11[ready_cols_11].notna().all(axis=1)
+    if ready_cols_def:
+        data_ready &= disp12[ready_cols_def].notna().all(axis=1)
     if ready_cols_12:
         data_ready &= ret12[ready_cols_12].notna().all(axis=1)
     # 필수 자산 컬럼 자체가 누락이면 전부 False
-    if len(ready_cols_6) < len(SIGNAL_ASSETS) or len(ready_cols_11) < len(DEFENSE_ASSETS) or len(ready_cols_12) < len(OFFENSE_ASSETS):
+    if len(ready_cols_6) < len(SIGNAL_ASSETS) or len(ready_cols_def) < len(DEFENSE_ASSETS) or len(ready_cols_12) < len(OFFENSE_ASSETS):
         data_ready &= False
     
     # cond1: 신호자산 4종 모두 6M < 0
@@ -420,20 +442,16 @@ def compute_signals(prices, div_yield):
         defensive_m = cond1_m or cond2_m
         
         if defensive_m:
-            # 방어 모드: 4종 ret11 비교
-            ret11_vals = {t: ret11[t].loc[m] for t in DEFENSE_ASSETS if t in ret11.columns}
-            if not ret11_vals or any(pd.isna(v) for v in ret11_vals.values()):
+            # 방어 모드: 4종 12M MA 이격도(현재가/12M MA - 1) 비교 → 항상 최고값 선택
+            disp_vals = {t: disp12[t].loc[m] for t in DEFENSE_ASSETS if t in disp12.columns}
+            if not disp_vals or any(pd.isna(v) for v in disp_vals.values()):
                 holds.append(None)
                 reasons.append("데이터 부족")
                 continue
-            # 모두 ≤ 0이면 현금
-            if all(v <= 0 for v in ret11_vals.values()):
-                holds.append(CASH)
-                reason = "방어모드 & 4종 11M ≤0 → 현금"
-            else:
-                best = max(ret11_vals, key=ret11_vals.get)
-                holds.append(best)
-                reason = f"방어모드 → {best} (11M={ret11_vals[best]*100:.1f}%)"
+            # 4종 모두 음수(전부 MA 아래)여도 현금 대신 그중 가장 높은 자산 선택
+            best = max(disp_vals, key=disp_vals.get)
+            holds.append(best)
+            reason = f"방어모드 → {best} (12M MA 이격도={disp_vals[best]*100:.1f}%)"
             
             cause = []
             if cond1_m: cause.append("cond1(4종 6M<0)")
@@ -479,8 +497,8 @@ def compute_signals(prices, div_yield):
         if t in ret6.columns:
             sig[f'ret6_{t}'] = ret6[t]
     for t in DEFENSE_ASSETS:
-        if t in ret11.columns:
-            sig[f'ret11_{t}'] = ret11[t]
+        if t in disp12.columns:
+            sig[f'disp12_{t}'] = disp12[t]
     for t in OFFENSE_ASSETS:
         if t in ret12.columns:
             sig[f'ret12_{t}'] = ret12[t]
@@ -492,25 +510,35 @@ def compute_signals(prices, div_yield):
 # 백테스트
 # ==========================================
 
-def run_backtest(prices, signals):
+def run_backtest(prices, signals, cost=0.0025):
     """
     명세서 §5 — 월별 백테스트 루프.
     
     신호월 m의 신호로 m+1(보유월) 한 달 보유.
     수익률 = price[hold][m+1] / price[hold][m] - 1
     
+    거래비용(턴오버 기반):
+        직전 보유월 대비 보유 종목이 바뀌는 달(= 매매 발생)에만 cost를 차감한다.
+        첫 진입(직전 보유 없음)도 1회 차감. 같은 종목을 이어서 보유하면 비용 0.
+        cost는 1회 교체(로테이션)당 비율 (기본 0.0025 = 0.25%).
+        벤치마크 SPY는 매수 후 보유로 보아 비용 미반영(총수익).
+    
     Args:
         prices: DataFrame, monthly close
         signals: DataFrame from compute_signals
+        cost: float, 1회 종목 교체당 거래비용 비율 (기본 0.25%)
     
     Returns:
         DataFrame, index=보유월(nm), columns=[
-            'signal_month', 'defensive', 'hold', 'reason',
-            'ret_strategy', 'ret_spy', 'cum_strategy', 'cum_spy', 'dd_strategy'
+            'signal_month', 'hold_month', 'defensive', 'hold', 'reason',
+            'ret_gross', 'cost', 'switched', 'ret_strategy', 'ret_spy',
+            'cum_strategy', 'cum_spy', 'dd_strategy'
         ]
+        ('ret_strategy'는 비용 차감 후 순수익)
     """
     months = list(prices.index)
     records = []
+    prev_hold = None  # 직전 보유월의 보유 종목 (턴오버 판정용)
     
     for i, m in enumerate(months[:-1]):
         nm = months[i+1]
@@ -519,19 +547,22 @@ def run_backtest(prices, signals):
         reason = signals.loc[m, 'reason']
         
         if hold is None:
-            # 데이터 부족 → skip
+            # 데이터 부족 → skip (prev_hold는 갱신하지 않음)
             continue
         
-        if hold == CASH:
-            ret_strat = 0.0
-        else:
-            p0 = prices.loc[m, hold] if hold in prices.columns else np.nan
-            p1 = prices.loc[nm, hold] if hold in prices.columns else np.nan
-            if pd.isna(p0) or pd.isna(p1) or p0 == 0:
-                continue
-            ret_strat = p1 / p0 - 1.0
+        # 보유 종목 총수익 (방어자산 음수선택 반영으로 CASH는 더 이상 없음)
+        p0 = prices.loc[m, hold] if hold in prices.columns else np.nan
+        p1 = prices.loc[nm, hold] if hold in prices.columns else np.nan
+        if pd.isna(p0) or pd.isna(p1) or p0 == 0:
+            continue
+        ret_gross = p1 / p0 - 1.0
         
-        # SPY 벤치마크
+        # 거래비용: 직전 보유월과 종목이 바뀌었거나(교체) 첫 진입이면 cost 차감
+        switched = (prev_hold is None) or (hold != prev_hold)
+        tc = cost if switched else 0.0
+        ret_strat = ret_gross - tc
+        
+        # SPY 벤치마크 (매수 후 보유 → 비용 미반영)
         if BENCHMARK in prices.columns:
             p0s = prices.loc[m, BENCHMARK]
             p1s = prices.loc[nm, BENCHMARK]
@@ -545,9 +576,13 @@ def run_backtest(prices, signals):
             'defensive': defensive,
             'hold': hold,
             'reason': reason,
+            'ret_gross': ret_gross,
+            'cost': tc,
+            'switched': switched,
             'ret_strategy': ret_strat,
             'ret_spy': ret_spy,
         })
+        prev_hold = hold
     
     if not records:
         return pd.DataFrame()
@@ -584,6 +619,15 @@ def compute_performance(bt):
     offense_pct = (~bt['defensive']).mean()
     offense_months = int((~bt['defensive']).sum())
     
+    # 거래비용 요약 (turnover)
+    n_switches = int(bt['switched'].sum()) if 'switched' in bt.columns else 0
+    total_cost = float(bt['cost'].sum()) if 'cost' in bt.columns else 0.0
+    # 비용 미반영(gross) 누적수익 — 비용 영향 비교용
+    if 'ret_gross' in bt.columns:
+        cum_gross = float((1 + bt['ret_gross']).cumprod().iloc[-1])
+    else:
+        cum_gross = cum
+    
     # SPY 비교
     spy_cum = bt['cum_spy'].iloc[-1]
     spy_cagr = spy_cum ** (12.0/n) - 1.0 if spy_cum > 0 else -1.0
@@ -602,6 +646,9 @@ def compute_performance(bt):
         'win_rate': win_rate,
         'offense_pct': offense_pct,
         'offense_months': offense_months,
+        'n_switches': n_switches,
+        'total_cost': total_cost,
+        'cum_gross_return': cum_gross - 1.0,
         'spy_cum_return': spy_cum - 1.0,
         'spy_cagr': spy_cagr,
         'spy_mdd': spy_dd,
