@@ -18,7 +18,7 @@ import plotly.graph_objects as go
 from utils.snowball import (
     load_monthly_prices, load_dividend_yield,
     compute_signals, run_backtest, compute_performance,
-    SIGNAL_ASSETS, OFFENSE_ASSETS, DEFENSE_ASSETS, BENCHMARK, CASH,
+    SIGNAL_ASSETS, OFFENSE_ASSETS, DEFENSE_ASSETS, BENCHMARK,
 )
 from utils.ui_components import inject_custom_css
 
@@ -85,8 +85,7 @@ if div_yield.empty:
 # 신호 계산 + 백테스트
 # ==========================================
 signals = compute_signals(prices, div_yield)
-bt = run_backtest(prices, signals)
-perf = compute_performance(bt) if not bt.empty else {}
+# 백테스트(bt)·성과(perf)는 거래비용 슬라이더 아래 '섹션 3'에서 계산한다.
 
 
 # ==========================================
@@ -111,7 +110,7 @@ if defensive_now:
 else:
     mode_text = "⚔️ 공격 모드"
     mode_color = "#10B981"
-selected_hold = last_signal['hold']  # 실제 선택된 종목 (또는 CASH)
+selected_hold = last_signal['hold']  # 실제 선택된 종목
 
 # 제목
 st.markdown(
@@ -135,24 +134,25 @@ st.markdown(
 )
 
 
-def _style_asset_df(assets, ret_prefix, active, selected_ticker):
+def _style_asset_df(assets, ret_prefix, active, selected_ticker, value_label='수익률'):
     """
     자산 모멘텀 DataFrame을 만들고 Styler 반환.
     active=True면 선택 종목 행을 모드색으로 강조.
     active=False면 전체를 흐리게.
+    value_label: 값 컬럼 표시명 (공격='수익률', 방어='이격도').
     """
     rows = []
     for t in assets:
         col = f'{ret_prefix}_{t}'
         v = last_signal[col] if col in last_signal else np.nan
-        rows.append({'자산': t, '수익률': v})
-    df = pd.DataFrame(rows).sort_values('수익률', ascending=False, na_position='last').reset_index(drop=True)
+        rows.append({'자산': t, value_label: v})
+    df = pd.DataFrame(rows).sort_values(value_label, ascending=False, na_position='last').reset_index(drop=True)
 
     def _row_style(row):
         n = len(row)
         if active and row['자산'] == selected_ticker:
             a_color = ASSET_COLORS.get(selected_ticker, '#6B7280')
-            # 선택 행: 반투명 배경 + 굵게 (글자색은 건드리지 않아 수익률 빨강/파랑 유지)
+            # 선택 행: 반투명 배경 + 굵게 (글자색은 건드리지 않아 빨강/파랑 유지)
             return [f'background-color: {a_color}55; font-weight: 800;'] * n
         if not active:
             return ['color: #9CA3AF;'] * n  # 비활성: 흐리게
@@ -164,8 +164,8 @@ def _style_asset_df(assets, ret_prefix, active, selected_ticker):
         return f"{v*100:+.2f}%"
 
     def _color_ret(row):
-        """수익률 컬럼 색상 — 항상 빨강(양수)/파랑(음수)."""
-        v = row['수익률']
+        """값 컬럼 색상 — 항상 빨강(양수)/파랑(음수)."""
+        v = row[value_label]
         if pd.isna(v):
             return 'color: #9CA3AF; font-weight: bold;'
         if v > 0:
@@ -175,16 +175,16 @@ def _style_asset_df(assets, ret_prefix, active, selected_ticker):
         return ''
 
     def _apply_ret_color(df_inner):
-        # 수익률 컬럼에만 색 적용
+        # 값 컬럼에만 색 적용
         styles = pd.DataFrame('', index=df_inner.index, columns=df_inner.columns)
         for idx in df_inner.index:
-            styles.loc[idx, '수익률'] = _color_ret(df_inner.loc[idx])
+            styles.loc[idx, value_label] = _color_ret(df_inner.loc[idx])
         return styles
 
     styler = (df.style
               .apply(_row_style, axis=1)
               .apply(_apply_ret_color, axis=None)
-              .format({'수익률': _fmt_ret}))
+              .format({value_label: _fmt_ret}))
     return styler, df
 
 
@@ -205,20 +205,17 @@ with col_off:
 
 with col_def:
     is_active = defensive_now
-    label = "🛡️ 방어 자산 (11개월 수익률)" + ("" if is_active else "  · 비활성")
+    label = "🛡️ 방어 자산 (12개월 MA 이격도)" + ("" if is_active else "  · 비활성")
     title_color = "#EF4444" if is_active else "#9CA3AF"  # 활성: 빨강, 비활성: 회색
     st.markdown(
         f"<div style='font-weight:800; font-size:15px; margin-bottom:4px; "
         f"color:{title_color};'>{label}</div>",
         unsafe_allow_html=True
     )
-    def_styler, _ = _style_asset_df(DEFENSE_ASSETS, 'ret11', is_active,
-                                    selected_hold if is_active else None)
+    def_styler, _ = _style_asset_df(DEFENSE_ASSETS, 'disp12', is_active,
+                                    selected_hold if is_active else None,
+                                    value_label='이격도')
     st.dataframe(def_styler, hide_index=True, use_container_width=True)
-
-# 방어모드 & 현금 보유 시 안내
-if defensive_now and selected_hold == CASH:
-    st.info("🛡️ 방어 모드 + 방어자산 4종 11M 수익률 모두 0 이하 → **현금 보유** (수익률 0%)")
 
 
 # ==========================================
@@ -329,24 +326,54 @@ with col_c2:
 # ==========================================
 # 섹션 3: 백테스트 성과 요약 + 자산곡선
 # ==========================================
+st.markdown("---")
+st.markdown("### 📈 백테스트 성과")
+
+# 거래비용 슬라이더 (턴오버 기반 — 종목 교체 시에만 차감)
+cost_pct = st.slider(
+    "거래비용 (종목 교체 1회당, %)",
+    min_value=0.0, max_value=1.0, value=0.25, step=0.05, format="%.2f%%",
+    help=(
+        "보유 종목이 바뀌는 달(매매 발생)에만 차감하는 턴오버 기반 비용입니다. "
+        "같은 종목을 이어 보유하면 비용 0, 첫 진입은 1회 차감. "
+        "0%로 두면 비용 미반영 '이론 상한'이 됩니다. SPY 벤치마크는 매수 후 보유로 비용 미반영."
+    ),
+)
+cost_rate = cost_pct / 100.0
+
+bt = run_backtest(prices, signals, cost=cost_rate)
+perf = compute_performance(bt) if not bt.empty else {}
+
 if bt.empty:
     st.warning("백테스트 데이터가 충분하지 않습니다.")
     st.stop()
-
-st.markdown("---")
-st.markdown("### 📈 백테스트 성과")
 
 # 요약 카드
 c1, c2, c3, c4, c5 = st.columns(5)
 c1.metric("CAGR", f"{perf['cagr']*100:.1f}%", delta=f"vs SPY {perf['spy_cagr']*100:.1f}%")
 c2.metric("MDD", f"{perf['mdd']*100:.1f}%", delta=f"vs SPY {perf['spy_mdd']*100:.1f}%", delta_color="inverse")
 c3.metric("샤프 비율", f"{perf['sharpe']:.2f}", delta=f"vs SPY {perf['spy_sharpe']:.2f}")
-c4.metric("누적 수익", f"{perf['cum_return']*100:,.0f}%")
+c4.metric(
+    "누적 수익",
+    f"{perf['cum_return']*100:,.0f}%",
+    delta=(f"비용 0% 시 {perf['cum_gross_return']*100:,.0f}%" if cost_rate > 0 else None),
+    delta_color="off",
+)
 c5.metric(
     "공격 비중",
     f"{perf['offense_pct']*100:.0f}%",
     delta=f"{perf.get('offense_months', round(perf['offense_pct']*perf['n_months']))}개월 / {perf['n_months']}개월",
 )
+
+# 거래비용 반영 요약
+if cost_rate > 0:
+    st.caption(
+        f"💸 거래비용 {cost_pct:.2f}%/교체 반영 · 종목 교체 {perf['n_switches']}회 / {perf['n_months']}개월 "
+        f"· 누적 차감 약 {perf['total_cost']*100:.1f}%p "
+        f"(비용 미반영 누적 {perf['cum_gross_return']*100:,.0f}% → 반영 {perf['cum_return']*100:,.0f}%)"
+    )
+else:
+    st.caption("💸 거래비용 0% — 비용 미반영 '이론 상한' 기준입니다.")
 
 # 자산 곡선 (log scale)
 st.markdown("#### 📉 자산 곡선 (Log Scale)")
@@ -379,11 +406,18 @@ log_df['ret_strategy_str'] = log_df['ret_strategy'].apply(lambda x: f"{x*100:+.2
 log_df['ret_spy_str'] = log_df['ret_spy'].apply(lambda x: f"{x*100:+.2f}%" if pd.notna(x) else "-")
 log_df['mode'] = log_df['defensive'].apply(lambda d: "🛡️ 방어" if d else "⚔️ 공격")
 log_df['dd_str'] = log_df['dd_strategy'].apply(lambda x: f"{x*100:.1f}%")
+# 종목 교체(거래비용 발생) 표시
+log_df['switch_str'] = log_df.apply(
+    lambda r: (f"🔁 -{r['cost']*100:.2f}%" if r.get('switched', False) and r.get('cost', 0) > 0
+               else ("🔁" if r.get('switched', False) else "")),
+    axis=1,
+)
 
-display_df = log_df[['hold_month', 'mode', 'hold', 'ret_strategy_str', 'ret_spy_str', 'dd_str']].rename(columns={
+display_df = log_df[['hold_month', 'mode', 'hold', 'switch_str', 'ret_strategy_str', 'ret_spy_str', 'dd_str']].rename(columns={
     'hold_month': '보유월',
     'mode': '국면',
     'hold': '보유',
+    'switch_str': '교체',
     'ret_strategy_str': '전략 수익률',
     'ret_spy_str': 'SPY 수익률',
     'dd_str': '낙폭',
