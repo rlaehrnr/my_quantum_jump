@@ -2,15 +2,36 @@ name: KR Monthly Archive
 
 on:
   schedule:
-    - cron: '0 0 1 * *'  # 💡 매월 1일 UTC 0시 = 한국 시간 매월 1일 오전 9시
+    # ⚠️ cron은 항상 UTC! 22:00 UTC = 한국시간 다음날 07:00
+    # 말일이 28~31로 달마다 다르므로 모두 트리거하고, 아래 job에서 "1일"인지 검사
+    - cron: '0 22 28-31 * *'
   workflow_dispatch:
 
 jobs:
-  generate-kr-archive:
+  # 한국시간 기준 오늘이 1일일 때만 통과 (= 전월 말일 밤에 뜬 실행만)
+  check-date:
     runs-on: ubuntu-latest
     env:
       TZ: Asia/Seoul
-    
+    outputs:
+      should_run: ${{ steps.check.outputs.should_run }}
+    steps:
+      - id: check
+        run: |
+          if [ "$(date +%d)" = "01" ] || [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "should_run=true" >> "$GITHUB_OUTPUT"
+            echo "✅ 한국시간 1일 → 아카이브 생성 진행"
+          else
+            echo "should_run=false" >> "$GITHUB_OUTPUT"
+            echo "⏭️ 말일 트리거가 아님 → 건너뜀"
+          fi
+
+  generate-kr-archive:
+    needs: check-date
+    if: needs.check-date.outputs.should_run == 'true'
+    runs-on: ubuntu-latest
+    env:
+      TZ: Asia/Seoul
     steps:
     - name: 1. 저장소 코드 불러오기
       uses: actions/checkout@v3
