@@ -609,7 +609,10 @@ def run_backtest(prices, signals, cost=0.0025):
     bt['cum_strategy'] = (1 + bt['ret_strategy']).cumprod()
     for b in BENCHMARKS:
         bt[f'cum_{b}'] = (1 + bt[f'ret_{b}'].fillna(0)).cumprod()
-    bt['dd_strategy'] = bt['cum_strategy'] / bt['cum_strategy'].cummax() - 1.0
+    # 낙폭(drawdown): 원금 1.0(시작 시점)을 최고점에 포함시켜야 시작 직후 하락도 낙폭에 반영된다.
+    #   (cum_strategy 첫 값은 1.0이 아니라 첫 달 수익률이 반영된 값이므로 clip(lower=1.0) 필요)
+    peak = bt['cum_strategy'].cummax().clip(lower=1.0)
+    bt['dd_strategy'] = bt['cum_strategy'] / peak - 1.0
     
     return bt
 
@@ -655,7 +658,8 @@ def compute_performance(bt):
             continue  # 데이터(파일) 없는 벤치마크는 제외
         b_cum = bt[cum_col].iloc[-1]
         b_cagr = b_cum ** (12.0/n) - 1.0 if b_cum > 0 else -1.0
-        b_dd = (bt[cum_col] / bt[cum_col].cummax() - 1.0).min()
+        b_peak = bt[cum_col].cummax().clip(lower=1.0)
+        b_dd = (bt[cum_col] / b_peak - 1.0).min()
         b_std = bt[ret_col].std(ddof=0)
         b_sharpe = (bt[ret_col].mean() / b_std * np.sqrt(12)) if b_std > 0 else 0.0
         benchmarks[b] = {
