@@ -386,24 +386,6 @@ c5.metric(
     delta=f"{perf.get('offense_months', round(perf['offense_pct']*perf['n_months']))}개월 / {perf['n_months']}개월",
 )
 
-# 벤치마크 전기간 요약 캡션
-if bms:
-    parts = [
-        f"{b} CAGR {v['cagr']*100:+.1f}% · MDD {v['mdd']*100:.1f}% · 누적 {v['cum_return']*100:,.0f}%"
-        for b, v in bms.items()
-    ]
-    st.caption("📊 벤치마크 전기간 — " + "  |  ".join(parts))
-
-# 거래비용 반영 요약
-if cost_rate > 0:
-    st.caption(
-        f"💸 거래비용 {cost_pct:.2f}%/교체 반영 · 종목 교체 {perf['n_switches']}회 / {perf['n_months']}개월 "
-        f"· 누적 차감 약 {perf['total_cost']*100:.1f}%p "
-        f"(비용 미반영 누적 {perf['cum_gross_return']*100:,.0f}% → 반영 {perf['cum_return']*100:,.0f}%)"
-    )
-else:
-    st.caption("💸 거래비용 0% — 비용 미반영 '이론 상한' 기준입니다.")
-
 # 자산 곡선 (log scale)
 st.markdown("#### 📉 자산 곡선 (Log Scale)")
 fig = go.Figure()
@@ -432,7 +414,16 @@ st.plotly_chart(fig, use_container_width=True)
 # ==========================================
 # 섹션 4: 전체 월별 로그
 # ==========================================
-st.markdown("#### 📋 전체 월별 로그")
+_log_title, _bm_summary = st.columns([1, 2])
+with _log_title:
+    st.markdown("#### 📋 전체 월별 로그")
+with _bm_summary:
+    if bms:
+        parts = [
+            f"{b} · CAGR {v['cagr']*100:+.1f}% · MDD {v['mdd']*100:.1f}% · 누적 {v['cum_return']*100:,.0f}%"
+            for b, v in bms.items()
+        ]
+        st.caption("📊 벤치마크 전기간 &nbsp;&nbsp; " + " &nbsp;|&nbsp; ".join(parts), unsafe_allow_html=True)
 log_df = bt.copy()
 log_df['ret_strategy_str'] = log_df['ret_strategy'].apply(lambda x: f"{x*100:+.2f}%")
 # 전략 누적 수익률 (cum_strategy = 1에서 시작 → -1)
