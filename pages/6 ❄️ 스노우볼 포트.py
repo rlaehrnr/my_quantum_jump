@@ -414,16 +414,7 @@ st.plotly_chart(fig, use_container_width=True)
 # ==========================================
 # 섹션 4: 전체 월별 로그
 # ==========================================
-_log_title, _bm_summary = st.columns([1, 2])
-with _log_title:
-    st.markdown("#### 📋 전체 월별 로그")
-with _bm_summary:
-    if bms:
-        parts = [
-            f"{b} · CAGR {v['cagr']*100:+.1f}% · MDD {v['mdd']*100:.1f}% · 누적 {v['cum_return']*100:,.0f}%"
-            for b, v in bms.items()
-        ]
-        st.caption("📊 벤치마크 전기간 &nbsp;&nbsp; " + " &nbsp;|&nbsp; ".join(parts), unsafe_allow_html=True)
+st.markdown("#### 📋 전체 월별 로그")
 log_df = bt.copy()
 log_df['ret_strategy_str'] = log_df['ret_strategy'].apply(lambda x: f"{x*100:+.2f}%")
 # 전략 누적 수익률 (cum_strategy = 1에서 시작 → -1)
@@ -452,5 +443,18 @@ cols.append('dd_str')
 rename_map['dd_str'] = '낙폭'
 
 display_df = log_df[cols].rename(columns=rename_map)
+
+# 벤치마크 전기간 요약 — 표 바로 위에 붙임
+if bms:
+    parts = [
+        f"{b} · CAGR {v['cagr']*100:+.1f}% · MDD {v['mdd']*100:.1f}% · 누적 {v['cum_return']*100:,.0f}%"
+        for b, v in bms.items()
+    ]
+    st.markdown(
+        "<div style='color:#9CA3AF; font-size:13px; margin:0 0 2px 2px;'>"
+        "📊 벤치마크 전기간 &nbsp;&nbsp;" + " &nbsp;|&nbsp; ".join(parts) + "</div>",
+        unsafe_allow_html=True,
+    )
+
 # 최신이 위로 오도록 역순
 st.dataframe(display_df.iloc[::-1], hide_index=True, use_container_width=True, height=600)
