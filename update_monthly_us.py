@@ -106,19 +106,29 @@ def generate_sp500(base_date, dates, start_date, base_date_str, invest_year, inv
         print(f"✅ [S&P 500] 월간 데이터 저장 완료: {output_file}")
 
 def get_us_last_trading_day(today):
-    """🇺🇸 S&P500 지수(US500)를 기준으로 지난달 '실제 마지막 거래일'을 찾는다.
-    한국이 KS11로 실거래일을 찾는 것과 동일한 방식. 실패 시 달력상 말일로 폴백."""
-    fallback = get_end_of_month(today, 1)
+    """🇺🇸 지난달 '실제 마지막 거래일'을 찾는다.
+    💡 데일리(update_daily_us.py)와 '동일한 소스'인 SPY(ETF) + 거래량 필터를 사용한다.
+    지수 US500은 FDR 소스 갱신이 하루 늦게 반영될 때가 있어(선정일이 6/30이 아닌 6/29로 밀리는 원인),
+    같은 시각에 도는 데일리(SPY)와 결과가 어긋난다. SPY로 통일해 이 지연을 제거한다.
+    실패 시 달력상 말일로 폴백."""
+    fallback = get_end_of_month(today, 1)  # 지난달 달력상 말일
     try:
         first_day_of_current = today.replace(day=1)
-        last_day_prev = first_day_of_current - pd.Timedelta(days=1)
-        df_idx = fdr.DataReader('US500', last_day_prev - pd.Timedelta(days=10), last_day_prev)
-        if df_idx.empty:
+        last_day_prev = first_day_of_current - pd.Timedelta(days=1)  # 지난달 말일(달력 기준)
+        # 종료일을 지정하지 않고 최신 거래일까지 받아온 뒤, 아래에서 '지난달 범위'로 자른다
+        df = fdr.DataReader('SPY', last_day_prev - pd.Timedelta(days=15))
+        if df.empty:
             return fallback
-        base_date = df_idx.index[-1]
-        if base_date.tz is not None:
-            base_date = base_date.tz_localize(None)
-        return base_date
+        if df.index.tz is not None:
+            df.index = df.index.tz_localize(None)
+        # 거래량이 실제로 찍힌 날만 남긴다(빈/부분 행 방지) — 데일리와 동일한 방어 로직
+        if 'Volume' in df.columns:
+            df = df[df['Volume'] > 1000]
+        # 💡 실행이 늦어 이번 달 거래일이 섞여 들어와도 '지난달 말일 이하'로만 제한 (월 경계 안전장치)
+        df = df[df.index <= pd.to_datetime(last_day_prev)]
+        if df.empty:
+            return fallback
+        return df.index[-1]
     except:
         return fallback
 
