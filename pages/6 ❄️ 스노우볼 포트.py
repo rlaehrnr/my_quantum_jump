@@ -264,27 +264,6 @@ def render_backtest_section(bt, perf, cost_rate, key_prefix, strat_color, strat_
     c5.metric("공격 비중", f"{perf['offense_pct']*100:.0f}%",
               delta=f"{perf.get('offense_months', 0)}개월 / {perf['n_months']}개월")
 
-    st.markdown("#### 📉 자산 곡선 (Log Scale)")
-    fig = go.Figure()
-    fig.add_trace(go.Scatter(
-        x=bt['hold_month'], y=bt['cum_strategy'], mode='lines', name=strat_name,
-        line=dict(color=strat_color, width=2.5),
-    ))
-    for b in BENCHMARKS:
-        col = f'cum_{b}'
-        if col in bt.columns and bt[f'ret_{b}'].notna().sum() > 0:
-            fig.add_trace(go.Scatter(
-                x=bt['hold_month'], y=bt[col], mode='lines', name=f'{b} (Buy & Hold)',
-                line=dict(color=ASSET_COLORS.get(b, '#9CA3AF'), width=2, dash='dash'),
-            ))
-    fig.update_layout(
-        yaxis_type='log', height=420, hovermode='x unified',
-        margin=dict(l=10, r=10, t=10, b=10),
-        legend=dict(orientation='h', yanchor='bottom', y=1.02, xanchor='right', x=1),
-    )
-    fig.update_yaxes(title='누적 (1=원금)')
-    st.plotly_chart(fig, use_container_width=True, key=f"{key_prefix}_curve")
-
     # 히트맵 + MDD TOP10
     df_res = pd.DataFrame({'투자월': bt['hold_month'].values,
                            strat_name: (bt['ret_strategy'] * 100).values})
@@ -333,6 +312,28 @@ def render_backtest_section(bt, perf, cost_rate, key_prefix, strat_color, strat_
     # 최신이 위로
     st.dataframe(detail_df.iloc[::-1], hide_index=True, use_container_width=True,
                  height=560, key=f"{key_prefix}_detail")
+
+    # 자산 곡선 — 맨 아래 접이식 (기본 접힘)
+    with st.expander("📉 자산 곡선 (Log Scale) 보기", expanded=False):
+        fig = go.Figure()
+        fig.add_trace(go.Scatter(
+            x=bt['hold_month'], y=bt['cum_strategy'], mode='lines', name=strat_name,
+            line=dict(color=strat_color, width=2.5),
+        ))
+        for b in BENCHMARKS:
+            col = f'cum_{b}'
+            if col in bt.columns and bt[f'ret_{b}'].notna().sum() > 0:
+                fig.add_trace(go.Scatter(
+                    x=bt['hold_month'], y=bt[col], mode='lines', name=f'{b} (Buy & Hold)',
+                    line=dict(color=ASSET_COLORS.get(b, '#9CA3AF'), width=2, dash='dash'),
+                ))
+        fig.update_layout(
+            yaxis_type='log', height=420, hovermode='x unified',
+            margin=dict(l=10, r=10, t=10, b=10),
+            legend=dict(orientation='h', yanchor='bottom', y=1.02, xanchor='right', x=1),
+        )
+        fig.update_yaxes(title='누적 (1=원금)')
+        st.plotly_chart(fig, use_container_width=True, key=f"{key_prefix}_curve")
 
 
 # ==========================================
@@ -482,7 +483,19 @@ def render_samsung():
             f"이 종목들을 아직 생성하지 않았을 수 있습니다. Actions에서 워크플로우를 한 번 실행하세요."
         )
 
-    signals = compute_signals_samsung(prices)
+    # 진입 필터 on/off 토글 (변경 시 자동 재실행 → 신호·백테스트 즉시 재계산)
+    tog_col, note_col = st.columns([1.4, 3])
+    with tog_col:
+        use_filter = st.toggle("진입 필터 사용", value=True, key="ss_use_filter",
+                               help="TIP·SPY 11M MA 필터. 끄면 필터를 무시하고 공격 후보가 있으면 항상 공격 → "
+                                    "필터가 성과에 주는 효과를 바로 비교할 수 있습니다.")
+    with note_col:
+        if not use_filter:
+            st.markdown("<div style='color:#F59E0B; font-size:13px; padding-top:6px;'>"
+                        "⚠️ 필터 OFF — 진입 관문 무시(항상 공격 시도). 아래 필터 표는 실제 상태만 표시.</div>",
+                        unsafe_allow_html=True)
+
+    signals = compute_signals_samsung(prices, use_filter=use_filter)
     valid = signals.index[signals['hold'].notna()]
     if len(valid) == 0:
         st.error("유효한 신호월이 없습니다. (데이터 워밍업 부족 또는 신규 ETF 파일 누락)")
@@ -567,6 +580,7 @@ def render_samsung():
     detail_df = build_samsung_detail(signals, bt)
     settings_dict = {
         '전략': '맘 삼성',
+        '진입 필터': '사용' if use_filter else '미사용(OFF)',
         '거래비용/교체': f"{cost_pct:.2f}%",
         '기간': f"{perf['n_months']}개월 ({bt['hold_month'].iloc[0]} ~ {bt['hold_month'].iloc[-1]})",
         '필터': 'TIP·SPY 11M MA 이격도 > 0',
