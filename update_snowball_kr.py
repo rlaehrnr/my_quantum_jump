@@ -128,6 +128,18 @@ def fetch_kr(ticker):
     return None
 
 
+def _clean_name(name):
+    """파일명 안전화: 공백·괄호 제거 (한글·영숫자는 유지)."""
+    return (name.replace(' ', '').replace('(', '').replace(')', '')
+                .replace('/', '').replace('\\', '').replace('&', ''))
+
+
+def csv_filename(ticker):
+    """저장 파일명: '{코드}_{종목명}_과거_데이터.csv'  (숫자만으론 못 알아보므로 이름 병기)."""
+    name = _clean_name(TICKER_NAMES.get(ticker, ticker))
+    return f"{ticker}_{name}_과거_데이터.csv"
+
+
 def save_etf_csv(ticker, monthly_series):
     """월봉 Series → CSV ("날짜","종가", 최신이 위로)."""
     df = pd.DataFrame({
@@ -135,7 +147,7 @@ def save_etf_csv(ticker, monthly_series):
         '종가': monthly_series.values.round(2),
     })
     df = df.iloc[::-1].reset_index(drop=True)
-    path = os.path.join(MONTHLY_DIR, f"{ticker}_과거_데이터.csv")
+    path = os.path.join(MONTHLY_DIR, csv_filename(ticker))
     df.to_csv(path, index=False, encoding='utf-8-sig')
     return path
 
