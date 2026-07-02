@@ -28,6 +28,7 @@ from utils.snowball import (
     SS_FILTER_ASSETS, SS_OFFENSE_ASSETS, SS_DEFENSE_ASSETS, SS_CASH, SS_FILTER_WIN,
     compute_signals_so, run_backtest_so,
     SO_FILTER_ASSET, SO_OFFENSE_ASSETS, SO_DEFENSE_ASSETS, SO_TOPK,
+    SIGNAL_ASSETS, C1_RISK_ASSETS, VIXY_SPIKE,
 )
 from utils.ui_components import inject_custom_css, get_monthly_heatmap, get_mdd_history
 
@@ -683,12 +684,18 @@ def render_so():
         label = "🛡️ 방어 자산 (GLD50 · IEF50 고정)" + ("" if is_active else "  · 비활성")
         st.markdown(f"<div style='font-weight:800; font-size:15px; margin-bottom:4px; "
                     f"color:{'#EF4444' if is_active else '#9CA3AF'};'>{label}</div>", unsafe_allow_html=True)
-        st.markdown("<div style='font-size:11px; color:#9CA3AF; margin-bottom:2px;'>금+국채 반반 고정 (참고: 모멘텀 점수)</div>",
+        st.markdown("<div style='font-size:11px; color:#9CA3AF; margin-bottom:2px;'>금+국채 반반 고정 (모멘텀 무관, 항상 50:50)</div>",
                     unsafe_allow_html=True)
-        rows = [{'자산': t, '모멘텀': last.get(f'score_{t}', np.nan)} for t in SO_DEFENSE_ASSETS]
-        sel = hold_set if is_active else set()
-        st.dataframe(_style_asset_table(rows, is_active, sel, '모멘텀'),
-                     hide_index=True, use_container_width=True, key="so_def")
+        def_rows = [{'자산': t, '비중': '50%'} for t in SO_DEFENSE_ASSETS]
+        ddf = pd.DataFrame(def_rows)
+        if is_active:
+            def _def_style(row):
+                c = ASSET_COLORS.get(row['자산'], '#6B7280')
+                return [f'background-color: {c}55; font-weight: 800;'] * len(row)
+            sty = ddf.style.apply(_def_style, axis=1)
+        else:
+            sty = ddf.style.apply(lambda row: ['color: #9CA3AF;'] * len(row), axis=1)
+        st.dataframe(sty, hide_index=True, use_container_width=True, key="so_def")
 
     # 회피 필터 (SPY 모멘텀 점수) — 제목 옆에 리스크오프 토글
     rf_col, ro_col = st.columns([2.6, 1.4])
@@ -714,6 +721,36 @@ def render_so():
               '모멘텀 점수(1+3+6+12M)': (f"{sv*100:+.2f}%" if pd.notna(sv) else 'N/A'),
               '조건': '>0', '충족?': ('✅' if (pd.notna(sv) and sv > 0) else '❌')}]
     st.dataframe(pd.DataFrame(fdata), hide_index=True, use_container_width=True, key="so_filter")
+
+    # 리스크오프(cond1) 4개 구성요소 상세 — 켜져 있을 때만 표시
+    if use_riskoff:
+        base_neg = all((pd.notna(last.get(f'ro6_{t}')) and last.get(f'ro6_{t}') < 0) for t in C1_RISK_ASSETS)
+        vixy6 = last.get('ro6_VIXY', np.nan)
+        vixy_trig = pd.notna(vixy6) and (vixy6 < 0 or vixy6 >= VIXY_SPIKE)
+        cond1_on = bool(last.get('riskoff', False))
+        st.markdown(
+            "<div style='font-weight:800; font-size:14px; margin:10px 0 4px 0;'>🛡️ 리스크오프 (cond1) 판정</div>"
+            "<div style='font-size:11px; color:#9CA3AF; margin-bottom:4px;'>"
+            "TIP·VWO·VEA 6M 수익률이 <b>모두 음수</b>이고, 그와 동시에 VIXY 6M이 "
+            f"<b>음수이거나 +{VIXY_SPIKE*100:.0f}% 이상</b>이면 발동 → 방어</div>",
+            unsafe_allow_html=True)
+        ro_rows = []
+        for t in C1_RISK_ASSETS:   # TIP, VWO, VEA
+            v = last.get(f'ro6_{t}', np.nan)
+            ro_rows.append({'자산': t, '6M 수익률': (f"{v*100:+.2f}%" if pd.notna(v) else 'N/A'),
+                            '조건': '< 0 (하락)', '충족?': ('✅' if (pd.notna(v) and v < 0) else '❌')})
+        ro_rows.append({'자산': 'VIXY',
+                        '6M 수익률': (f"{vixy6*100:+.2f}%" if pd.notna(vixy6) else 'N/A'),
+                        '조건': f'< 0 또는 ≥ +{VIXY_SPIKE*100:.0f}%',
+                        '충족?': ('✅' if vixy_trig else '❌')})
+        st.dataframe(pd.DataFrame(ro_rows), hide_index=True, use_container_width=True, key="so_ro")
+        status = ("🛑 발동 → 방어 전환" if cond1_on else "✅ 미발동 (공격 허용)")
+        color = '#EF4444' if cond1_on else '#10B981'
+        detail = ("TIP·VWO·VEA 모두 하락 + VIXY 조건 동시 충족" if cond1_on
+                  else ("TIP·VWO·VEA가 모두 하락은 아님" if not base_neg else "VIXY 조건 미충족"))
+        st.markdown(f"<div style='margin:4px 0 2px 0;'><span style='font-weight:900; color:{color};'>{status}</span> "
+                    f"<span style='font-size:12px; color:#9CA3AF;'>— {detail}</span></div>",
+                    unsafe_allow_html=True)
 
     # 백테스트
     st.markdown("---")
