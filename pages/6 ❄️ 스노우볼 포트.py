@@ -26,6 +26,8 @@ from utils.snowball import (
     # 맘 삼성
     compute_signals_samsung, run_backtest_samsung,
     SS_FILTER_ASSETS, SS_OFFENSE_ASSETS, SS_DEFENSE_ASSETS, SS_CASH, SS_FILTER_WIN,
+    compute_signals_so, run_backtest_so,
+    SO_FILTER_ASSET, SO_OFFENSE_ASSETS, SO_DEFENSE_ASSETS, SO_TOPK,
 )
 from utils.ui_components import inject_custom_css, get_monthly_heatmap, get_mdd_history
 
@@ -43,6 +45,9 @@ ASSET_COLORS = {
     # 맘 삼성
     'FAS': '#F97316', 'SOXL': '#06B6D4', 'TMF': '#3B82F6',
     'IEF': '#22C55E', 'TBT': '#A855F7', 'TIP': '#EAB308',
+    # 쏘 삼성 (SPY/QQQ/GLD/IEF는 위와 공유)
+    'EWY': '#F59E0B', 'FDN': '#14B8A6', 'IBB': '#A855F7', 'LIT': '#84CC16',
+    'SMH': '#06B6D4', 'XLE': '#EF4444', 'XLF': '#3B82F6',
 }
 
 
@@ -209,6 +214,31 @@ def build_samsung_detail(signals, bt):
             '누적(%)': round((r['cum_strategy']-1)*100, 1),
             '낙폭(%)': round(r['dd_strategy']*100, 1),
         })
+    return pd.DataFrame(rows)
+
+
+def build_so_detail(signals, bt):
+    """쏘 삼성 월별 상세 근거표 (SPY 필터 → 모멘텀 점수 → 보유 → 결과)."""
+    rows = []
+    for _, r in bt.iterrows():
+        m = pd.Period(r['signal_month'], 'M')
+        s = signals.loc[m]
+        row = {
+            '보유월': r['hold_month'],
+            '국면': '🛡️방어' if r['defensive'] else '⚔️공격',
+            'SPY 필터점수': _pct(s.get('score_SPY_filter')),
+            '필터': '통과' if s.get('filter_pass') else '이탈',
+        }
+        for t in SO_OFFENSE_ASSETS:
+            sc = s.get(f'score_{t}')
+            ab = s.get(f'abs_{t}')
+            # 모멘텀 점수 (4M MA 이격도) 병기 — 4M<0이면 공격 제외 대상
+            row[t] = f"{_pct(sc)} ({_pct(ab)})"
+        row['보유'] = r['hold']
+        row['전략수익률(%)'] = round(r['ret_strategy']*100, 2)
+        row['누적(%)'] = round((r['cum_strategy']-1)*100, 1)
+        row['낙폭(%)'] = round(r['dd_strategy']*100, 1)
+        rows.append(row)
     return pd.DataFrame(rows)
 
 
@@ -601,11 +631,115 @@ def render_samsung():
                             detail_df=detail_df, settings_dict=settings_dict)
 
 
+def render_so():
+    need = [SO_FILTER_ASSET] + SO_OFFENSE_ASSETS + SO_DEFENSE_ASSETS
+    missing = [t for t in need if t not in prices.columns]
+    if missing:
+        st.warning(
+            f"⚠️ 누락된 ETF: {', '.join(missing)}. 자동 업데이트(update_snowball.py)가 "
+            f"이 종목들을 아직 생성하지 않았을 수 있습니다. Actions에서 워크플로우를 한 번 실행하세요."
+        )
+
+    signals = compute_signals_so(prices)
+    valid = signals.index[signals['hold'].notna()]
+    if len(valid) == 0:
+        st.error("유효한 신호월이 없습니다. (데이터 워밍업 부족 또는 신규 ETF 파일 누락)")
+        return
+    lm = valid[-1]
+    last = signals.loc[lm]
+    defensive_now = bool(last['defensive'])
+    holds = last['holds'] or []
+    hold_set = set(holds)
+    hold_disp = " · ".join(
+        f"<span style='color:{ASSET_COLORS.get(t,'#E5E7EB')};'>{t}</span>" for t in holds)
+
+    st.markdown(
+        f"<div style='font-size:1.5rem; font-weight:800; margin-bottom:8px;'>공격 · 방어 자산 현황 "
+        f"<span style='font-size:12px; color:#9CA3AF; font-weight:500;'>(기준: {lm} 월말)</span></div>",
+        unsafe_allow_html=True)
+    _mode_badge(defensive_now, hold_disp)
+
+    col_off, col_def = st.columns(2)
+    with col_off:
+        is_active = not defensive_now
+        label = "⚔️ 공격 자산 (1·3·6·12M 모멘텀 점수)" + ("" if is_active else "  · 비활성")
+        st.markdown(f"<div style='font-weight:800; font-size:15px; margin-bottom:4px; "
+                    f"color:{'#10B981' if is_active else '#9CA3AF'};'>{label}</div>", unsafe_allow_html=True)
+        st.markdown("<div style='font-size:11px; color:#9CA3AF; margin-bottom:2px;'>점수 상위 2등 중 4M MA 이격도 &gt; 0 인 것만 50:50 (둘 다 아래면 방어)</div>",
+                    unsafe_allow_html=True)
+        def _fmt_ab(v):
+            return 'N/A' if pd.isna(v) else f"{v*100:+.1f}%"
+        rows = [{'자산': t,
+                 '모멘텀': last.get(f'score_{t}', np.nan),
+                 '4M MA': _fmt_ab(last.get(f'abs_{t}', np.nan))} for t in SO_OFFENSE_ASSETS]
+        sel = hold_set if is_active else set()
+        st.dataframe(_style_asset_table(rows, is_active, sel, '모멘텀'),
+                     hide_index=True, use_container_width=True, key="so_off")
+    with col_def:
+        is_active = defensive_now
+        label = "🛡️ 방어 자산 (GLD50 · IEF50 고정)" + ("" if is_active else "  · 비활성")
+        st.markdown(f"<div style='font-weight:800; font-size:15px; margin-bottom:4px; "
+                    f"color:{'#EF4444' if is_active else '#9CA3AF'};'>{label}</div>", unsafe_allow_html=True)
+        st.markdown("<div style='font-size:11px; color:#9CA3AF; margin-bottom:2px;'>금+국채 반반 고정 (참고: 모멘텀 점수)</div>",
+                    unsafe_allow_html=True)
+        rows = [{'자산': t, '모멘텀': last.get(f'score_{t}', np.nan)} for t in SO_DEFENSE_ASSETS]
+        sel = hold_set if is_active else set()
+        st.dataframe(_style_asset_table(rows, is_active, sel, '모멘텀'),
+                     hide_index=True, use_container_width=True, key="so_def")
+
+    # 회피 필터 (SPY 모멘텀 점수)
+    st.markdown("<div style='font-size:1.5rem; font-weight:800; margin:16px 0 8px 0;'>회피 필터</div>",
+                unsafe_allow_html=True)
+    filt_pass = bool(last['filter_pass'])
+    badge = (f"<span style='font-size:13px; font-weight:900; color:#10B981; background:#10B98118; padding:3px 10px; border-radius:6px;'>✅ 통과 (공격 허용)</span>"
+             if filt_pass else
+             f"<span style='font-size:13px; font-weight:900; color:#EF4444; background:#EF444418; padding:3px 10px; border-radius:6px;'>🛑 미통과 (방어)</span>")
+    st.markdown(f"<div style='margin-bottom:6px;'>{badge} <b>필터: SPY 추세</b> "
+                f"<span style='font-size:12px; color:#9CA3AF;'>(SPY 1+3+6+12개월 수익률 합 &gt; 0 이면 공격)</span></div>",
+                unsafe_allow_html=True)
+    sv = last.get('score_SPY_filter', np.nan)
+    fdata = [{'자산': 'SPY',
+              '모멘텀 점수(1+3+6+12M)': (f"{sv*100:+.2f}%" if pd.notna(sv) else 'N/A'),
+              '조건': '>0', '충족?': ('✅' if (pd.notna(sv) and sv > 0) else '❌')}]
+    st.dataframe(pd.DataFrame(fdata), hide_index=True, use_container_width=True, key="so_filter")
+
+    # 백테스트
+    st.markdown("---")
+    t_col, s_col = st.columns([2.2, 1])
+    with t_col:
+        st.markdown("### 📈 백테스트 성과")
+    with s_col:
+        cost_pct = st.slider("거래비용 %/교체", 0.0, 1.0, 0.25, 0.05, format="%.2f%%",
+                             key="so_cost",
+                             help="새로 매수하는 비중만큼 차감(턴오버). 벤치마크는 매수 후 보유로 비용 없음.")
+    cost_rate = cost_pct / 100.0
+    bt = run_backtest_so(prices, signals, cost=cost_rate)
+    if bt.empty:
+        st.warning("백테스트 데이터가 충분하지 않습니다. (LIT 상장 시점상 2011년 전후부터 시작)")
+        return
+    perf = compute_performance(bt)
+    detail_df = build_so_detail(signals, bt)
+    settings_dict = {
+        '전략': '쏘 삼성',
+        '회피 필터': 'SPY 1+3+6+12M 수익률 합 > 0 → 공격',
+        '거래비용/교체': f"{cost_pct:.2f}%",
+        '기간': f"{perf['n_months']}개월 ({bt['hold_month'].iloc[0]} ~ {bt['hold_month'].iloc[-1]})",
+        '공격': ', '.join(SO_OFFENSE_ASSETS) + f' 중 모멘텀 상위 {SO_TOPK} (4M MA>0인 것만, 50:50)',
+        '방어': 'GLD 50% · IEF 50% 고정',
+        '벤치마크': ', '.join(BENCHMARKS),
+    }
+    render_backtest_section(bt, perf, cost_rate, key_prefix="so",
+                            strat_color='#F59E0B', strat_name='쏘 삼성 전략',
+                            detail_df=detail_df, settings_dict=settings_dict)
+
+
 # ==========================================
 # 탭 배치
 # ==========================================
-tab1, tab2 = st.tabs(["🌀 또 메리츠", "🏢 맘 삼성"])
+tab1, tab2, tab3 = st.tabs(["🌀 또 메리츠", "🏢 맘 삼성", "🚀 쏘 삼성"])
 with tab1:
     render_meritz()
 with tab2:
     render_samsung()
+with tab3:
+    render_so()
