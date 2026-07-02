@@ -763,15 +763,19 @@ def compute_performance(bt):
 SS_CASH = 'CASH'
 
 
-def compute_signals_samsung(prices):
+def compute_signals_samsung(prices, use_filter=True):
     """맘 삼성 전략의 월별 신호·보유 계산.
+
+    Args:
+        prices: 월봉 종가 DataFrame
+        use_filter: True면 진입 필터(TIP·SPY 11M MA) 적용.
+            False면 필터를 무시하고 공격 후보가 있으면 항상 공격(필터 효과 A/B 비교용).
+            'filter_pass' 컬럼에는 실제 필터 상태를 그대로 기록하되, 보유 결정만 무시한다.
 
     Returns:
         DataFrame, index=YearMonth, columns=[
             'defensive', 'filter_pass', 'n_offense',
-            'holds',        # 실제 보유 티커 리스트 (또는 ['CASH'])
-            'hold',         # 표시용 문자열 (미준비 월은 None)
-            'reason',
+            'holds', 'hold', 'reason',
             'disp11_TIP','disp11_SPY',
             'disp12_FAS','disp12_SOXL','disp12_TQQQ','disp12_TMF',
             'disp5_IEF','disp5_GLD','disp5_TBT',
@@ -826,7 +830,10 @@ def compute_signals_samsung(prices):
         rec['n_offense'] = len(off_pass)
         rec['filter_pass'] = filter_pass
 
-        if filter_pass and len(off_pass) > 0:
+        # 진입 게이트: 필터 사용 시 filter_pass, 미사용 시 항상 통과
+        gate = filter_pass or (not use_filter)
+
+        if gate and len(off_pass) > 0:
             holds = off_pass
             defensive = False
             reason = f"공격 · {len(off_pass)}종 동일가중"
@@ -837,7 +844,7 @@ def compute_signals_samsung(prices):
             top_v = disp_def.loc[top]
             if pd.notna(top_v) and top_v > 0:
                 holds = [top]
-                reason = (f"방어 · {top} (필터 이탈)" if not filter_pass
+                reason = (f"방어 · {top} (필터 이탈)" if not gate
                           else f"방어 · {top} (공격 후보 없음)")
             else:
                 holds = [SS_CASH]
