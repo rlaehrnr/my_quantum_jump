@@ -74,6 +74,9 @@ SO_TOPK          = 2
 SO_ABSMOM_WIN    = 4
 # 방어: GLD50 / IEF50 고정
 SO_DEFENSE_ASSETS = ['GLD', 'IEF']
+# 추가 방어 트리거: 또 메리츠 리스크오프(cond1)가 발동하면 동반 방어.
+#   백테스트상 쏘삼성의 CAGR·MDD·샤프·Sortino가 모두 개선(놓친 급락을 매크로 신호가 포착).
+SO_USE_RISKOFF = True
 
 # 로더가 로드할 전체 유니버스 (세 탭 합집합, 순서 유지·중복 제거)
 LOAD_TICKERS = list(dict.fromkeys(
@@ -975,12 +978,30 @@ def compute_mom_score(prices, windows=SO_MOM_WINDOWS):
     return total
 
 
-def compute_signals_so(prices):
+def compute_riskoff_cond1(prices):
+    """또 메리츠의 리스크오프 신호(cond1)를 월별 bool 시리즈로 반환.
+
+    cond1 = (TIP·VWO·VEA 6M 수익률 모두 < 0) AND (VIXY 6M < 0 OR VIXY 6M ≥ VIXY_SPIKE)
+    필요한 신호자산(TIP/VWO/VEA/VIXY)이 없으면 전 구간 False.
+    다른 전략(쏘 삼성 등)에서 추가 방어 트리거로 재사용한다.
+    """
+    ret6 = compute_returns(prices, 6)
+    cond1 = pd.Series(False, index=prices.index)
+    if all(t in ret6.columns for t in SIGNAL_ASSETS):
+        base_neg = (ret6[C1_RISK_ASSETS] < 0).all(axis=1)
+        vixy = ret6['VIXY']
+        vixy_trig = (vixy < 0) | (vixy >= VIXY_SPIKE)
+        cond1 = (base_neg & vixy_trig).fillna(False)
+    return cond1.astype(bool)
+
+
+def compute_signals_so(prices, use_riskoff=SO_USE_RISKOFF):
     """쏘 삼성 월별 신호·보유 계산.
 
     규칙:
       · 회피 필터: SPY 모멘텀 점수(1+3+6+12M 합) > 0 → 공격, ≤ 0 → 방어
-      · 공격: 9종 중 모멘텀 점수 상위 SO_TOPK(2)등을 동일가중(50:50)
+      · 리스크오프(옵션): 또 메리츠 cond1 발동 시 동반 방어 (use_riskoff=True)
+      · 공격: 9종 중 모멘텀 점수 상위 SO_TOPK(2) 중 4M MA 이격도>0 인 것만 동일가중
       · 방어: GLD50 / IEF50 고정
 
     run_backtest_samsung과 호환되도록 holds/defensive/hold/reason 컬럼을 포함한다.
@@ -989,6 +1010,7 @@ def compute_signals_so(prices):
     dfn = [t for t in SO_DEFENSE_ASSETS if t in prices.columns]
     score = compute_mom_score(prices)
     d_abs = compute_ma_disparity(prices, SO_ABSMOM_WIN)   # 절대모멘텀용 4M MA 이격도
+    riskoff = compute_riskoff_cond1(prices) if use_riskoff else pd.Series(False, index=prices.index)
 
     # 준비도: 공격 전 종목 + SPY 점수 계산 가능 + 방어 종목 가격 존재 + 4M 이격도 계산 가능
     ready = pd.Series(True, index=prices.index)
@@ -1019,11 +1041,18 @@ def compute_signals_so(prices):
 
         spy_s = score.loc[m, SO_FILTER_ASSET]
         filter_pass = bool(spy_s > 0)
+        riskoff_m = bool(riskoff.loc[m]) if m in riskoff.index else False
+        rec['riskoff'] = riskoff_m
         ranked = score.loc[m, off].sort_values(ascending=False)
         top = list(ranked.index[:SO_TOPK])
         rec['rank'] = ' > '.join(top)
 
-        if filter_pass:
+        if riskoff_m:
+            # 리스크오프(cond1): SPY 필터·모멘텀과 무관하게 동반 방어
+            holds = list(SO_DEFENSE_ASSETS)
+            defensive = True
+            reason = "방어 · GLD50·IEF50 (리스크오프 cond1)"
+        elif filter_pass:
             # 절대모멘텀: 상위 2등 중 자기 4M MA 이격도 > 0 인 것만 보유
             picks = [t for t in top if d_abs.loc[m, t] > 0]
             if picks:
