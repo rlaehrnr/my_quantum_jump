@@ -4,10 +4,10 @@
 동적 자산배분 전략 페이지 (탭 구성).
 
 - 탭 1 "또 메리츠": 기존 스노우볼 전략 (조건1 모멘텀 + 조건2 밸류에이션).
-- 탭 2 "맘 삼성":   레버리지 모멘텀 전략.
-    · 필터: TIP·SPY 둘 다 11M MA 이격도 > 0 → 공격
+- 탭 2 "맘 삼성":   레버리지 모멘텀 전략 (백테스트로 확정).
+    · 필터: TIP·SPY 둘 다 9M MA 이격도 > 0 → 공격 (제목 옆 토글/슬라이더로 조절)
     · 공격: FAS·SOXL·TQQQ·TMF 중 12M MA 이격도 > 0인 것 모두 동일가중
-    · 방어: IEF·GLD·TBT 중 5M MA 이격도 1위 (미달 시 현금)
+    · 방어: IEF50 · GLD50 고정
 
 각 탭 구성은 동일: 공격/방어 현황 → 신호/필터 → 백테스트 성과 + 자산곡선 + 월별 로그.
 새 탭을 추가하려면 render_* 함수를 만들어 아래 st.tabs에 연결하면 된다.
@@ -25,7 +25,7 @@ from utils.snowball import (
     SIGNAL_ASSETS, OFFENSE_ASSETS, DEFENSE_ASSETS, BENCHMARKS, VIXY_SPIKE,
     # 맘 삼성
     compute_signals_samsung, run_backtest_samsung,
-    SS_FILTER_ASSETS, SS_OFFENSE_ASSETS, SS_DEFENSE_ASSETS, SS_CASH,
+    SS_FILTER_ASSETS, SS_OFFENSE_ASSETS, SS_DEFENSE_ASSETS, SS_CASH, SS_FILTER_WIN,
 )
 from utils.ui_components import inject_custom_css, get_monthly_heatmap, get_mdd_history
 
@@ -148,6 +148,7 @@ def build_stats_df(perf, cost_rate):
         ('CAGR', f"{perf['cagr']*100:.2f}%"),
         ('MDD', f"{perf['mdd']*100:.2f}%"),
         ('샤프 비율', f"{perf['sharpe']:.2f}"),
+        ('Sortino', f"{perf.get('sortino', 0):.2f}"),
         ('변동성(연)', f"{perf['vol']*100:.2f}%"),
         ('누적 수익', f"{perf['cum_return']*100:,.1f}%"),
         ('승률', f"{perf.get('win_rate',0)*100:.1f}%"),
@@ -198,12 +199,11 @@ def build_samsung_detail(signals, bt):
         rows.append({
             '보유월': r['hold_month'],
             '국면': '🛡️방어' if r['defensive'] else '⚔️공격',
-            'TIP 11M': _pct(s.get('disp11_TIP')), 'SPY 11M': _pct(s.get('disp11_SPY')),
+            'TIP 필터': _pct(s.get('dispF_TIP')), 'SPY 필터': _pct(s.get('dispF_SPY')),
             '필터': '통과' if s.get('filter_pass') else '이탈',
             'FAS 12M': _pct(s.get('disp12_FAS')), 'SOXL 12M': _pct(s.get('disp12_SOXL')),
             'TQQQ 12M': _pct(s.get('disp12_TQQQ')), 'TMF 12M': _pct(s.get('disp12_TMF')),
-            'IEF 5M': _pct(s.get('disp5_IEF')), 'GLD 5M': _pct(s.get('disp5_GLD')),
-            'TBT 5M': _pct(s.get('disp5_TBT')),
+            'IEF 5M': _pct(s.get('disp_IEF')), 'GLD 5M': _pct(s.get('disp_GLD')),
             '보유': r['hold'],
             '전략수익률(%)': round(r['ret_strategy']*100, 2),
             '누적(%)': round((r['cum_strategy']-1)*100, 1),
@@ -251,17 +251,20 @@ def render_backtest_section(bt, perf, cost_rate, key_prefix, strat_color, strat_
     bms = perf.get('benchmarks', {})
     qqq = bms.get('QQQ')
 
-    c1, c2, c3, c4, c5 = st.columns(5)
+    c1, c2, c3, c4, c5, c6 = st.columns(6)
     c1.metric("CAGR", f"{perf['cagr']*100:.1f}%",
               delta=(f"vs QQQ {qqq['cagr']*100:.1f}%" if qqq else None))
     c2.metric("MDD", f"{perf['mdd']*100:.1f}%",
               delta=(f"vs QQQ {qqq['mdd']*100:.1f}%" if qqq else None), delta_color="inverse")
     c3.metric("샤프 비율", f"{perf['sharpe']:.2f}",
               delta=(f"vs QQQ {qqq['sharpe']:.2f}" if qqq else None))
-    c4.metric("누적 수익", f"{perf['cum_return']*100:,.0f}%",
+    c4.metric("Sortino", f"{perf.get('sortino', 0):.2f}",
+              delta=(f"vs QQQ {qqq.get('sortino', 0):.2f}" if qqq else None),
+              help="하락 변동성만 위험으로 보는 지표(상승 급등은 벌주지 않음). 레버리지 전략에 더 공정.")
+    c5.metric("누적 수익", f"{perf['cum_return']*100:,.0f}%",
               delta=(f"비용 0% 시 {perf['cum_gross_return']*100:,.0f}%" if cost_rate > 0 else None),
               delta_color="off")
-    c5.metric("공격 비중", f"{perf['offense_pct']*100:.0f}%",
+    c6.metric("공격 비중", f"{perf['offense_pct']*100:.0f}%",
               delta=f"{perf.get('offense_months', 0)}개월 / {perf['n_months']}개월")
 
     # 히트맵 + MDD TOP10
@@ -483,19 +486,14 @@ def render_samsung():
             f"이 종목들을 아직 생성하지 않았을 수 있습니다. Actions에서 워크플로우를 한 번 실행하세요."
         )
 
-    # 진입 필터 on/off 토글 (변경 시 자동 재실행 → 신호·백테스트 즉시 재계산)
-    tog_col, note_col = st.columns([1.4, 3])
-    with tog_col:
-        use_filter = st.toggle("진입 필터 사용", value=True, key="ss_use_filter",
-                               help="TIP·SPY 11M MA 필터. 끄면 필터를 무시하고 공격 후보가 있으면 항상 공격 → "
-                                    "필터가 성과에 주는 효과를 바로 비교할 수 있습니다.")
-    with note_col:
-        if not use_filter:
-            st.markdown("<div style='color:#F59E0B; font-size:13px; padding-top:6px;'>"
-                        "⚠️ 필터 OFF — 진입 관문 무시(항상 공격 시도). 아래 필터 표는 실제 상태만 표시.</div>",
-                        unsafe_allow_html=True)
+    # 컨트롤 상태(토글·슬라이더)는 아래 '진입 필터' 줄에 배치하지만,
+    # 값은 상단 현황 카드에도 반영돼야 하므로 session_state에서 먼저 읽어 신호를 계산한다.
+    st.session_state.setdefault('ss_use_filter', True)
+    st.session_state.setdefault('ss_filter_win', SS_FILTER_WIN)
+    use_filter = bool(st.session_state['ss_use_filter'])
+    filter_win = int(st.session_state['ss_filter_win'])
 
-    signals = compute_signals_samsung(prices, use_filter=use_filter)
+    signals = compute_signals_samsung(prices, use_filter=use_filter, filter_win=filter_win)
     valid = signals.index[signals['hold'].notna()]
     if len(valid) == 0:
         st.error("유효한 신호월이 없습니다. (데이터 워밍업 부족 또는 신규 ETF 파일 누락)")
@@ -533,33 +531,44 @@ def render_samsung():
                      hide_index=True, use_container_width=True, key="ss_off")
     with col_def:
         is_active = defensive_now
-        label = "🛡️ 방어 자산 (5개월 MA 이격도)" + ("" if is_active else "  · 비활성")
+        label = "🛡️ 방어 자산 (IEF50 · GLD50 고정)" + ("" if is_active else "  · 비활성")
         st.markdown(f"<div style='font-weight:800; font-size:15px; margin-bottom:4px; "
                     f"color:{'#EF4444' if is_active else '#9CA3AF'};'>{label}</div>", unsafe_allow_html=True)
-        st.markdown("<div style='font-size:11px; color:#9CA3AF; margin-bottom:2px;'>1위 1개 보유 (이격도 ≤ 0 이면 현금)</div>",
+        st.markdown("<div style='font-size:11px; color:#9CA3AF; margin-bottom:2px;'>국채+금 반반 고정 (참고: 5M 이격도)</div>",
                     unsafe_allow_html=True)
-        rows = [{'자산': t, '이격도': last.get(f'disp5_{t}', np.nan)} for t in SS_DEFENSE_ASSETS]
-        sel = hold_set if (is_active and holds != [SS_CASH]) else set()
+        rows = [{'자산': t, '이격도': last.get(f'disp_{t}', np.nan)} for t in SS_DEFENSE_ASSETS]
+        sel = hold_set if is_active else set()
         st.dataframe(_style_asset_table(rows, is_active, sel, '이격도'),
                      hide_index=True, use_container_width=True, key="ss_def")
 
-    # 진입 필터 (위험회피 옵션 대체)
-    st.markdown("<div style='font-size:1.5rem; font-weight:800; margin:18px 0 10px 0;'>진입 필터</div>",
-                unsafe_allow_html=True)
+    # 진입 필터 — 제목 줄 오른쪽에 토글 + N 슬라이더 (새 줄 없이 한 줄 배치)
+    ft_col, tog_col, sld_col = st.columns([2.0, 1.1, 1.6])
+    with ft_col:
+        st.markdown("<div style='font-size:1.5rem; font-weight:800; margin:10px 0 0 0;'>진입 필터</div>",
+                    unsafe_allow_html=True)
+    with tog_col:
+        st.toggle("필터 사용", key="ss_use_filter",
+                  help="끄면 필터를 무시하고 공격 후보가 있으면 항상 공격 → 필터 효과를 바로 비교.")
+    with sld_col:
+        st.slider("필터 MA(개월)", 5, 14, key="ss_filter_win",
+                  help="TIP·SPY 이동평균 개월. 짧을수록 하락 전환에 빠르게 반응(백테스트 기본 9).")
+
     filt_pass = bool(last['filter_pass'])
     badge = (f"<span style='font-size:13px; font-weight:900; color:#10B981; background:#10B98118; padding:3px 10px; border-radius:6px;'>✅ 통과 (공격 허용)</span>"
              if filt_pass else
              f"<span style='font-size:13px; font-weight:900; color:#EF4444; background:#EF444418; padding:3px 10px; border-radius:6px;'>🛑 미통과 (방어)</span>")
+    off_note = (" &nbsp; <span style='color:#F59E0B;'>· 필터 OFF: 판단엔 미적용(표는 실제 상태)</span>"
+                if not use_filter else "")
     st.markdown(f"<div style='margin-bottom:6px;'>{badge} <b>필터: 추세 확인</b> "
-                f"<span style='font-size:12px; color:#9CA3AF;'>(TIP·SPY 둘 다 11M MA 이격도 &gt; 0)</span></div>",
+                f"<span style='font-size:12px; color:#9CA3AF;'>(TIP·SPY 둘 다 {filter_win}M MA 이격도 &gt; 0){off_note}</span></div>",
                 unsafe_allow_html=True)
     fdata = []
     for t in SS_FILTER_ASSETS:
-        v = last.get(f'disp11_{t}', np.nan)
+        v = last.get(f'dispF_{t}', np.nan)
         if pd.notna(v):
-            fdata.append({'자산': t, '11M 이격도': f"{v*100:+.2f}%", '조건': '>0', '충족?': '✅' if v > 0 else '❌'})
+            fdata.append({'자산': t, f'{filter_win}M 이격도': f"{v*100:+.2f}%", '조건': '>0', '충족?': '✅' if v > 0 else '❌'})
         else:
-            fdata.append({'자산': t, '11M 이격도': 'N/A', '조건': '>0', '충족?': '⚠️'})
+            fdata.append({'자산': t, f'{filter_win}M 이격도': 'N/A', '조건': '>0', '충족?': '⚠️'})
     st.dataframe(pd.DataFrame(fdata), hide_index=True, use_container_width=True, key="ss_filter")
 
     # 백테스트
@@ -580,12 +589,11 @@ def render_samsung():
     detail_df = build_samsung_detail(signals, bt)
     settings_dict = {
         '전략': '맘 삼성',
-        '진입 필터': '사용' if use_filter else '미사용(OFF)',
+        '진입 필터': f"{'사용' if use_filter else '미사용(OFF)'} · TIP·SPY {filter_win}M MA",
         '거래비용/교체': f"{cost_pct:.2f}%",
         '기간': f"{perf['n_months']}개월 ({bt['hold_month'].iloc[0]} ~ {bt['hold_month'].iloc[-1]})",
-        '필터': 'TIP·SPY 11M MA 이격도 > 0',
         '공격': ', '.join(SS_OFFENSE_ASSETS) + ' (12M MA 이격도 > 0, 동일가중)',
-        '방어': ', '.join(SS_DEFENSE_ASSETS) + ' (5M MA 이격도 1위, 미달 시 현금)',
+        '방어': 'IEF 50% · GLD 50% 고정',
         '벤치마크': ', '.join(BENCHMARKS),
     }
     render_backtest_section(bt, perf, cost_rate, key_prefix="ss",
