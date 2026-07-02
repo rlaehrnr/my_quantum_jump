@@ -59,9 +59,26 @@ SS_OFFENSE_WIN    = 12
 SS_DEFENSE_ASSETS = ['IEF', 'GLD']
 # 벤치마크는 또 메리츠와 동일 (BENCHMARKS = QQQ/SOXX)
 
-# 로더가 로드할 전체 유니버스 (두 탭 합집합, 순서 유지·중복 제거)
+# ==========================================
+# 쏘 삼성 전략 자산군 (탭 3)
+# ==========================================
+# 모멘텀 점수 = 1+3+6+12개월 수익률의 단순 합
+SO_MOM_WINDOWS   = [1, 3, 6, 12]
+# 회피 필터: SPY의 모멘텀 점수 > 0 → 공격 국면, < 0 → 방어 국면
+SO_FILTER_ASSET  = 'SPY'
+# 공격: 아래 9종 중 모멘텀 점수 상위 2등을 50:50 동일가중
+SO_OFFENSE_ASSETS = ['EWY', 'FDN', 'IBB', 'LIT', 'SMH', 'XLE', 'XLF', 'SPY', 'QQQ']
+SO_TOPK          = 2
+# 절대모멘텀 필터: 상위 2등이라도 자기 4개월 MA 이격도 ≤ 0 이면 제외.
+#   남는 게 없으면(둘 다 4M MA 아래) 방어로 전환. (백테스트상 전 지표 개선)
+SO_ABSMOM_WIN    = 4
+# 방어: GLD50 / IEF50 고정
+SO_DEFENSE_ASSETS = ['GLD', 'IEF']
+
+# 로더가 로드할 전체 유니버스 (세 탭 합집합, 순서 유지·중복 제거)
 LOAD_TICKERS = list(dict.fromkeys(
     ALL_TICKERS + SS_FILTER_ASSETS + SS_OFFENSE_ASSETS + SS_DEFENSE_ASSETS
+    + [SO_FILTER_ASSET] + SO_OFFENSE_ASSETS + SO_DEFENSE_ASSETS
 ))
 
 # CSH (현금 식별자)
@@ -941,3 +958,102 @@ def run_backtest_samsung(prices, signals, cost=0.0025):
     peak = bt['cum_strategy'].cummax().clip(lower=1.0)
     bt['dd_strategy'] = bt['cum_strategy'] / peak - 1.0
     return bt
+
+
+# ==========================================
+# 쏘 삼성 (탭 3) 엔진
+# ==========================================
+def compute_mom_score(prices, windows=SO_MOM_WINDOWS):
+    """모멘텀 점수 = 각 기간 수익률(price/price.shift(k)-1)의 단순 합.
+
+    Returns: DataFrame(index=YearMonth, columns=자산) 점수. 워밍업 구간은 NaN.
+    """
+    total = None
+    for k in windows:
+        r = prices / prices.shift(k) - 1.0
+        total = r if total is None else (total + r)
+    return total
+
+
+def compute_signals_so(prices):
+    """쏘 삼성 월별 신호·보유 계산.
+
+    규칙:
+      · 회피 필터: SPY 모멘텀 점수(1+3+6+12M 합) > 0 → 공격, ≤ 0 → 방어
+      · 공격: 9종 중 모멘텀 점수 상위 SO_TOPK(2)등을 동일가중(50:50)
+      · 방어: GLD50 / IEF50 고정
+
+    run_backtest_samsung과 호환되도록 holds/defensive/hold/reason 컬럼을 포함한다.
+    """
+    off = [t for t in SO_OFFENSE_ASSETS if t in prices.columns]
+    dfn = [t for t in SO_DEFENSE_ASSETS if t in prices.columns]
+    score = compute_mom_score(prices)
+    d_abs = compute_ma_disparity(prices, SO_ABSMOM_WIN)   # 절대모멘텀용 4M MA 이격도
+
+    # 준비도: 공격 전 종목 + SPY 점수 계산 가능 + 방어 종목 가격 존재 + 4M 이격도 계산 가능
+    ready = pd.Series(True, index=prices.index)
+    if off:
+        ready &= score[off].notna().all(axis=1)
+        ready &= d_abs[off].notna().all(axis=1)
+    if SO_FILTER_ASSET in score.columns:
+        ready &= score[SO_FILTER_ASSET].notna()
+    if dfn:
+        ready &= prices[dfn].notna().all(axis=1)
+    if (len(off) < len(SO_OFFENSE_ASSETS) or len(dfn) < len(SO_DEFENSE_ASSETS)
+            or SO_FILTER_ASSET not in score.columns):
+        ready &= False
+
+    records = []
+    for m in prices.index:
+        rec = {f'score_{t}': (score.loc[m, t] if t in score.columns else np.nan)
+               for t in SO_OFFENSE_ASSETS}
+        rec.update({f'abs_{t}': (d_abs.loc[m, t] if t in d_abs.columns else np.nan)
+                    for t in SO_OFFENSE_ASSETS})
+        rec['score_SPY_filter'] = score.loc[m, SO_FILTER_ASSET] if SO_FILTER_ASSET in score.columns else np.nan
+
+        if not bool(ready.loc[m]):
+            rec.update({'defensive': True, 'filter_pass': False, 'holds': None,
+                        'hold': None, 'reason': '데이터 워밍업', 'rank': None})
+            records.append(rec)
+            continue
+
+        spy_s = score.loc[m, SO_FILTER_ASSET]
+        filter_pass = bool(spy_s > 0)
+        ranked = score.loc[m, off].sort_values(ascending=False)
+        top = list(ranked.index[:SO_TOPK])
+        rec['rank'] = ' > '.join(top)
+
+        if filter_pass:
+            # 절대모멘텀: 상위 2등 중 자기 4M MA 이격도 > 0 인 것만 보유
+            picks = [t for t in top if d_abs.loc[m, t] > 0]
+            if picks:
+                holds = picks
+                defensive = False
+                if len(picks) < len(top):
+                    dropped = [t for t in top if t not in picks]
+                    reason = f"공격 · {'·'.join(picks)} (4M↓ 제외: {'·'.join(dropped)})"
+                else:
+                    reason = f"공격 · 상위{SO_TOPK} ({'·'.join(picks)}) 동일가중"
+            else:
+                holds = list(SO_DEFENSE_ASSETS)
+                defensive = True
+                reason = "방어 · GLD50·IEF50 (상위2 모두 4M MA 아래)"
+        else:
+            holds = list(SO_DEFENSE_ASSETS)   # ['GLD','IEF']
+            defensive = True
+            reason = "방어 · GLD50·IEF50 (SPY 모멘텀 음수)"
+
+        rec['defensive'] = defensive
+        rec['filter_pass'] = filter_pass
+        rec['holds'] = holds
+        rec['hold'] = '·'.join(holds)
+        rec['reason'] = reason
+        records.append(rec)
+
+    return pd.DataFrame(records, index=prices.index)
+
+
+def run_backtest_so(prices, signals, cost=0.0025):
+    """쏘 삼성 백테스트. 공격 top2·방어 반반 모두 동일가중 바스켓이라
+    run_backtest_samsung 러너를 그대로 재사용한다."""
+    return run_backtest_samsung(prices, signals, cost=cost)
