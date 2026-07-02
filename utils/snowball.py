@@ -53,6 +53,38 @@ CASH = 'CASH'
 # 데이터 로딩
 # ==========================================
 
+# 💡 GitHub raw 직접 로드 (data_loader.load_daily_data와 동일 패턴)
+# Streamlit Cloud 컨테이너는 재배포(reboot) 전까지 로컬 체크아웃 파일이 갱신되지
+# 않으므로, GitHub Actions가 커밋한 최신 CSV를 raw URL에서 우선 가져온다.
+# → 매월 1일 자동 업데이트 후 리부트 없이 최대 1시간(ttl) 내 자동 반영.
+# 네트워크 실패 시 로컬 파일로 폴백하므로 로컬 개발/장애 상황에도 안전.
+SNOWBALL_RAW_BASE = "https://raw.githubusercontent.com/rlaehrnr/my_quantum_jump/main/data/snowball/monthly/"
+
+
+def _read_csv_any_encoding(path_or_url):
+    """utf-8-sig 우선, 실패 시 cp949로 CSV 읽기 (로컬 경로/URL 공용)."""
+    try:
+        return pd.read_csv(path_or_url, encoding='utf-8-sig')
+    except UnicodeDecodeError:
+        return pd.read_csv(path_or_url, encoding='cp949')
+
+
+def _fetch_raw_csv(filename):
+    """GitHub raw에서 CSV 로드 시도. 실패하면 None (조용히 폴백)."""
+    from urllib.parse import quote
+    url = SNOWBALL_RAW_BASE + quote(filename)
+    try:
+        df = _read_csv_any_encoding(url)
+        if df is not None and not df.empty:
+            return df
+    except Exception:
+        pass
+    return None
+
+
+# 파일명 변형 후보: 자동 업데이트 스크립트 형식 / investing.com 원본(공백) / 단순형
+_RAW_NAME_VARIANTS = ("{t}_과거_데이터.csv", "{t} 과거 데이터.csv", "{t}.csv")
+
 def _parse_investing_date(date_str):
     """
     investing.com KR 다운로드 날짜 형식 파싱.
@@ -77,11 +109,10 @@ def load_monthly_prices(monthly_dir='data/snowball/monthly'):
         DataFrame: index=YearMonth(Period), columns=tickers, values=종가
         에러나 누락 티커가 있으면 빈 DataFrame
     """
-    if not os.path.isdir(monthly_dir):
-        return pd.DataFrame()
-    
-    # 폴더의 모든 CSV 파일 스캔
-    all_files = [f for f in os.listdir(monthly_dir) if f.lower().endswith('.csv')]
+    # 폴더의 모든 CSV 파일 스캔 (로컬 폴백용 — 폴더가 없어도 raw 로드는 진행)
+    all_files = []
+    if os.path.isdir(monthly_dir):
+        all_files = [f for f in os.listdir(monthly_dir) if f.lower().endswith('.csv')]
     
     def _normalize(s):
         """공백/특수공백/언더스코어 제거 + 소문자 — 파일명 매칭 관대화.
@@ -102,23 +133,31 @@ def load_monthly_prices(monthly_dir='data/snowball/monthly'):
                 return os.path.join(monthly_dir, fname)
         return None
     
+    def _load_ticker_df(ticker):
+        """1순위: GitHub raw (파일명 변형 순회), 2순위: 로컬 파일. 실패 시 None."""
+        for pattern in _RAW_NAME_VARIANTS:
+            df = _fetch_raw_csv(pattern.format(t=ticker))
+            if df is not None:
+                return df
+        found = _find_file(ticker)
+        if found is not None:
+            try:
+                return _read_csv_any_encoding(found)
+            except Exception as e:
+                print(f"⚠️ {ticker} 로컬 파일 읽기 오류: {e}")
+        return None
+    
     frames = []
     missing = []
     
     for ticker in ALL_TICKERS:
-        found = _find_file(ticker)
+        df = _load_ticker_df(ticker)
         
-        if found is None:
+        if df is None:
             missing.append(ticker)
             continue
         
         try:
-            # BOM 포함 utf-8 시도, 실패 시 cp949
-            try:
-                df = pd.read_csv(found, encoding='utf-8-sig')
-            except UnicodeDecodeError:
-                df = pd.read_csv(found, encoding='cp949')
-            
             # 필수 컬럼: 날짜, 종가
             if '날짜' not in df.columns or '종가' not in df.columns:
                 print(f"⚠️ {ticker}: 필수 컬럼(날짜/종가) 누락. 실제 컬럼: {list(df.columns)}")
@@ -171,46 +210,49 @@ def load_dividend_yield(monthly_dir='data/snowball/monthly'):
     Returns:
         Series: index=YearMonth(Period), values=배당수익률(%)
     """
-    if not os.path.isdir(monthly_dir):
-        return pd.Series(dtype=float)
+    df = None
     
-    # 파일명 자동 탐색 (.csv 또는 .xlsx)
-    all_files = [f for f in os.listdir(monthly_dir) 
-                 if f.lower().endswith(('.csv', '.xlsx', '.xls'))]
+    # 1순위: GitHub raw (자동 업데이트 스크립트가 커밋하는 표준 파일명)
+    df = _fetch_raw_csv('SP500_DIV.csv')
     
-    def _normalize(s):
-        s = re.sub(r'[\s_]+', '', s)
-        return s.lower()
-    
-    # 확장자 제외한 정규화 타겟 (.csv/.xlsx 어느 쪽이든 매칭)
-    candidates_norm_stems = {
-        _normalize('SP500_DIV'),
-        _normalize('SP500_DIV_과거_데이터'),
-        _normalize('SP500DIV'),
-    }
-    
-    path = None
-    for fname in all_files:
-        # 확장자 떼고 정규화
-        stem = os.path.splitext(fname)[0]
-        if _normalize(stem) in candidates_norm_stems:
-            path = os.path.join(monthly_dir, fname)
-            break
-    
-    if path is None:
-        return pd.Series(dtype=float)
-    
-    try:
-        if path.lower().endswith(('.xlsx', '.xls')):
-            df = pd.read_excel(path)
-        else:
-            try:
-                df = pd.read_csv(path, encoding='utf-8-sig')
-            except UnicodeDecodeError:
-                df = pd.read_csv(path, encoding='cp949')
-    except Exception as e:
-        print(f"⚠️ 배당수익률 파일 로드 오류: {e}")
-        return pd.Series(dtype=float)
+    # 2순위: 로컬 파일 자동 탐색 (.csv 또는 .xlsx)
+    if df is None:
+        if not os.path.isdir(monthly_dir):
+            return pd.Series(dtype=float)
+        
+        all_files = [f for f in os.listdir(monthly_dir) 
+                     if f.lower().endswith(('.csv', '.xlsx', '.xls'))]
+        
+        def _normalize(s):
+            s = re.sub(r'[\s_]+', '', s)
+            return s.lower()
+        
+        # 확장자 제외한 정규화 타겟 (.csv/.xlsx 어느 쪽이든 매칭)
+        candidates_norm_stems = {
+            _normalize('SP500_DIV'),
+            _normalize('SP500_DIV_과거_데이터'),
+            _normalize('SP500DIV'),
+        }
+        
+        path = None
+        for fname in all_files:
+            # 확장자 떼고 정규화
+            stem = os.path.splitext(fname)[0]
+            if _normalize(stem) in candidates_norm_stems:
+                path = os.path.join(monthly_dir, fname)
+                break
+        
+        if path is None:
+            return pd.Series(dtype=float)
+        
+        try:
+            if path.lower().endswith(('.xlsx', '.xls')):
+                df = pd.read_excel(path)
+            else:
+                df = _read_csv_any_encoding(path)
+        except Exception as e:
+            print(f"⚠️ 배당수익률 파일 로드 오류: {e}")
+            return pd.Series(dtype=float)
     
     # 날짜 컬럼 자동 감지
     date_col = None
