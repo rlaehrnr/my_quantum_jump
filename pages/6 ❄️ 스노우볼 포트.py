@@ -520,7 +520,7 @@ def render_samsung():
     col_off, col_def = st.columns(2)
     with col_off:
         is_active = not defensive_now
-        label = "⚔️ 공격 자산 (12개월 MA 이격도)" + ("" if is_active else "  · 비활성")
+        label = "⚔️ 공격 자산 (12개월 MA · 공격 전용)" + ("" if is_active else "  · 비활성")
         st.markdown(f"<div style='font-weight:800; font-size:15px; margin-bottom:4px; "
                     f"color:{'#10B981' if is_active else '#9CA3AF'};'>{label}</div>", unsafe_allow_html=True)
         st.markdown("<div style='font-size:11px; color:#9CA3AF; margin-bottom:2px;'>이격도 &gt; 0 인 종목 모두 동일가중</div>",
