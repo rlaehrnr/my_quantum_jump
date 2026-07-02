@@ -27,7 +27,7 @@ from utils.snowball import (
     compute_signals_samsung, run_backtest_samsung,
     SS_FILTER_ASSETS, SS_OFFENSE_ASSETS, SS_DEFENSE_ASSETS, SS_CASH,
 )
-from utils.ui_components import inject_custom_css
+from utils.ui_components import inject_custom_css, get_monthly_heatmap, get_mdd_history
 
 st.set_page_config(page_title="스노우볼 포트", page_icon="❄️", layout="wide")
 inject_custom_css()
@@ -138,7 +138,115 @@ def _mode_badge(defensive, hold_display):
     )
 
 
-def render_backtest_section(bt, perf, cost_rate, key_prefix, strat_color='#10B981', strat_name='전략'):
+def _pct(v):
+    return round(v * 100, 2) if pd.notna(v) else np.nan
+
+
+def build_stats_df(perf, cost_rate):
+    """성과 dict → 통계 DataFrame (화면·엑셀 공용)."""
+    rows = [
+        ('CAGR', f"{perf['cagr']*100:.2f}%"),
+        ('MDD', f"{perf['mdd']*100:.2f}%"),
+        ('샤프 비율', f"{perf['sharpe']:.2f}"),
+        ('변동성(연)', f"{perf['vol']*100:.2f}%"),
+        ('누적 수익', f"{perf['cum_return']*100:,.1f}%"),
+        ('승률', f"{perf.get('win_rate',0)*100:.1f}%"),
+        ('공격 비중', f"{perf['offense_pct']*100:.0f}% ({perf.get('offense_months',0)}/{perf['n_months']}개월)"),
+        ('종목 교체 횟수', f"{perf.get('n_switches',0)}회"),
+        ('거래비용(누적)', f"{perf.get('total_cost',0)*100:.1f}%"),
+        ('비용 0% 시 누적', f"{perf.get('cum_gross_return',0)*100:,.1f}%"),
+    ]
+    for b, v in perf.get('benchmarks', {}).items():
+        rows.append((f'[벤치] {b} CAGR', f"{v['cagr']*100:.2f}%"))
+        rows.append((f'[벤치] {b} MDD', f"{v['mdd']*100:.2f}%"))
+    return pd.DataFrame(rows, columns=['지표', '값'])
+
+
+def build_meritz_detail(signals, bt):
+    """또 메리츠 월별 상세 근거표."""
+    rows = []
+    for _, r in bt.iterrows():
+        m = pd.Period(r['signal_month'], 'M')
+        s = signals.loc[m]
+        rows.append({
+            '보유월': r['hold_month'],
+            '국면': '🛡️방어' if r['defensive'] else '⚔️공격',
+            'TIP 6M': _pct(s.get('ret6_TIP')), 'VWO 6M': _pct(s.get('ret6_VWO')),
+            'VEA 6M': _pct(s.get('ret6_VEA')), 'VIXY 6M': _pct(s.get('ret6_VIXY')),
+            '조건1': '발동' if s.get('cond1') else '-',
+            '배당(%)': round(s['div_value'], 2) if pd.notna(s.get('div_value')) else np.nan,
+            '배당순위': (f"{int(s['div_rank'])}/{int(s['div_total'])}"
+                       if pd.notna(s.get('div_rank')) and pd.notna(s.get('div_total')) else '-'),
+            '조건2': '발동' if s.get('cond2') else '-',
+            'TQQQ 12M': _pct(s.get('ret12_TQQQ')), 'USD 12M': _pct(s.get('ret12_USD')),
+            'GLD 이격': _pct(s.get('disp12_GLD')), 'TLT 이격': _pct(s.get('disp12_TLT')),
+            'SQQQ 이격': _pct(s.get('disp12_SQQQ')), 'SLV 이격': _pct(s.get('disp12_SLV')),
+            '보유': r['hold'],
+            '전략수익률(%)': round(r['ret_strategy']*100, 2),
+            '누적(%)': round((r['cum_strategy']-1)*100, 1),
+            '낙폭(%)': round(r['dd_strategy']*100, 1),
+        })
+    return pd.DataFrame(rows)
+
+
+def build_samsung_detail(signals, bt):
+    """맘 삼성 월별 상세 근거표 (필터 → 공격/방어 후보 → 보유 → 결과)."""
+    rows = []
+    for _, r in bt.iterrows():
+        m = pd.Period(r['signal_month'], 'M')
+        s = signals.loc[m]
+        rows.append({
+            '보유월': r['hold_month'],
+            '국면': '🛡️방어' if r['defensive'] else '⚔️공격',
+            'TIP 11M': _pct(s.get('disp11_TIP')), 'SPY 11M': _pct(s.get('disp11_SPY')),
+            '필터': '통과' if s.get('filter_pass') else '이탈',
+            'FAS 12M': _pct(s.get('disp12_FAS')), 'SOXL 12M': _pct(s.get('disp12_SOXL')),
+            'TQQQ 12M': _pct(s.get('disp12_TQQQ')), 'TMF 12M': _pct(s.get('disp12_TMF')),
+            'IEF 5M': _pct(s.get('disp5_IEF')), 'GLD 5M': _pct(s.get('disp5_GLD')),
+            'TBT 5M': _pct(s.get('disp5_TBT')),
+            '보유': r['hold'],
+            '전략수익률(%)': round(r['ret_strategy']*100, 2),
+            '누적(%)': round((r['cum_strategy']-1)*100, 1),
+            '낙폭(%)': round(r['dd_strategy']*100, 1),
+        })
+    return pd.DataFrame(rows)
+
+
+def _heatmap_pivot_for_excel(df_res, col):
+    """엑셀용 연×월 수익률 피벗 (스타일 없는 순수 DataFrame)."""
+    t = df_res.copy()
+    t['Y'] = t['투자월'].str[:4]
+    t['M'] = t['투자월'].str[5:7].astype(int)
+    p = t.pivot(index='Y', columns='M', values=col)
+    for mm in range(1, 13):
+        if mm not in p.columns:
+            p[mm] = np.nan
+    p = p[list(range(1, 13))]
+    p.columns = [f'{mm}월' for mm in range(1, 13)]
+    p['연수익률'] = p.apply(
+        lambda row: ((1 + row.dropna()/100).prod() - 1) * 100 if len(row.dropna()) else np.nan, axis=1)
+    return p.round(2)
+
+
+def build_report_excel(settings_dict, stats_df, detail_df, df_res, cum_df, mdd_df, strat_name):
+    """월별 상세근거 + 히트맵 + MDD TOP10 + 누적 다중 시트 엑셀 바이트."""
+    import io
+    out = io.BytesIO()
+    with pd.ExcelWriter(out, engine='xlsxwriter') as w:
+        set_df = pd.DataFrame(list(settings_dict.items()), columns=['설정 항목', '값'])
+        set_df.to_excel(w, sheet_name='요약_통계', index=False, startrow=0)
+        stats_df.to_excel(w, sheet_name='요약_통계', index=False, startrow=len(set_df) + 2)
+        detail_df.to_excel(w, sheet_name='월별_상세근거', index=False)
+        _heatmap_pivot_for_excel(df_res, strat_name).reset_index().to_excel(
+            w, sheet_name='월별_히트맵', index=False)
+        if not mdd_df.empty:
+            mdd_df.to_excel(w, sheet_name='MDD_TOP10', index=False)
+        cum_df.reset_index().to_excel(w, sheet_name='누적_수익', index=False)
+    return out.getvalue()
+
+
+def render_backtest_section(bt, perf, cost_rate, key_prefix, strat_color, strat_name,
+                           detail_df, settings_dict):
     """백테스트 카드 + 자산곡선 + 월별 로그 (탭 공용)."""
     bms = perf.get('benchmarks', {})
     qqq = bms.get('QQQ')
@@ -177,37 +285,54 @@ def render_backtest_section(bt, perf, cost_rate, key_prefix, strat_color='#10B98
     fig.update_yaxes(title='누적 (1=원금)')
     st.plotly_chart(fig, use_container_width=True, key=f"{key_prefix}_curve")
 
-    st.markdown("#### 📋 전체 월별 로그")
-    log_df = bt.copy()
-    log_df['ret_strategy_str'] = log_df['ret_strategy'].apply(lambda x: f"{x*100:+.2f}%")
-    log_df['cum_strategy_str'] = log_df['cum_strategy'].apply(lambda x: f"{(x-1)*100:+.1f}%")
-    log_df['mode'] = log_df['defensive'].apply(lambda d: "🛡️ 방어" if d else "⚔️ 공격")
-    log_df['dd_str'] = log_df['dd_strategy'].apply(lambda x: f"{x*100:.1f}%")
+    # 히트맵 + MDD TOP10
+    df_res = pd.DataFrame({'투자월': bt['hold_month'].values,
+                           strat_name: (bt['ret_strategy'] * 100).values})
+    equity = pd.Series(bt['cum_strategy'].values, index=bt['hold_month'].values)
+    mdd_df = get_mdd_history(equity)
 
-    cols = ['hold_month', 'mode', 'hold', 'ret_strategy_str', 'cum_strategy_str']
-    rename_map = {'hold_month': '보유월', 'mode': '국면', 'hold': '보유',
-                  'ret_strategy_str': '전략 수익률', 'cum_strategy_str': '누적 수익률'}
+    st.markdown("#### 🗓️ 월별 수익률 히트맵 & MDD TOP 10")
+    col_hm, col_mdd = st.columns([7.2, 2.8])
+    with col_hm:
+        st.dataframe(get_monthly_heatmap(df_res, strat_name), use_container_width=True,
+                     key=f"{key_prefix}_heatmap")
+    with col_mdd:
+        if not mdd_df.empty:
+            st.dataframe(mdd_df, use_container_width=True, hide_index=True, key=f"{key_prefix}_mdd")
+        else:
+            st.info("낙폭 구간 없음")
+
+    # 월별 상세 근거 + 엑셀
+    stats_df = build_stats_df(perf, cost_rate)
+    cum_cols = {strat_name: bt['cum_strategy'].values}
     for b in BENCHMARKS:
-        rcol = f'ret_{b}'
-        if rcol in log_df.columns and log_df[rcol].notna().sum() > 0:
-            scol = f'{b}_str'
-            log_df[scol] = log_df[rcol].apply(lambda x: f"{x*100:+.2f}%" if pd.notna(x) else "-")
-            cols.append(scol)
-            rename_map[scol] = f'{b} 수익률'
-    cols.append('dd_str')
-    rename_map['dd_str'] = '낙폭'
-    display_df = log_df[cols].rename(columns=rename_map)
+        if f'cum_{b}' in bt.columns and bt[f'ret_{b}'].notna().sum() > 0:
+            cum_cols[b] = bt[f'cum_{b}'].values
+    cum_df = pd.DataFrame(cum_cols, index=bt['hold_month'].values)
+    cum_df.index.name = '보유월'
 
+    hdr, dl = st.columns([7.5, 2.5])
+    with hdr:
+        st.markdown("#### 📋 월별 상세 근거")
+    with dl:
+        xls = build_report_excel(settings_dict, stats_df, detail_df, df_res, cum_df, mdd_df, strat_name)
+        st.download_button(
+            "📥 종합 엑셀 리포트", data=xls,
+            file_name=f"스노우볼_{strat_name}_리포트.xlsx",
+            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            use_container_width=True, key=f"{key_prefix}_xls")
+
+    bms = perf.get('benchmarks', {})
     if bms:
         parts = [f"{b} · CAGR {v['cagr']*100:+.1f}% · MDD {v['mdd']*100:.1f}% · 누적 {v['cum_return']*100:,.0f}%"
                  for b, v in bms.items()]
         st.markdown(
             "<div style='color:#9CA3AF; font-size:13px; margin:0 0 2px 2px;'>"
             "📊 벤치마크 전기간 &nbsp;&nbsp;" + " &nbsp;|&nbsp; ".join(parts) + "</div>",
-            unsafe_allow_html=True,
-        )
-    st.dataframe(display_df.iloc[::-1], hide_index=True, use_container_width=True, height=600,
-                 key=f"{key_prefix}_log")
+            unsafe_allow_html=True)
+    # 최신이 위로
+    st.dataframe(detail_df.iloc[::-1], hide_index=True, use_container_width=True,
+                 height=560, key=f"{key_prefix}_detail")
 
 
 # ==========================================
@@ -331,8 +456,18 @@ def render_meritz():
         st.warning("백테스트 데이터가 충분하지 않습니다.")
         return
     perf = compute_performance(bt)
+    detail_df = build_meritz_detail(signals, bt)
+    settings_dict = {
+        '전략': '또 메리츠',
+        '거래비용/교체': f"{cost_pct:.2f}%",
+        '기간': f"{perf['n_months']}개월 ({bt['hold_month'].iloc[0]} ~ {bt['hold_month'].iloc[-1]})",
+        '공격 자산': ', '.join(OFFENSE_ASSETS),
+        '방어 자산': ', '.join(DEFENSE_ASSETS),
+        '벤치마크': ', '.join(BENCHMARKS),
+    }
     render_backtest_section(bt, perf, cost_rate, key_prefix="meritz",
-                            strat_color='#10B981', strat_name='또 메리츠 전략')
+                            strat_color='#10B981', strat_name='또 메리츠 전략',
+                            detail_df=detail_df, settings_dict=settings_dict)
 
 
 # ==========================================
@@ -429,8 +564,19 @@ def render_samsung():
         st.warning("백테스트 데이터가 충분하지 않습니다. (레버리지 ETF 상장 시점상 2011년 전후부터 시작)")
         return
     perf = compute_performance(bt)
+    detail_df = build_samsung_detail(signals, bt)
+    settings_dict = {
+        '전략': '맘 삼성',
+        '거래비용/교체': f"{cost_pct:.2f}%",
+        '기간': f"{perf['n_months']}개월 ({bt['hold_month'].iloc[0]} ~ {bt['hold_month'].iloc[-1]})",
+        '필터': 'TIP·SPY 11M MA 이격도 > 0',
+        '공격': ', '.join(SS_OFFENSE_ASSETS) + ' (12M MA 이격도 > 0, 동일가중)',
+        '방어': ', '.join(SS_DEFENSE_ASSETS) + ' (5M MA 이격도 1위, 미달 시 현금)',
+        '벤치마크': ', '.join(BENCHMARKS),
+    }
     render_backtest_section(bt, perf, cost_rate, key_prefix="ss",
-                            strat_color='#06B6D4', strat_name='맘 삼성 전략')
+                            strat_color='#06B6D4', strat_name='맘 삼성 전략',
+                            detail_df=detail_df, settings_dict=settings_dict)
 
 
 # ==========================================
