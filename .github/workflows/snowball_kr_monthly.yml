@@ -33,4 +33,15 @@ jobs:
         git config --local user.email "action@github.com"
         git config --local user.name "GitHub Action Bot"
         git add data/snowball_kr/
-        git diff --quiet && git diff --staged --quiet || (git commit -m "🤖 [Snowball KR] 코 삼성 국내 ETF 월간 데이터 자동 업데이트" && git push)
+        if git diff --quiet && git diff --staged --quiet; then
+          echo "변경 없음 — 커밋 건너뜀"
+        else
+          git commit -m "🤖 [Snowball KR] 코 삼성 국내 ETF 월간 데이터 자동 업데이트"
+          # push 충돌 대비: 원격이 앞서갔으면 rebase 후 재시도 (최대 5회)
+          for i in 1 2 3 4 5; do
+            if git pull --rebase --autostash origin main && git push origin main; then
+              echo "push 성공 (시도 $i)"; break
+            fi
+            echo "push 재시도 $i/5 ..."; sleep 5
+          done
+        fi
