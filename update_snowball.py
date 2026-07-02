@@ -94,6 +94,7 @@ def fetch_etf(ticker):
     for name, fn in order:
         try:
             s = fn(ticker, adjusted=adjusted)
+            s = _drop_incomplete_month(s)   # 진행 중인 현재 달 제거 (완성월까지만)
             if s is not None and len(s) > 12:
                 print(f"  ✅ {ticker}: {name}({kind})로 {len(s)}개월 수집 (최근 {s.index[-1].date()})")
                 return s
@@ -104,22 +105,37 @@ def fetch_etf(ticker):
     return None
 
 
+def _drop_incomplete_month(monthly_series, today=None):
+    """진행 중(미완성)인 현재 달 행을 제거한다.
+
+    resample('ME')는 각 달의 마지막 거래일 값을 '그 달 말일' 날짜로 라벨링한다.
+    예: 7월 2일에 실행하면 7/1~7/2 부분 데이터가 '2026-07-31' 행으로 저장됨 →
+    아직 끝나지 않은 달이 '완성월'인 것처럼 들어가 신호·백테스트를 왜곡할 수 있다.
+
+    규칙: '완전히 종료된 달'(월말 라벨이 이번 달 1일보다 이전)만 유지.
+          → 실행 시점이 속한 현재 달은 항상 버린다. 매월 1일에 실행하면
+            직전 달이 자동으로 최신 완성월이 된다.
+    """
+    if monthly_series is None or len(monthly_series) == 0:
+        return monthly_series
+    if today is None:
+        today = pd.Timestamp.today()
+    current_month_start = today.normalize().replace(day=1)
+    return monthly_series[monthly_series.index < current_month_start]
+
+
 def save_etf_csv(ticker, monthly_series):
     """
-    월봉 Series를 investing.com KR 형식 CSV로 저장.
-    형식: "날짜","종가","시가","고가","저가","거래량","변동 %"
-    (종가만 실제 값, 나머지는 종가로 채움 — snowball.py는 종가만 사용)
+    월봉 Series를 CSV로 저장. 형식: "날짜","종가"
+
+    snowball.py는 종가만 사용하므로 시가/고가/저가/거래량/변동% 더미 컬럼은
+    저장하지 않는다(파일 경량화, 혼동 방지).
     """
     df = pd.DataFrame({
         '날짜': monthly_series.index.strftime('%Y-%m-%d'),
         '종가': monthly_series.values.round(2),
-        '시가': monthly_series.values.round(2),
-        '고가': monthly_series.values.round(2),
-        '저가': monthly_series.values.round(2),
-        '거래량': 0,
-        '변동 %': '0%',
     })
-    # 최신이 위로 (investing.com 관행)
+    # 최신이 위로 (investing.com 관행 유지)
     df = df.iloc[::-1].reset_index(drop=True)
     path = os.path.join(MONTHLY_DIR, f"{ticker}_과거_데이터.csv")
     df.to_csv(path, index=False, encoding='utf-8-sig')
