@@ -228,6 +228,7 @@ def build_so_detail(signals, bt):
             '국면': '🛡️방어' if r['defensive'] else '⚔️공격',
             'SPY 필터점수': _pct(s.get('score_SPY_filter')),
             '필터': '통과' if s.get('filter_pass') else '이탈',
+            '리스크오프': 'ON' if s.get('riskoff') else '-',
         }
         for t in SO_OFFENSE_ASSETS:
             sc = s.get(f'score_{t}')
@@ -640,7 +641,9 @@ def render_so():
             f"이 종목들을 아직 생성하지 않았을 수 있습니다. Actions에서 워크플로우를 한 번 실행하세요."
         )
 
-    signals = compute_signals_so(prices)
+    st.session_state.setdefault('so_use_riskoff', True)
+    use_riskoff = bool(st.session_state['so_use_riskoff'])
+    signals = compute_signals_so(prices, use_riskoff=use_riskoff)
     valid = signals.index[signals['hold'].notna()]
     if len(valid) == 0:
         st.error("유효한 신호월이 없습니다. (데이터 워밍업 부족 또는 신규 ETF 파일 누락)")
@@ -687,14 +690,23 @@ def render_so():
         st.dataframe(_style_asset_table(rows, is_active, sel, '모멘텀'),
                      hide_index=True, use_container_width=True, key="so_def")
 
-    # 회피 필터 (SPY 모멘텀 점수)
-    st.markdown("<div style='font-size:1.5rem; font-weight:800; margin:16px 0 8px 0;'>회피 필터</div>",
-                unsafe_allow_html=True)
+    # 회피 필터 (SPY 모멘텀 점수) — 제목 옆에 리스크오프 토글
+    rf_col, ro_col = st.columns([2.6, 1.4])
+    with rf_col:
+        st.markdown("<div style='font-size:1.5rem; font-weight:800; margin:16px 0 0 0;'>회피 필터</div>",
+                    unsafe_allow_html=True)
+    with ro_col:
+        st.toggle("리스크오프(cond1) 사용", key="so_use_riskoff",
+                  help="또 메리츠의 매크로 리스크오프 신호(TIP·VWO·VEA 6M 동반하락 + VIXY)를 "
+                       "추가 방어 트리거로 사용. 백테스트상 CAGR·MDD·샤프·Sortino 모두 개선.")
     filt_pass = bool(last['filter_pass'])
+    riskoff_now = bool(last.get('riskoff', False))
     badge = (f"<span style='font-size:13px; font-weight:900; color:#10B981; background:#10B98118; padding:3px 10px; border-radius:6px;'>✅ 통과 (공격 허용)</span>"
              if filt_pass else
              f"<span style='font-size:13px; font-weight:900; color:#EF4444; background:#EF444418; padding:3px 10px; border-radius:6px;'>🛑 미통과 (방어)</span>")
-    st.markdown(f"<div style='margin-bottom:6px;'>{badge} <b>필터: SPY 추세</b> "
+    ro_badge = (" &nbsp; <span style='font-size:12px; font-weight:800; color:#F59E0B; background:#F59E0B18; padding:3px 8px; border-radius:6px;'>⚠️ 리스크오프 발동 → 방어</span>"
+                if (use_riskoff and riskoff_now) else "")
+    st.markdown(f"<div style='margin-bottom:6px;'>{badge}{ro_badge} <b>필터: SPY 추세</b> "
                 f"<span style='font-size:12px; color:#9CA3AF;'>(SPY 1+3+6+12개월 수익률 합 &gt; 0 이면 공격)</span></div>",
                 unsafe_allow_html=True)
     sv = last.get('score_SPY_filter', np.nan)
@@ -721,7 +733,8 @@ def render_so():
     detail_df = build_so_detail(signals, bt)
     settings_dict = {
         '전략': '쏘 삼성',
-        '회피 필터': 'SPY 1+3+6+12M 수익률 합 > 0 → 공격',
+        '회피 필터': 'SPY 1+3+6+12M 수익률 합 > 0 → 공격'
+                    + (' · 리스크오프(cond1) ON' if use_riskoff else ' · 리스크오프 OFF'),
         '거래비용/교체': f"{cost_pct:.2f}%",
         '기간': f"{perf['n_months']}개월 ({bt['hold_month'].iloc[0]} ~ {bt['hold_month'].iloc[-1]})",
         '공격': ', '.join(SO_OFFENSE_ASSETS) + f' 중 모멘텀 상위 {SO_TOPK} (4M MA>0인 것만, 50:50)',
@@ -736,7 +749,7 @@ def render_so():
 # ==========================================
 # 탭 배치
 # ==========================================
-tab1, tab2, tab3 = st.tabs(["🌀 또 메리츠", "🏢 맘 삼성", "🚀 쏘 삼성"])
+tab1, tab2, tab3 = st.tabs(["🇺🇸 또 메리츠", "🇺🇸 맘 삼성", "🇺🇸 쏘 삼성"])
 with tab1:
     render_meritz()
 with tab2:
