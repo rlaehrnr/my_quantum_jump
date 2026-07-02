@@ -121,8 +121,11 @@ def get_styled_stats(df_stats):
 def get_mdd_history(equity_series):
     df = equity_series.to_frame(name='equity')
     records = []
-    peak_date, peak_val = df.index[0], df['equity'].iloc[0]
-    trough_date, trough_val = peak_date, peak_val
+    # 시작 자본(1.0) 대비 초기 낙폭도 포착하도록 peak을 max(1.0, 첫값)에서 시작.
+    # (compute_performance의 dd = cum / cummax(clip lower=1.0) - 1 과 동일한 기준)
+    _start_val = float(df['equity'].iloc[0])
+    peak_date, peak_val = df.index[0], max(1.0, _start_val)
+    trough_date, trough_val = df.index[0], peak_val
     in_dd = False
     for date, row in df.iterrows():
         val = row['equity']
