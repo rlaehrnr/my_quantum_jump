@@ -22,14 +22,22 @@ from datetime import datetime
 
 MONTHLY_DIR = 'data/snowball/monthly'
 
-# 스노우볼 자산 (snowball.py와 동일하게 유지)
-ALL_TICKERS = ['TIP', 'VWO', 'VEA', 'VIXY', 'TQQQ', 'USD', 'GLD', 'TLT', 'SQQQ', 'SLV', 'SPY']
+# 스노우볼 자산
+#  · 기존(또 메리츠): TIP, VWO, VEA, VIXY, TQQQ, USD, GLD, TLT, SQQQ, SLV, SPY
+#  · 신규(맘 삼성):   FAS, SOXL, TMF, IEF, TBT  (TQQQ, GLD, SPY, TIP은 위와 공유)
+CORE_TICKERS   = ['TIP', 'VWO', 'VEA', 'VIXY', 'TQQQ', 'USD', 'GLD', 'TLT', 'SQQQ', 'SLV', 'SPY']
+SAMSUNG_TICKERS = ['FAS', 'SOXL', 'TMF', 'IEF', 'TBT']
+
+# 중복 제거하며 순서 유지한 전체 수집 대상
+ALL_TICKERS = list(dict.fromkeys(CORE_TICKERS + SAMSUNG_TICKERS))
 
 # 💡 수정주가(배당·분할 반영 종가)로 받을 티커.
 #    수정주가는 배당/분할 발생 시 과거 전체가 소급 재계산되므로 append가 아닌
 #    "전체 재구성"이 맞다 (이 스크립트는 원래 매월 전 기간을 새로 받아 덮어씀).
-#    이 목록의 티커만 yfinance auto_adjust=True(또는 FDR 'Adj Close')로 수집한다.
-ADJUSTED_TICKERS = {'TIP'}
+#    자산배분 백테스트는 총수익(배당 재투자) 기준이 표준이고, 레버리지 ETF는
+#    분할 미반영 시 가짜 급락이 생기므로 전 종목을 수정주가로 통일한다.
+#    (배당·분할 없는 GLD/SLV는 수정가로 받아도 값이 사실상 동일 → 무해)
+ADJUSTED_TICKERS = set(ALL_TICKERS)
 
 
 # ==========================================
