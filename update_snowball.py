@@ -25,30 +25,51 @@ MONTHLY_DIR = 'data/snowball/monthly'
 # 스노우볼 자산 (snowball.py와 동일하게 유지)
 ALL_TICKERS = ['TIP', 'VWO', 'VEA', 'VIXY', 'TQQQ', 'USD', 'GLD', 'TLT', 'SQQQ', 'SLV', 'SPY']
 
+# 💡 수정주가(배당·분할 반영 종가)로 받을 티커.
+#    수정주가는 배당/분할 발생 시 과거 전체가 소급 재계산되므로 append가 아닌
+#    "전체 재구성"이 맞다 (이 스크립트는 원래 매월 전 기간을 새로 받아 덮어씀).
+#    이 목록의 티커만 yfinance auto_adjust=True(또는 FDR 'Adj Close')로 수집한다.
+ADJUSTED_TICKERS = {'TIP'}
+
 
 # ==========================================
 # ETF 월봉 수집
 # ==========================================
 
-def fetch_etf_fdr(ticker, start='2005-01-01'):
-    """FinanceDataReader로 ETF 일봉 받아 월봉(월말 종가)으로 변환."""
+def fetch_etf_fdr(ticker, start='2005-01-01', adjusted=False):
+    """FinanceDataReader로 ETF 일봉 받아 월봉(월말 종가)으로 변환.
+
+    adjusted=True면 'Adj Close'(수정종가)를 사용. FDR이 수정종가를 제공하지
+    않으면 None을 반환해 상위 fetch_etf가 yfinance(auto_adjust) 폴백을 타게 한다.
+    """
     import FinanceDataReader as fdr
     df = fdr.DataReader(ticker, start)
-    if df is None or df.empty or 'Close' not in df.columns:
+    if df is None or df.empty:
         return None
     if df.index.tz is not None:
         df.index = df.index.tz_localize(None)
+    if adjusted:
+        # 수정종가 컬럼이 있어야만 사용 (없으면 수정주가 보장 불가 → None 폴백)
+        if 'Adj Close' in df.columns:
+            col = 'Adj Close'
+        else:
+            return None
+    else:
+        if 'Close' not in df.columns:
+            return None
+        col = 'Close'
     # 월말 종가로 리샘플
-    monthly = df['Close'].resample('ME').last().dropna()
+    monthly = df[col].resample('ME').last().dropna()
     return monthly
 
 
-def fetch_etf_yfinance(ticker, start='2005-01-01'):
-    """yfinance 폴백."""
+def fetch_etf_yfinance(ticker, start='2005-01-01', adjusted=False):
+    """yfinance 폴백. adjusted=True면 auto_adjust로 수정종가를 'Close'에 반영."""
     import yfinance as yf
-    df = yf.download(ticker, start=start, progress=False, auto_adjust=False)
+    df = yf.download(ticker, start=start, progress=False, auto_adjust=adjusted)
     if df is None or df.empty:
         return None
+    # auto_adjust=True → 'Close'가 이미 수정종가. False → 원시 종가.
     close = df['Close']
     if isinstance(close, pd.DataFrame):
         close = close.iloc[:, 0]
@@ -59,12 +80,22 @@ def fetch_etf_yfinance(ticker, start='2005-01-01'):
 
 
 def fetch_etf(ticker):
-    """fdr 우선, 실패 시 yfinance. 둘 다 실패하면 None."""
-    for name, fn in [('fdr', fetch_etf_fdr), ('yfinance', fetch_etf_yfinance)]:
+    """fdr 우선, 실패 시 yfinance. 둘 다 실패하면 None.
+
+    수정주가 티커(ADJUSTED_TICKERS)는 수정 여부가 확실한 yfinance(auto_adjust)를
+    우선 시도하고, FDR('Adj Close')을 폴백으로 둔다.
+    """
+    adjusted = ticker in ADJUSTED_TICKERS
+    kind = '수정주가' if adjusted else '원시주가'
+    if adjusted:
+        order = [('yfinance', fetch_etf_yfinance), ('fdr', fetch_etf_fdr)]
+    else:
+        order = [('fdr', fetch_etf_fdr), ('yfinance', fetch_etf_yfinance)]
+    for name, fn in order:
         try:
-            s = fn(ticker)
+            s = fn(ticker, adjusted=adjusted)
             if s is not None and len(s) > 12:
-                print(f"  ✅ {ticker}: {name}로 {len(s)}개월 수집 (최근 {s.index[-1].date()})")
+                print(f"  ✅ {ticker}: {name}({kind})로 {len(s)}개월 수집 (최근 {s.index[-1].date()})")
                 return s
             else:
                 print(f"  ⚠️ {ticker}: {name} 결과 부족")
