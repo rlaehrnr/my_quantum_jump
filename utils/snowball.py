@@ -1011,6 +1011,8 @@ def compute_signals_so(prices, use_riskoff=SO_USE_RISKOFF):
     score = compute_mom_score(prices)
     d_abs = compute_ma_disparity(prices, SO_ABSMOM_WIN)   # 절대모멘텀용 4M MA 이격도
     riskoff = compute_riskoff_cond1(prices) if use_riskoff else pd.Series(False, index=prices.index)
+    # 리스크오프 구성요소(TIP·VWO·VEA·VIXY 6M 수익률) — UI 표시용
+    ret6 = compute_returns(prices, 6)
 
     # 준비도: 공격 전 종목 + SPY 점수 계산 가능 + 방어 종목 가격 존재 + 4M 이격도 계산 가능
     ready = pd.Series(True, index=prices.index)
@@ -1032,6 +1034,8 @@ def compute_signals_so(prices, use_riskoff=SO_USE_RISKOFF):
         rec.update({f'abs_{t}': (d_abs.loc[m, t] if t in d_abs.columns else np.nan)
                     for t in SO_OFFENSE_ASSETS})
         rec['score_SPY_filter'] = score.loc[m, SO_FILTER_ASSET] if SO_FILTER_ASSET in score.columns else np.nan
+        for t in SIGNAL_ASSETS:   # TIP, VWO, VEA, VIXY (6M 수익률) — 리스크오프 판정 표시용
+            rec[f'ro6_{t}'] = ret6.loc[m, t] if t in ret6.columns else np.nan
 
         if not bool(ready.loc[m]):
             rec.update({'defensive': True, 'filter_pass': False, 'holds': None,
