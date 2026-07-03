@@ -945,11 +945,16 @@ def render_ko():
     # KOSPI200(102110) 벤치마크 비교 라인
     bench_code = KO_BENCHMARKS[0]
     if f'cum_{bench_code}' in bt.columns and bt[f'ret_{bench_code}'].notna().sum() > 0:
-        b_cum = bt[f'cum_{bench_code}'].iloc[-1]
+        bcum = bt[f'cum_{bench_code}']
+        b_cum = bcum.iloc[-1]
         b_n = len(bt)
         b_cagr = b_cum ** (12.0 / b_n) - 1.0 if b_cum > 0 else -1.0
+        b_peak = bcum.cummax().clip(lower=1.0)
+        b_mdd = (bcum / b_peak - 1.0).min()
         st.caption(f"📊 참고 벤치마크 — {bench_code} {KO_TICKER_NAMES.get(bench_code,'')} "
-                   f"매수후보유: 누적 {(b_cum-1)*100:,.0f}% · CAGR {b_cagr*100:.1f}%")
+                   f"매수후보유 ({bt['hold_month'].iloc[0]}~): 누적 {(b_cum-1)*100:,.0f}% · "
+                   f"CAGR {b_cagr*100:.1f}% · MDD {b_mdd*100:.1f}%  "
+                   f"→ 전략이 수익↑·낙폭↓")
 
     detail_df = build_ko_detail(signals, bt)
     off_list = ', '.join(f"{c}" for c in KO_OFFENSE)
