@@ -1544,3 +1544,207 @@ def run_backtest_pension(prices, signals, cost=0.0025):
     peak = bt['cum_strategy'].cummax().clip(lower=1.0)
     bt['dd_strategy'] = bt['cum_strategy'] / peak - 1.0
     return bt
+
+
+# ==========================================================================
+# 쏘 연금 (탭 6) — 나스닥 단일 공격 + 방어 바스켓 + cond1 위험회피
+# ==========================================================================
+#   · 공격: 미국나스닥100(133690) 100% (위험회피 미발동 시)
+#   · 방어: 미국채10년(305080)·국고채10년(148070)·금현물(411060)·SOL초단기채(469830)
+#           중 1+3+6+12M 수익률 합 1위 1종 100%
+#   · 위험회피(cond1, 또 메리츠와 동일 신호): TIP·VWO·VEA·VIXY 6M 모두 음수
+#           OR (TIP·VWO·VEA 6M 음수 & VIXY 6M ≥ +40%) → 방어로 전환
+#   국내 ETF는 snowball_kr 폴더, cond1 신호자산(TIP/VWO/VEA/VIXY)은 미국 폴더에서 로드.
+#   검증: CAGR 30.5% · MDD -13.7% · Sortino 3.62 · 공격비중 88% (2014-04~2026-05)
+# --------------------------------------------------------------------------
+SSOPEN_NASDAQ = '133690'          # TIGER 미국나스닥100 (환노출, FDR 2014~)
+SSOPEN_DEFENSE = ['305080', '148070', '411060', '469830']
+SSOPEN_DEF_WINDOWS = [1, 3, 6, 12]   # 방어 선택: 1+3+6+12M 수익률 합
+SSOPEN_BENCHMARKS = ['133690']       # 나스닥100 매수후보유
+SSOPEN_ALL = list(dict.fromkeys([SSOPEN_NASDAQ] + SSOPEN_DEFENSE))
+
+SSOPEN_TICKER_NAMES = {
+    '133690': 'TIGER 미국나스닥100', '305080': 'TIGER 미국채10년선물',
+    '148070': 'KIWOOM 국고채10년', '411060': 'ACE KRX금현물',
+    '469830': 'SOL 초단기채권액티브',
+}
+
+
+@st.cache_data(ttl="1h", show_spinner=False)
+def load_ssopen_prices(kr_dir='data/snowball_kr/monthly'):
+    """쏘 연금용 국내 ETF 5종 월봉 로드 (load_pen_prices와 동일 인프라 재사용).
+
+    반환: DataFrame(index=YearMonth Period, columns=종목코드, values=월말 종가)
+    cond1 신호자산(TIP/VWO/VEA/VIXY)은 별도로 load_monthly_prices()에서 받는다.
+    """
+    def _variants(code):
+        nm = _ko_clean_name(SSOPEN_TICKER_NAMES.get(code, code))
+        return (f"{code}_{nm}_과거_데이터.csv", f"{code}_과거_데이터.csv", f"{code}.csv")
+
+    series = {}
+    for code in SSOPEN_ALL:
+        variants = _variants(code)
+        s = None
+        for fn in variants:
+            s = _series_from_csv(_fetch_ko_raw_csv(fn))
+            if s is not None and len(s) > 3:
+                break
+        if (s is None or len(s) <= 3) and os.path.isdir(kr_dir):
+            norm = lambda x: re.sub(r'[\s_]+', '', x).lower()
+            targets = {norm(v) for v in variants}
+            for f in os.listdir(kr_dir):
+                if f.lower().endswith('.csv') and norm(f) in targets:
+                    try:
+                        s = _series_from_csv(_read_csv_any_encoding(os.path.join(kr_dir, f)))
+                        break
+                    except Exception:
+                        pass
+        if s is not None:
+            series[code] = s
+    if not series:
+        return pd.DataFrame()
+    df = pd.DataFrame(series).sort_index()
+    return df[~df.index.duplicated(keep='last')]
+
+
+def compute_signals_ssopen(prices, us_prices):
+    """쏘 연금 월별 신호·보유 계산.
+
+    Args:
+        prices: 국내 ETF 월봉 (133690 + 방어 4종)
+        us_prices: cond1 신호자산(TIP/VWO/VEA/VIXY) 포함 미국 ETF 월봉
+                   (load_monthly_prices() 결과)
+
+    각 월 m에서 (모두 m월 말 데이터 기준 — 미래참조 없음):
+      · 위험회피(cond1): TIP·VWO·VEA 6M 모두 음수 AND (VIXY 6M 음수 OR VIXY 6M≥+40%)
+      · 미발동 → 공격: 나스닥100(133690) 100%
+      · 발동   → 방어: 방어 4종(가용분) 중 1+3+6+12M 수익률 합 1위 1종 100%
+    cond1 신호자산 4종의 6M 수익률이 모두 확정된 달부터 신호를 낸다(readiness gate).
+    방어자산은 상장시점이 달라 '그 시점 가용 종목'만으로 선택(동적).
+    """
+    # cond1 위험회피 (월별 bool) — 미국 신호자산 기준. 6M 수익률 원본도 표시용으로 보관.
+    us_ret6 = compute_returns(us_prices, 6) if not us_prices.empty else pd.DataFrame()
+    cond1 = compute_riskoff_cond1(us_prices) if not us_prices.empty else pd.Series(dtype=bool)
+
+    # 방어 선택 점수: 1+3+6+12M 수익률 합 (한 창이라도 NaN이면 그 종목은 NaN → 12M 워밍업 필요)
+    dfn = [t for t in SSOPEN_DEFENSE if t in prices.columns]
+    def_sum = None
+    if dfn:
+        for w in SSOPEN_DEF_WINDOWS:
+            r = compute_returns(prices[dfn], w)
+            def_sum = r if def_sum is None else (def_sum + r)
+
+    def _cond1_valid(m):
+        """cond1 4종 6M 수익률이 그 달에 모두 확정됐는지."""
+        if us_ret6.empty or m not in us_ret6.index:
+            return False
+        for t in SIGNAL_ASSETS:
+            if t not in us_ret6.columns or pd.isna(us_ret6.loc[m, t]):
+                return False
+        return True
+
+    rows = []
+    for m in prices.index:
+        rec = {'signal_month': str(m)}
+        # cond1 6M 수익률 표시값
+        for t in SIGNAL_ASSETS:
+            rec[f'{t}_6m'] = (us_ret6.loc[m, t] if (not us_ret6.empty and m in us_ret6.index
+                                                    and t in us_ret6.columns) else np.nan)
+        # 나스닥 가격 없으면 신호 없음
+        if SSOPEN_NASDAQ not in prices.columns or pd.isna(prices.loc[m, SSOPEN_NASDAQ]):
+            rec.update({'holds': None, 'defensive': None, 'hold': None,
+                        'risk_off': None, 'filter_pass': None, 'reason': '데이터 준비중'})
+            rows.append(rec)
+            continue
+        # cond1 신호 미확정(초기 구간)이면 신호 없음
+        if not _cond1_valid(m):
+            rec.update({'holds': None, 'defensive': None, 'hold': None,
+                        'risk_off': None, 'filter_pass': None, 'reason': 'cond1 데이터 준비중'})
+            rows.append(rec)
+            continue
+
+        risk_off = bool(cond1.loc[m]) if m in cond1.index else False
+        rec['risk_off'] = risk_off
+        rec['filter_pass'] = not risk_off
+
+        dvalid = ({t: def_sum.loc[m, t] for t in dfn if pd.notna(def_sum.loc[m, t])}
+                  if def_sum is not None else {})
+        rec['defense_scores'] = dvalid
+
+        if not risk_off:
+            pick, defensive = SSOPEN_NASDAQ, False
+            reason = f"⚔️ 공격 · {SSOPEN_TICKER_NAMES[pick]} (cond1 미발동)"
+        elif dvalid:
+            pick, defensive = max(dvalid, key=dvalid.get), True
+            reason = f"🛡️ 방어 · {SSOPEN_TICKER_NAMES[pick]} (1+3+6+12M 합 1위) [cond1 발동]"
+        else:
+            rec.update({'holds': None, 'defensive': None, 'hold': None,
+                        'reason': '방어자산 없음(초기구간)'})
+            rows.append(rec)
+            continue
+
+        rec['holds'] = [pick]
+        rec['defensive'] = defensive
+        rec['hold'] = SSOPEN_TICKER_NAMES[pick]
+        rec['reason'] = reason
+        rows.append(rec)
+
+    return pd.DataFrame(rows).set_index('signal_month', drop=False)
+
+
+def run_backtest_ssopen(prices, signals, cost=0.0025):
+    """쏘 연금 백테스트 (단일 종목 보유). compute_performance 호환 bt 반환.
+
+    신호월 m 말 결정 → 다음 달(m+1) 보유 → m→m+1 수익률 기록 (run_backtest_pension과 동일).
+    벤치마크: 나스닥100(133690) 매수후보유.
+    """
+    months = list(prices.index)
+    m_to_i = {m: i for i, m in enumerate(months)}
+    records = []
+    prev_w = {}
+    for m in prices.index:
+        i = m_to_i[m]
+        if i + 1 >= len(months):
+            break
+        nm = months[i + 1]
+        srow = signals.loc[str(m)] if str(m) in signals.index else None
+        if srow is None:
+            continue
+        holds = srow['holds']
+        if holds is None or (isinstance(holds, float) and pd.isna(holds)):
+            continue
+        pick = holds[0]
+        p0 = prices.loc[m, pick] if pick in prices.columns else np.nan
+        p1 = prices.loc[nm, pick] if pick in prices.columns else np.nan
+        if pd.isna(p0) or pd.isna(p1) or p0 == 0:
+            continue
+        ret_gross = p1 / p0 - 1.0
+        w_new = {pick: 1.0}
+        bought = sum(max(w_new.get(t, 0.0) - prev_w.get(t, 0.0), 0.0)
+                     for t in set(w_new) | set(prev_w))
+        tc = cost * bought
+        rec = {
+            'signal_month': str(m), 'hold_month': str(nm),
+            'defensive': bool(srow['defensive']),
+            'hold': srow['hold'], 'reason': srow['reason'],
+            'ret_gross': ret_gross, 'cost': tc, 'switched': bought > 1e-9,
+            'ret_strategy': ret_gross - tc,
+        }
+        for b in SSOPEN_BENCHMARKS:
+            if b in prices.columns:
+                p0b, p1b = prices.loc[m, b], prices.loc[nm, b]
+                rec[f'ret_{b}'] = (p1b / p0b - 1.0) if (pd.notna(p0b) and pd.notna(p1b) and p0b != 0) else np.nan
+            else:
+                rec[f'ret_{b}'] = np.nan
+        records.append(rec)
+        prev_w = w_new
+
+    if not records:
+        return pd.DataFrame()
+    bt = pd.DataFrame(records)
+    bt['cum_strategy'] = (1 + bt['ret_strategy']).cumprod()
+    for b in SSOPEN_BENCHMARKS:
+        bt[f'cum_{b}'] = (1 + bt[f'ret_{b}'].fillna(0)).cumprod()
+    peak = bt['cum_strategy'].cummax().clip(lower=1.0)
+    bt['dd_strategy'] = bt['cum_strategy'] / peak - 1.0
+    return bt
