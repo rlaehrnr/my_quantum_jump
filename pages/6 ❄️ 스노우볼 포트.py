@@ -37,6 +37,9 @@ from utils.snowball import (
     load_pen_prices, compute_signals_pension, run_backtest_pension,
     PEN_NASDAQ, PEN_KOSPI, PEN_OFFENSE, PEN_DEFENSE, PEN_TICKER_NAMES,
     PEN_OFF_WIN, PEN_DEF_WIN, PEN_FILTER_WIN, PEN_BENCHMARKS,
+    # 쏘 연금 (국내 나스닥 단일 + cond1 위험회피)
+    load_ssopen_prices, compute_signals_ssopen, run_backtest_ssopen,
+    SSOPEN_NASDAQ, SSOPEN_DEFENSE, SSOPEN_DEF_WINDOWS, SSOPEN_TICKER_NAMES, SSOPEN_BENCHMARKS,
 )
 from utils.ui_components import inject_custom_css, get_monthly_heatmap, get_mdd_history
 
@@ -64,6 +67,8 @@ ASSET_COLORS = {
     '217770': '#EF4444', '225130': '#F97316', '455030': '#22C55E',
     # 또 연금 (133690 나스닥·102110 코스피는 offense, 방어 4종)
     '133690': '#10B981', '305080': '#3B82F6', '261220': '#EF4444', '329200': '#14B8A6',
+    # 쏘 연금 (추가 방어: 국고채10년·SOL초단기채)
+    '148070': '#0EA5E9', '469830': '#94A3B8',
 }
 
 
@@ -1142,10 +1147,174 @@ def render_pension():
 
 
 # ==========================================
+# 쏘 연금 (탭 6) 렌더 — 나스닥 단일 공격 + cond1 위험회피
+# ==========================================
+def build_ssopen_detail(signals, bt):
+    """쏘 연금 월별 상세 근거."""
+    sig_by_month = {str(r['signal_month']): r for _, r in signals.iterrows()}
+    rows = []
+    for _, b in bt.iterrows():
+        s = sig_by_month.get(b['signal_month'], {})
+        vixy = s.get('VIXY_6m', np.nan)
+        rows.append({
+            '보유월': b['hold_month'],
+            '국면': '🛡️방어' if b['defensive'] else '⚔️공격',
+            '보유': b['hold'],
+            'cond1': '🛑발동' if s.get('risk_off') else '✅통과',
+            'VIXY 6M': (f"{vixy*100:+.1f}%" if pd.notna(vixy) else 'N/A'),
+            '월수익률': f"{b['ret_strategy']*100:+.2f}%",
+            '누적': f"{b['cum_strategy']:.2f}",
+        })
+    return pd.DataFrame(rows)
+
+
+def render_ssopen():
+    with st.spinner("국내 ETF 데이터 로딩 중..."):
+        ss_prices = load_ssopen_prices()
+        us_prices = load_monthly_prices()  # cond1 신호자산(TIP/VWO/VEA/VIXY)
+
+    if ss_prices.empty:
+        st.error("📁 쏘 연금 데이터가 없습니다. `data/snowball_kr/monthly/`에 133690·305080·"
+                 "148070·411060·469830이 수집됐는지 확인하세요.")
+        return
+    missing = [t for t in ([SSOPEN_NASDAQ] + SSOPEN_DEFENSE) if t not in ss_prices.columns]
+    if missing:
+        st.warning(f"⚠️ 누락: {', '.join(f'{t}({SSOPEN_TICKER_NAMES.get(t, t)})' for t in missing)}")
+
+    signals = compute_signals_ssopen(ss_prices, us_prices)
+    valid = signals.index[signals['holds'].notna()]
+    if len(valid) == 0:
+        st.error("유효한 신호월이 없습니다. (cond1 신호자산 TIP/VWO/VEA/VIXY가 로드됐는지 확인)")
+        return
+    last = signals.loc[valid[-1]]
+    defensive_now = bool(last['defensive'])
+    holds = last['holds'] or []
+    hold_set = set(holds)
+    hold_disp = " · ".join(
+        f"<span style='color:{ASSET_COLORS.get(t, '#E5E7EB')};'>{SSOPEN_TICKER_NAMES.get(t, t)}</span>"
+        for t in holds)
+
+    st.markdown(
+        f"<div style='font-size:1.5rem; font-weight:800; margin-bottom:8px;'>공격 · 방어 자산 현황 "
+        f"<span style='font-size:12px; color:#9CA3AF; font-weight:500;'>(기준: {valid[-1]} 월말 · 연금/ISA 매매용)</span></div>",
+        unsafe_allow_html=True)
+    _mode_badge(defensive_now, hold_disp)
+
+    def_scores = last.get('defense_scores', {}) or {}
+
+    col_off, col_def = st.columns(2)
+    with col_off:
+        is_active = not defensive_now
+        label = "⚔️ 공격 (나스닥100 100%)" + ("" if is_active else "  · 비활성")
+        st.markdown(f"<div style='font-weight:800; font-size:15px; margin-bottom:4px; "
+                    f"color:{'#10B981' if is_active else '#9CA3AF'};'>{label}</div>", unsafe_allow_html=True)
+        st.markdown("<div style='font-size:11px; color:#9CA3AF; margin-bottom:2px;'>cond1 미발동 시 미국나스닥100 단일 100% 보유</div>",
+                    unsafe_allow_html=True)
+        odf = pd.DataFrame([{'티커': SSOPEN_NASDAQ, '종목명': SSOPEN_TICKER_NAMES[SSOPEN_NASDAQ], '비중': '100%'}])
+
+        def _off_style(row):
+            if is_active:
+                c = ASSET_COLORS.get(row['티커'], '#10B981')
+                return [f'background-color: {c}44; font-weight: 800;' for _ in row]
+            return ['color: #9CA3AF;' for _ in row]
+        st.dataframe(odf.style.apply(_off_style, axis=1), hide_index=True,
+                     use_container_width=True, key="ssopen_off")
+    with col_def:
+        is_active = defensive_now
+        label = "🛡️ 방어 후보 (1+3+6+12M 수익률 합 1위)" + ("" if is_active else "  · 비활성")
+        st.markdown(f"<div style='font-weight:800; font-size:15px; margin-bottom:4px; "
+                    f"color:{'#EF4444' if is_active else '#9CA3AF'};'>{label}</div>", unsafe_allow_html=True)
+        st.markdown("<div style='font-size:11px; color:#9CA3AF; margin-bottom:2px;'>미국채10년·국고채10년·금현물·SOL초단기채 중 1+3+6+12M 수익률 합 1위 종목 100%</div>",
+                    unsafe_allow_html=True)
+        def_ranked = sorted(def_scores, key=def_scores.get, reverse=True)
+        rows = [{'티커': c, '종목명': SSOPEN_TICKER_NAMES.get(c, c),
+                 '1+3+6+12M 합': (f"{def_scores[c]*100:+.1f}%" if pd.notna(def_scores[c]) else 'N/A')}
+                for c in def_ranked]
+        ddf = pd.DataFrame(rows)
+
+        def _def_style(row):
+            if is_active and row['티커'] in hold_set:
+                c = ASSET_COLORS.get(row['티커'], '#EF4444')
+                return [f'background-color: {c}44; font-weight: 800;' for _ in row]
+            return ['color: #9CA3AF;' for _ in row] if not is_active else ['' for _ in row]
+        st.dataframe(ddf.style.apply(_def_style, axis=1), hide_index=True,
+                     use_container_width=True, key="ssopen_def")
+
+    # 위험회피 필터 (cond1)
+    st.markdown("<div style='font-size:1.5rem; font-weight:800; margin:16px 0 8px 0;'>위험회피 필터 (cond1)</div>",
+                unsafe_allow_html=True)
+    risk_off = bool(last.get('risk_off', False))
+    badge = (f"<span style='font-size:13px; font-weight:900; color:#EF4444; background:#EF444418; padding:3px 10px; border-radius:6px;'>🛑 발동 (방어 전환)</span>"
+             if risk_off else
+             f"<span style='font-size:13px; font-weight:900; color:#10B981; background:#10B98118; padding:3px 10px; border-radius:6px;'>✅ 통과 (공격 허용)</span>")
+    st.markdown(f"<div style='margin-bottom:6px;'>{badge} <b>또 메리츠와 동일 신호</b> "
+                f"<span style='font-size:12px; color:#9CA3AF;'>(TIP·VWO·VEA 6M 모두 음수 <b>AND</b> (VIXY 6M 음수 또는 ≥ +{int(VIXY_SPIKE*100)}%) → 방어)</span></div>",
+                unsafe_allow_html=True)
+    tip6 = last.get('TIP_6m', np.nan)
+    vwo6 = last.get('VWO_6m', np.nan)
+    vea6 = last.get('VEA_6m', np.nan)
+    vixy6 = last.get('VIXY_6m', np.nan)
+    fdata = [
+        {'자산': 'TIP', '6M 수익률': (f"{tip6*100:+.2f}%" if pd.notna(tip6) else 'N/A'),
+         '발동조건': '< 0', '충족?': ('✅' if (pd.notna(tip6) and tip6 < 0) else '❌')},
+        {'자산': 'VWO', '6M 수익률': (f"{vwo6*100:+.2f}%" if pd.notna(vwo6) else 'N/A'),
+         '발동조건': '< 0', '충족?': ('✅' if (pd.notna(vwo6) and vwo6 < 0) else '❌')},
+        {'자산': 'VEA', '6M 수익률': (f"{vea6*100:+.2f}%" if pd.notna(vea6) else 'N/A'),
+         '발동조건': '< 0', '충족?': ('✅' if (pd.notna(vea6) and vea6 < 0) else '❌')},
+        {'자산': 'VIXY', '6M 수익률': (f"{vixy6*100:+.2f}%" if pd.notna(vixy6) else 'N/A'),
+         '발동조건': f'< 0 또는 ≥ +{int(VIXY_SPIKE*100)}%',
+         '충족?': ('✅' if (pd.notna(vixy6) and (vixy6 < 0 or vixy6 >= VIXY_SPIKE)) else '❌')},
+    ]
+    st.dataframe(pd.DataFrame(fdata), hide_index=True, use_container_width=True, key="ssopen_filter")
+
+    # 백테스트
+    st.markdown("---")
+    t_col, s_col = st.columns([2.2, 1])
+    with t_col:
+        st.markdown("### 📈 백테스트 성과")
+    with s_col:
+        cost_pct = st.slider("거래비용 %/교체", 0.0, 1.0, 0.25, 0.05, format="%.2f%%",
+                             key="ssopen_cost", help="새로 매수하는 비중만큼 차감(턴오버).")
+    cost_rate = cost_pct / 100.0
+    bt = run_backtest_ssopen(ss_prices, signals, cost=cost_rate)
+    if bt.empty:
+        st.warning("백테스트 데이터가 충분하지 않습니다.")
+        return
+    perf = compute_performance(bt)
+
+    # 벤치마크 (나스닥100 매수후보유)
+    bench_bits = []
+    for bc in SSOPEN_BENCHMARKS:
+        col = f'cum_{bc}'
+        if col in bt.columns and bt[f'ret_{bc}'].notna().sum() > 0:
+            bcum = bt[col]
+            b_cagr = bcum.iloc[-1] ** (12.0 / len(bt)) - 1.0 if bcum.iloc[-1] > 0 else -1.0
+            b_mdd = (bcum / bcum.cummax().clip(lower=1.0) - 1.0).min()
+            bench_bits.append(f"{SSOPEN_TICKER_NAMES.get(bc, bc)} 매수후보유 CAGR {b_cagr*100:.1f}%·MDD {b_mdd*100:.1f}%")
+    if bench_bits:
+        st.caption("📊 참고 벤치마크 — " + " / ".join(bench_bits) + "  → 전략이 수익↑·낙폭↓")
+
+    detail_df = build_ssopen_detail(signals, bt)
+    settings_dict = {
+        '전략': '쏘 연금 (국내 나스닥 단일 + cond1)',
+        '위험회피 필터': f'cond1: TIP·VWO·VEA 6M 음수 AND (VIXY 6M 음수 또는 ≥ +{int(VIXY_SPIKE*100)}%) → 방어',
+        '거래비용/교체': f"{cost_pct:.2f}%",
+        '기간': f"{perf['n_months']}개월 ({bt['hold_month'].iloc[0]} ~ {bt['hold_month'].iloc[-1]})",
+        '공격': f'{SSOPEN_NASDAQ}(미국나스닥100) 단일 100%',
+        '방어': f'[{", ".join(SSOPEN_DEFENSE)}] 중 1+3+6+12M 수익률 합 1위 1종',
+        '벤치마크': '나스닥100 매수후보유',
+        '주의': '단일 종목 보유(집중형). 방어자산 상장시점이 달라 초기는 가용분만 선택. 연금/ISA 매매용.',
+    }
+    render_backtest_section(bt, perf, cost_rate, key_prefix="ssopen",
+                            strat_color='#EC4899', strat_name='쏘 연금 전략',
+                            detail_df=detail_df, settings_dict=settings_dict)
+
+
+# ==========================================
 # 탭 배치
 # ==========================================
-tab1, tab2, tab3, tab4, tab5 = st.tabs(
-    ["🇺🇸 또 메리츠", "🇺🇸 맘 삼성", "🇺🇸 쏘 삼성", "🇰🇷 또 ISA", "🇰🇷 또 연금"])
+tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs(
+    ["🇺🇸 또 메리츠", "🇺🇸 맘 삼성", "🇺🇸 쏘 삼성", "🇰🇷 또 ISA", "🇰🇷 또 연금", "🇰🇷 쏘 연금"])
 with tab1:
     render_meritz()
 with tab2:
@@ -1156,3 +1325,5 @@ with tab4:
     render_ko()
 with tab5:
     render_pension()
+with tab6:
+    render_ssopen()
