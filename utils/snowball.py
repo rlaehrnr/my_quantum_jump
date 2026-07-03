@@ -1108,8 +1108,9 @@ KO_OFFENSE = ['379810', '309230', '360750', '102110', '130730',
 KO_DEFENSE = ['217770', '225130', '455030']
 KO_FILTER_ASSET = 'TIP'         # 위험회피 필터 (미국 물가연동채, 미국 폴더에서 로드)
 KO_FILTER_WIN = 10              # TIP 10개월 이동평균 이격도
-KO_MOM_WINDOWS = [1, 3, 6, 12]  # 공격 모멘텀 점수 = 이 기간 수익률 합
+KO_MOM_WINDOWS = [1, 3, 6, 9, 12]  # 공격 모멘텀 점수 = 이 기간 수익률 합
 KO_TOPK = 3                     # 공격 상위 K종
+KO_ABSMOM_WIN = 3               # 절대모멘텀: 상위 K종 중 최근 N개월 수익률 ≥ 0 인 것만 투자
 KO_DEF_TOPK = 2                 # 방어 상위 K종
 KO_BENCHMARKS = ['102110']      # 벤치마크: KOSPI200(TIGER200) 매수후보유
 
@@ -1220,7 +1221,7 @@ def compute_signals_ko(prices):
     각 월 m에서:
       · 위험회피: TIP 10M MA 이격도 > 0 → 공격 허용, 아니면 방어
       · 공격: 그 시점 존재하는 공격 후보(1/3/6/12M 수익률 모두 계산가능) 중
-              모멘텀 점수(1+3+6+12M 합) 상위 3종 동일가중
+              모멘텀 점수(1+3+6+9+12M 합, 최근1M≥0) 상위 3종 동일가중
       · 방어: 존재하는 방어 후보 중 1M 수익률 상위 2종 동일가중(50:50)
     종목별 상장 시점이 달라 '그 시점 가용 종목'만으로 순위를 매긴다(동적 유니버스).
 
@@ -1229,11 +1230,12 @@ def compute_signals_ko(prices):
     off = [t for t in KO_OFFENSE if t in prices.columns]
     dfn = [t for t in KO_DEFENSE if t in prices.columns]
 
-    # 모멘텀 점수(공격) — 1+3+6+12M 수익률 합. 각 기간 모두 있어야 유효.
+    # 모멘텀 점수(공격) — 1+3+6+9+12M 수익률 합. 각 기간 모두 있어야 유효.
     score = None
     for k in KO_MOM_WINDOWS:
         r = prices[off] / prices[off].shift(k) - 1.0
         score = r if score is None else (score + r)
+    off_absmom = prices[off] / prices[off].shift(KO_ABSMOM_WIN) - 1.0   # 공격 절대모멘텀(최근 N개월 수익)
     ret1 = prices[dfn] / prices[dfn].shift(1) - 1.0    # 방어 1M 수익
     tip_disp = (prices[KO_FILTER_ASSET] / prices[KO_FILTER_ASSET].rolling(KO_FILTER_WIN).mean() - 1.0
                 if KO_FILTER_ASSET in prices.columns else pd.Series(np.nan, index=prices.index))
@@ -1245,8 +1247,10 @@ def compute_signals_ko(prices):
         rec['tip_disp'] = td
         # 공격 후보 점수 (해당 월 유효한 것만)
         ovalid = {t: score.loc[m, t] for t in off if pd.notna(score.loc[m, t])}
+        oabs = {t: off_absmom.loc[m, t] for t in off if pd.notna(off_absmom.loc[m, t])}
         dvalid = {t: ret1.loc[m, t] for t in dfn if pd.notna(ret1.loc[m, t])}
         rec['n_offense_avail'] = len(ovalid)
+        rec['offense_absmom'] = oabs   # 표시용: 각 후보 최근 1M 수익
         # 필터
         filter_pass = bool(pd.notna(td) and td > 0)
         rec['filter_pass'] = filter_pass
@@ -1258,16 +1262,31 @@ def compute_signals_ko(prices):
             continue
 
         if filter_pass and ovalid:
-            picks = sorted(ovalid, key=ovalid.get, reverse=True)[:KO_TOPK]
-            holds, defensive = picks, False
-            names = ' · '.join(KO_TICKER_NAMES[t].split(' ', 1)[-1] for t in picks)
-            reason = f"공격 · 모멘텀 상위{len(picks)} ({names})"
+            top = sorted(ovalid, key=ovalid.get, reverse=True)[:KO_TOPK]
+            # 절대모멘텀: 상위 K종 중 최근 KO_ABSMOM_WIN개월 수익 ≥ 0 인 것만 보유
+            picks = [t for t in top if oabs.get(t, -1) >= 0]
+            rec['offense_top'] = top          # 표시용: 점수 상위 K (필터 전)
+            if picks:
+                holds, defensive = picks, False
+                names = ' · '.join(KO_TICKER_NAMES[t].split(' ', 1)[-1] for t in picks)
+                dropped = [t for t in top if t not in picks]
+                if dropped:
+                    dn = ' · '.join(KO_TICKER_NAMES[t].split(' ', 1)[-1] for t in dropped)
+                    reason = f"⚔️ 공격 · 상위{KO_TOPK} 중 {len(picks)}종 ({names}) [{KO_ABSMOM_WIN}M<0 제외: {dn}]"
+                else:
+                    reason = f"⚔️ 공격 · 모멘텀 상위{len(picks)} ({names})"
+            else:
+                # 상위 K종이 전부 최근 N개월 하락 → 방어
+                picks = sorted(dvalid, key=dvalid.get, reverse=True)[:KO_DEF_TOPK]
+                holds, defensive = picks, True
+                names = ' · '.join(KO_TICKER_NAMES[t].split(' ', 1)[-1] for t in picks)
+                reason = f"🛡️ 방어 · 1M 상위{len(picks)} ({names}) [공격 상위{KO_TOPK} 모두 {KO_ABSMOM_WIN}M<0]"
         elif dvalid:
             picks = sorted(dvalid, key=dvalid.get, reverse=True)[:KO_DEF_TOPK]
             holds, defensive = picks, True
             names = ' · '.join(KO_TICKER_NAMES[t].split(' ', 1)[-1] for t in picks)
             trig = "TIP 필터 이탈" if not filter_pass else "공격 후보 없음"
-            reason = f"방어 · 1M 상위{len(picks)} ({names}) [{trig}]"
+            reason = f"🛡️ 방어 · 1M 상위{len(picks)} ({names}) [{trig}]"
         else:
             rec.update({'holds': None, 'defensive': None, 'hold': None, 'reason': '보유 후보 없음'})
             rows.append(rec)
