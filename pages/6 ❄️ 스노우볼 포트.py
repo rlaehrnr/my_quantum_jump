@@ -32,7 +32,7 @@ from utils.snowball import (
     # 또 ISA (국내)
     load_ko_prices, compute_signals_ko, run_backtest_ko,
     KO_OFFENSE, KO_DEFENSE, KO_TICKER_NAMES, KO_FILTER_ASSET, KO_FILTER_WIN,
-    KO_TOPK, KO_DEF_TOPK, KO_BENCHMARKS, KO_ABSMOM_WIN, KO_MOM_WINDOWS,
+    KO_TOPK, KO_DEF_TOPK, KO_BENCHMARKS, KO_ABSMOM_WIN, KO_MOM_WINDOWS, KO_DEF_WIN,
 )
 from utils.ui_components import inject_custom_css, get_monthly_heatmap, get_mdd_history
 
@@ -864,7 +864,7 @@ def render_ko():
         st.markdown(f"<div style='font-weight:800; font-size:15px; margin-bottom:4px; "
                     f"color:{'#10B981' if is_active else '#9CA3AF'};'>{label}</div>", unsafe_allow_html=True)
         st.markdown(f"<div style='font-size:11px; color:#9CA3AF; margin-bottom:2px;'>점수 상위 {KO_TOPK}종 중 "
-                    f"<b>최근 {KO_ABSMOM_WIN}M 수익률 ≥ 0</b>인 것만 동일가중 매수 (음수면 제외, 다 음수면 방어)</div>",
+                    f"<b>최근 {KO_ABSMOM_WIN}M MA 이격도 ≥ 0</b>인 것만 동일가중 매수 (음수면 제외, 다 음수면 방어)</div>",
                     unsafe_allow_html=True)
         oabs = last.get('offense_absmom', {}) or {}
         top_set = set(last.get('offense_top', []) or [])
@@ -873,13 +873,13 @@ def render_ko():
             v = off_scores[code]
             am = oabs.get(code, np.nan)
             in_top = code in top_set
-            # 상위3 안인데 1M<0라 빠진 경우 표시
+            # 상위3 안인데 이격도<0라 빠진 경우 표시
             am_mark = ''
             if in_top and pd.notna(am):
                 am_mark = ' ✅' if am >= 0 else ' ❌제외'
             rows.append({'티커': code, '종목명': KO_TICKER_NAMES.get(code, code),
                          '모멘텀 점수': (f"{v*100:+.1f}%" if pd.notna(v) else 'N/A'),
-                         f'최근{KO_ABSMOM_WIN}M': ((f"{am*100:+.1f}%" if pd.notna(am) else 'N/A') + am_mark)})
+                         f'{KO_ABSMOM_WIN}M 이격도': ((f"{am*100:+.1f}%" if pd.notna(am) else 'N/A') + am_mark)})
         odf = pd.DataFrame(rows)
         def _off_style(row):
             if is_active and row['티커'] in hold_set:
@@ -893,14 +893,14 @@ def render_ko():
         label = "🛡️ 방어 후보 (1개월 수익률)" + ("" if is_active else "  · 비활성")
         st.markdown(f"<div style='font-weight:800; font-size:15px; margin-bottom:4px; "
                     f"color:{'#EF4444' if is_active else '#9CA3AF'};'>{label}</div>", unsafe_allow_html=True)
-        st.markdown(f"<div style='font-size:11px; color:#9CA3AF; margin-bottom:2px;'>3종 중 1M 수익률 상위 {KO_DEF_TOPK}종 동일가중(50:50)</div>",
+        st.markdown(f"<div style='font-size:11px; color:#9CA3AF; margin-bottom:2px;'>3종 중 {KO_DEF_WIN}M MA 이격도 상위 {KO_DEF_TOPK}종 동일가중(50:50)</div>",
                     unsafe_allow_html=True)
         def_ranked = sorted(def_scores, key=def_scores.get, reverse=True)
         rows = []
         for code in def_ranked:
             v = def_scores[code]
             rows.append({'티커': code, '종목명': KO_TICKER_NAMES.get(code, code),
-                         '1M 수익률': (f"{v*100:+.1f}%" if pd.notna(v) else 'N/A')})
+                         f'{KO_DEF_WIN}M 이격도': (f"{v*100:+.1f}%" if pd.notna(v) else 'N/A')})
         ddf = pd.DataFrame(rows)
         def _def_style(row):
             if is_active and row['티커'] in hold_set:
@@ -966,7 +966,7 @@ def render_ko():
         '기간': f"{perf['n_months']}개월 ({bt['hold_month'].iloc[0]} ~ {bt['hold_month'].iloc[-1]})",
         '공격': f'[{off_list}] 중 {"+".join(str(w) for w in KO_MOM_WINDOWS)}M 수익률 합 상위 {KO_TOPK}종 '
                 f'(최근 {KO_ABSMOM_WIN}M 수익률 ≥ 0인 것만) 동일가중',
-        '방어': f'[{def_list}] 중 1M 수익률 상위 {KO_DEF_TOPK}종 동일가중(50:50)',
+        '방어': f'[{def_list}] 중 {KO_DEF_WIN}M MA 이격도 상위 {KO_DEF_TOPK}종 동일가중(50:50)',
         '벤치마크': f"{bench_code}({KO_TICKER_NAMES.get(bench_code,'')})",
         '주의': '종목별 상장시점이 달라 초기 구간은 가용 종목만으로 순위(동적 유니버스). ISA/연금 매매용.',
     }
