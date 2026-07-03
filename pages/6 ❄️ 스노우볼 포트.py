@@ -795,13 +795,6 @@ def render_so():
 # ==========================================
 # 또 ISA (탭 4) 렌더
 # ==========================================
-def _ko_short(code):
-    """표시용 짧은 이름 (브랜드 뒤 핵심만): 'KODEX 미국나스닥100' → '미국나스닥100'."""
-    nm = KO_TICKER_NAMES.get(code, code)
-    parts = nm.split(' ', 1)
-    return parts[-1] if len(parts) > 1 else nm
-
-
 def build_ko_detail(signals, bt):
     """또 ISA 월별 상세 근거 DataFrame."""
     sig_by_month = {str(r['signal_month']): r for _, r in signals.iterrows()}
@@ -851,7 +844,7 @@ def render_ko():
     holds = last['holds'] or []
     hold_set = set(holds)
     hold_disp = " · ".join(
-        f"<span style='color:{ASSET_COLORS.get(t, '#E5E7EB')};'>{_ko_short(t)}</span>" for t in holds)
+        f"<span style='color:{ASSET_COLORS.get(t, '#E5E7EB')};'>{KO_TICKER_NAMES.get(t, t)}</span>" for t in holds)
 
     st.markdown(
         f"<div style='font-size:1.5rem; font-weight:800; margin-bottom:8px;'>공격 · 방어 자산 현황 "
@@ -872,20 +865,16 @@ def render_ko():
         st.markdown(f"<div style='font-size:11px; color:#9CA3AF; margin-bottom:2px;'>10종 중 점수 상위 {KO_TOPK}종 동일가중 매수</div>",
                     unsafe_allow_html=True)
         rows = []
-        for i, code in enumerate(off_ranked, 1):
+        for code in off_ranked:
             v = off_scores[code]
-            rows.append({'순위': i, '종목': f"{code} {_ko_short(code)}",
-                         '모멘텀 점수': (f"{v*100:+.1f}%" if pd.notna(v) else 'N/A'),
-                         '매수': '★' if (is_active and code in hold_set) else ''})
+            rows.append({'티커': code, '종목명': KO_TICKER_NAMES.get(code, code),
+                         '모멘텀 점수': (f"{v*100:+.1f}%" if pd.notna(v) else 'N/A')})
         odf = pd.DataFrame(rows)
         def _off_style(row):
-            base = ['' for _ in row]
-            if row['매수'] == '★':
-                c = ASSET_COLORS.get(row['종목'].split(' ', 1)[0], '#10B981')
-                base = [f'background-color: {c}44; font-weight: 800;' for _ in row]
-            elif not is_active:
-                base = ['color: #9CA3AF;' for _ in row]
-            return base
+            if is_active and row['티커'] in hold_set:
+                c = ASSET_COLORS.get(row['티커'], '#10B981')
+                return [f'background-color: {c}44; font-weight: 800;' for _ in row]
+            return ['color: #9CA3AF;' for _ in row] if not is_active else ['' for _ in row]
         st.dataframe(odf.style.apply(_off_style, axis=1), hide_index=True,
                      use_container_width=True, key="ko_off")
     with col_def:
@@ -897,15 +886,14 @@ def render_ko():
                     unsafe_allow_html=True)
         def_ranked = sorted(def_scores, key=def_scores.get, reverse=True)
         rows = []
-        for i, code in enumerate(def_ranked, 1):
+        for code in def_ranked:
             v = def_scores[code]
-            rows.append({'순위': i, '종목': f"{code} {_ko_short(code)}",
-                         '1M 수익률': (f"{v*100:+.1f}%" if pd.notna(v) else 'N/A'),
-                         '매수': '★' if (is_active and code in hold_set) else ''})
+            rows.append({'티커': code, '종목명': KO_TICKER_NAMES.get(code, code),
+                         '1M 수익률': (f"{v*100:+.1f}%" if pd.notna(v) else 'N/A')})
         ddf = pd.DataFrame(rows)
         def _def_style(row):
-            if row['매수'] == '★':
-                c = ASSET_COLORS.get(row['종목'].split(' ', 1)[0], '#EF4444')
+            if is_active and row['티커'] in hold_set:
+                c = ASSET_COLORS.get(row['티커'], '#EF4444')
                 return [f'background-color: {c}44; font-weight: 800;' for _ in row]
             return ['color: #9CA3AF;' for _ in row] if not is_active else ['' for _ in row]
         st.dataframe(ddf.style.apply(_def_style, axis=1), hide_index=True,
