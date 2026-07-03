@@ -55,6 +55,16 @@ DEFENSE_TICKERS = [
     '455030',  # KODEX 미국달러SOFR금리액티브(합성)
 ]
 
+# ── 2번 전략(듀얼모멘텀: 나스닥/코스피 + 방어바스켓)용 추가 종목 ──
+#    나스닥100은 133690(TIGER, 2010 상장)으로 대체 — 역사가 길어 백테스트 유리
+#    (102110·411060은 위에서 이미 수집)
+STRATEGY2_TICKERS = [
+    '133690',  # TIGER 미국나스닥100 (환노출, 2010~) ← 379810 대체
+    '305080',  # TIGER 미국채10년선물
+    '261220',  # KODEX WTI원유선물(H)
+    '329200',  # TIGER 리츠부동산인프라 (한국 리츠)
+]
+
 # 종목명 (로그 출력용)
 TICKER_NAMES = {
     '379810': 'KODEX 미국나스닥100', '309230': 'ACE 미국WideMoat가치주',
@@ -64,10 +74,13 @@ TICKER_NAMES = {
     '137610': 'TIGER 농산물선물Enhanced(H)', '182480': 'TIGER 미국MSCI리츠(합성H)',
     '217770': 'TIGER WTI원유선물인버스(H)', '225130': 'ACE 골드선물레버리지(합성H)',
     '455030': 'KODEX 미국달러SOFR금리액티브',
+    # 2번 전략용
+    '133690': 'TIGER 미국나스닥100', '305080': 'TIGER 미국채10년선물',
+    '261220': 'KODEX WTI원유선물(H)', '329200': 'TIGER 리츠부동산인프라',
 }
 
 # 중복 제거하며 순서 유지한 전체 수집 대상
-ALL_TICKERS = list(dict.fromkeys(OFFENSE_TICKERS + DEFENSE_TICKERS))
+ALL_TICKERS = list(dict.fromkeys(OFFENSE_TICKERS + DEFENSE_TICKERS + STRATEGY2_TICKERS))
 
 START_DATE = '2008-01-01'   # 각 종목은 상장일부터 반환됨 (여유있게 이른 날짜)
 
