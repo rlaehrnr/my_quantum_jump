@@ -1090,3 +1090,263 @@ def run_backtest_so(prices, signals, cost=0.0025):
     """쏘 삼성 백테스트. 공격 top2·방어 반반 모두 동일가중 바스켓이라
     run_backtest_samsung 러너를 그대로 재사용한다."""
     return run_backtest_samsung(prices, signals, cost=cost)
+
+
+# ==========================================================================
+# 또 ISA (탭 4) — 국내 상장 ETF 모멘텀 로테이션 엔진
+# ==========================================================================
+#   · 공격 10종: (1+3+6+12개월 수익률 합) 상위 3종 동일가중
+#   · 방어 3종:  (1개월 수익률) 상위 2종 동일가중(50:50)
+#   · 위험회피:  TIP 10개월 MA 이격도 > 0 → 공격, 아니면 방어
+#   데이터는 data/snowball_kr/monthly/ (미국 파이프라인과 분리), TIP은 미국 폴더 공유.
+# --------------------------------------------------------------------------
+KO_RAW_BASE = ("https://raw.githubusercontent.com/rlaehrnr/my_quantum_jump/"
+               "main/data/snowball_kr/monthly/")
+
+KO_OFFENSE = ['379810', '309230', '360750', '102110', '130730',
+              '152380', '332620', '411060', '137610', '182480']
+KO_DEFENSE = ['217770', '225130', '455030']
+KO_FILTER_ASSET = 'TIP'         # 위험회피 필터 (미국 물가연동채, 미국 폴더에서 로드)
+KO_FILTER_WIN = 10              # TIP 10개월 이동평균 이격도
+KO_MOM_WINDOWS = [1, 3, 6, 12]  # 공격 모멘텀 점수 = 이 기간 수익률 합
+KO_TOPK = 3                     # 공격 상위 K종
+KO_DEF_TOPK = 2                 # 방어 상위 K종
+KO_BENCHMARKS = ['102110']      # 벤치마크: KOSPI200(TIGER200) 매수후보유
+
+KO_TICKER_NAMES = {
+    '379810': 'KODEX 미국나스닥100', '309230': 'ACE 미국WideMoat가치주',
+    '360750': 'TIGER 미국S&P500', '102110': 'TIGER 200',
+    '130730': 'KOSEF 단기자금', '152380': 'KODEX 국채선물10년',
+    '332620': 'ARIRANG 미국장기우량회사채', '411060': 'ACE KRX금현물',
+    '137610': 'TIGER 농산물선물Enhanced(H)', '182480': 'TIGER 미국MSCI리츠(합성H)',
+    '217770': 'TIGER WTI원유선물인버스(H)', '225130': 'ACE 골드선물레버리지(합성H)',
+    '455030': 'KODEX 미국달러SOFR금리액티브',
+}
+KO_ALL = list(dict.fromkeys(KO_OFFENSE + KO_DEFENSE))
+
+
+def _ko_clean_name(name):
+    """파일명 안전화: 공백·괄호·&·슬래시 제거 (update_snowball_kr.py와 동일 규칙)."""
+    return (name.replace(' ', '').replace('(', '').replace(')', '')
+                .replace('/', '').replace('\\', '').replace('&', ''))
+
+
+def _ko_filename_variants(code):
+    """해당 코드의 가능한 파일명 후보 (종목명 포함형 우선, 숫자만형 폴백)."""
+    nm = _ko_clean_name(KO_TICKER_NAMES.get(code, code))
+    return (f"{code}_{nm}_과거_데이터.csv", f"{code}_과거_데이터.csv", f"{code}.csv")
+
+
+def _fetch_ko_raw_csv(filename):
+    """snowball_kr 폴더의 GitHub raw CSV 로드 시도. 실패하면 None."""
+    from urllib.parse import quote
+    try:
+        df = _read_csv_any_encoding(KO_RAW_BASE + quote(filename))
+        if df is not None and not df.empty:
+            return df
+    except Exception:
+        pass
+    return None
+
+
+def _series_from_csv(df):
+    """CSV DataFrame → 월말 종가 Series (index=YearMonth Period). 실패 시 None."""
+    if df is None or df.empty:
+        return None
+    df.columns = [c.strip() for c in df.columns]
+    dcol = next((c for c in df.columns if '날짜' in c or 'ate' in c.lower()), None)
+    pcol = next((c for c in df.columns if '종가' in c or 'lose' in c.lower()), None)
+    if dcol is None or pcol is None:
+        return None
+    d = pd.to_datetime(df[dcol].apply(_parse_investing_date), errors='coerce')
+    p = pd.to_numeric(df[pcol].astype(str).str.replace(',', '', regex=False), errors='coerce')
+    s = pd.DataFrame({'d': d, 'p': p}).dropna().sort_values('d')
+    if s.empty:
+        return None
+    s.index = s['d'].dt.to_period('M')
+    return s['p'].groupby(level=0).last()
+
+
+@st.cache_data(ttl="1h", show_spinner=False)
+def load_ko_prices(kr_dir='data/snowball_kr/monthly', us_dir='data/snowball/monthly'):
+    """또 ISA용 13종(국내) + TIP(미국) 월봉 통합 로드.
+
+    1순위 GitHub raw, 2순위 로컬 파일. 종목별 상장 시점이 달라 컬럼마다 시작점이 다름.
+    Returns: DataFrame(index=YearMonth, columns=[코드..., 'TIP'])  (빈 DF면 로드 실패)
+    """
+    series = {}
+
+    def _load_one(code, raw_variants, local_dir):
+        # raw 우선
+        for fn in raw_variants:
+            s = _series_from_csv(_fetch_ko_raw_csv(fn) if local_dir == kr_dir
+                                 else _fetch_raw_csv(fn))
+            if s is not None and len(s) > 3:
+                return s
+        # 로컬 폴백
+        if os.path.isdir(local_dir):
+            norm = lambda x: re.sub(r'[\s_]+', '', x).lower()
+            targets = {norm(v) for v in raw_variants}
+            for f in os.listdir(local_dir):
+                if f.lower().endswith('.csv') and norm(f) in targets:
+                    try:
+                        return _series_from_csv(_read_csv_any_encoding(os.path.join(local_dir, f)))
+                    except Exception:
+                        pass
+        return None
+
+    for code in KO_ALL:
+        s = _load_one(code, _ko_filename_variants(code), kr_dir)
+        if s is not None:
+            series[code] = s
+    # 필터용 TIP (미국 폴더)
+    tip = _load_one('TIP', _RAW_NAME_VARIANTS_TIP, us_dir)
+    if tip is not None:
+        series['TIP'] = tip
+
+    if not series:
+        return pd.DataFrame()
+    df = pd.DataFrame(series).sort_index()
+    return df[~df.index.duplicated(keep='last')]
+
+
+# TIP은 미국 폴더 파일명 규칙을 따름
+_RAW_NAME_VARIANTS_TIP = ("TIP_과거_데이터.csv", "TIP 과거 데이터.csv", "TIP.csv")
+
+
+def compute_signals_ko(prices):
+    """또 ISA 월별 신호·보유 계산.
+
+    각 월 m에서:
+      · 위험회피: TIP 10M MA 이격도 > 0 → 공격 허용, 아니면 방어
+      · 공격: 그 시점 존재하는 공격 후보(1/3/6/12M 수익률 모두 계산가능) 중
+              모멘텀 점수(1+3+6+12M 합) 상위 3종 동일가중
+      · 방어: 존재하는 방어 후보 중 1M 수익률 상위 2종 동일가중(50:50)
+    종목별 상장 시점이 달라 '그 시점 가용 종목'만으로 순위를 매긴다(동적 유니버스).
+
+    run_backtest_ko와 호환되는 holds/defensive/hold/reason + 표시용 컬럼을 담아 반환.
+    """
+    off = [t for t in KO_OFFENSE if t in prices.columns]
+    dfn = [t for t in KO_DEFENSE if t in prices.columns]
+
+    # 모멘텀 점수(공격) — 1+3+6+12M 수익률 합. 각 기간 모두 있어야 유효.
+    score = None
+    for k in KO_MOM_WINDOWS:
+        r = prices[off] / prices[off].shift(k) - 1.0
+        score = r if score is None else (score + r)
+    ret1 = prices[dfn] / prices[dfn].shift(1) - 1.0    # 방어 1M 수익
+    tip_disp = (prices[KO_FILTER_ASSET] / prices[KO_FILTER_ASSET].rolling(KO_FILTER_WIN).mean() - 1.0
+                if KO_FILTER_ASSET in prices.columns else pd.Series(np.nan, index=prices.index))
+
+    rows = []
+    for m in prices.index:
+        rec = {'signal_month': str(m)}
+        td = tip_disp.loc[m] if m in tip_disp.index else np.nan
+        rec['tip_disp'] = td
+        # 공격 후보 점수 (해당 월 유효한 것만)
+        ovalid = {t: score.loc[m, t] for t in off if pd.notna(score.loc[m, t])}
+        dvalid = {t: ret1.loc[m, t] for t in dfn if pd.notna(ret1.loc[m, t])}
+        rec['n_offense_avail'] = len(ovalid)
+        # 필터
+        filter_pass = bool(pd.notna(td) and td > 0)
+        rec['filter_pass'] = filter_pass
+
+        if pd.isna(td) or (not ovalid and not dvalid):
+            # 준비 안 됨 (TIP 워밍업 전 등) → skip 대상
+            rec.update({'holds': None, 'defensive': None, 'hold': None, 'reason': '데이터 준비중'})
+            rows.append(rec)
+            continue
+
+        if filter_pass and ovalid:
+            picks = sorted(ovalid, key=ovalid.get, reverse=True)[:KO_TOPK]
+            holds, defensive = picks, False
+            names = ' · '.join(KO_TICKER_NAMES[t].split(' ', 1)[-1] for t in picks)
+            reason = f"공격 · 모멘텀 상위{len(picks)} ({names})"
+        elif dvalid:
+            picks = sorted(dvalid, key=dvalid.get, reverse=True)[:KO_DEF_TOPK]
+            holds, defensive = picks, True
+            names = ' · '.join(KO_TICKER_NAMES[t].split(' ', 1)[-1] for t in picks)
+            trig = "TIP 필터 이탈" if not filter_pass else "공격 후보 없음"
+            reason = f"방어 · 1M 상위{len(picks)} ({names}) [{trig}]"
+        else:
+            rec.update({'holds': None, 'defensive': None, 'hold': None, 'reason': '보유 후보 없음'})
+            rows.append(rec)
+            continue
+
+        rec['holds'] = holds
+        rec['defensive'] = defensive
+        rec['hold'] = ' · '.join(KO_TICKER_NAMES[t] for t in holds)
+        rec['reason'] = reason
+        # 표시용: 점수/순위 스냅샷
+        rec['offense_rank'] = sorted(ovalid, key=ovalid.get, reverse=True)
+        rec['offense_scores'] = ovalid
+        rec['defense_scores'] = dvalid
+        rows.append(rec)
+
+    return pd.DataFrame(rows).set_index('signal_month', drop=False)
+
+
+def run_backtest_ko(prices, signals, cost=0.0025):
+    """또 ISA 백테스트. 공격 top3 / 방어 top2 모두 동일가중 바스켓.
+
+    반환 bt는 compute_performance와 호환(cum_strategy/dd_strategy/ret_strategy 등).
+    벤치마크는 KO_BENCHMARKS(KOSPI200=102110) 매수후보유.
+    """
+    months = list(prices.index)
+    m_to_i = {m: i for i, m in enumerate(months)}
+    records = []
+    prev_w = {}
+
+    for m in prices.index:
+        i = m_to_i[m]
+        if i + 1 >= len(months):
+            break
+        nm = months[i + 1]
+        srow = signals.loc[str(m)] if str(m) in signals.index else None
+        if srow is None:
+            continue
+        holds = srow['holds']
+        if holds is None or (isinstance(holds, float) and pd.isna(holds)):
+            continue
+
+        w = 1.0 / len(holds)
+        rets, w_new = [], {}
+        for t in holds:
+            p0 = prices.loc[m, t] if t in prices.columns else np.nan
+            p1 = prices.loc[nm, t] if t in prices.columns else np.nan
+            if pd.isna(p0) or pd.isna(p1) or p0 == 0:
+                continue
+            rets.append(p1 / p0 - 1.0)
+            w_new[t] = w
+        if not rets:
+            continue
+        ret_gross = float(np.mean(rets))
+        bought = sum(max(w_new.get(t, 0.0) - prev_w.get(t, 0.0), 0.0)
+                     for t in set(w_new) | set(prev_w))
+        tc = cost * bought
+
+        rec = {
+            'signal_month': str(m), 'hold_month': str(nm),
+            'defensive': bool(srow['defensive']),
+            'hold': srow['hold'], 'reason': srow['reason'],
+            'ret_gross': ret_gross, 'cost': tc, 'switched': bought > 1e-9,
+            'ret_strategy': ret_gross - tc,
+        }
+        for b in KO_BENCHMARKS:
+            if b in prices.columns:
+                p0b, p1b = prices.loc[m, b], prices.loc[nm, b]
+                rec[f'ret_{b}'] = (p1b / p0b - 1.0) if (pd.notna(p0b) and pd.notna(p1b) and p0b != 0) else np.nan
+            else:
+                rec[f'ret_{b}'] = np.nan
+        records.append(rec)
+        prev_w = w_new
+
+    if not records:
+        return pd.DataFrame()
+    bt = pd.DataFrame(records)
+    bt['cum_strategy'] = (1 + bt['ret_strategy']).cumprod()
+    for b in KO_BENCHMARKS:
+        bt[f'cum_{b}'] = (1 + bt[f'ret_{b}'].fillna(0)).cumprod()
+    peak = bt['cum_strategy'].cummax().clip(lower=1.0)
+    bt['dd_strategy'] = bt['cum_strategy'] / peak - 1.0
+    return bt
