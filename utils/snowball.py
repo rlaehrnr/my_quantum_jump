@@ -1370,3 +1370,177 @@ def run_backtest_ko(prices, signals, cost=0.0025):
     peak = bt['cum_strategy'].cummax().clip(lower=1.0)
     bt['dd_strategy'] = bt['cum_strategy'] / peak - 1.0
     return bt
+
+
+# ==========================================================================
+# 또 연금 (탭 5) — 듀얼모멘텀(나스닥/코스피) + 방어 바스켓
+# ==========================================================================
+#   · 공격: 나스닥100(133690) vs KOSPI200(102110) 중 6M 수익률 높은 1종
+#   · 방어: 미국채10년·KRX금현물·WTI원유·리츠부동산 중 3M MA 이격도 1위 1종
+#   · 위험회피: 나스닥100·KOSPI200 6M MA 이격도가 하나라도 음수면 방어
+#   데이터는 data/snowball_kr/monthly/ (또 ISA와 공유 폴더).
+# --------------------------------------------------------------------------
+PEN_NASDAQ = '133690'    # TIGER 미국나스닥100 (환노출, 2010~ / FDR 2014~)
+PEN_KOSPI = '102110'     # TIGER 200
+PEN_OFFENSE = [PEN_NASDAQ, PEN_KOSPI]
+PEN_DEFENSE = ['305080', '411060', '261220', '329200']
+PEN_OFF_WIN = 6          # 공격: 6M 수익률
+PEN_DEF_WIN = 3          # 방어: 3M MA 이격도
+PEN_FILTER_WIN = 6       # 위험회피: 6M MA 이격도
+PEN_BENCHMARKS = ['133690', '102110']
+
+PEN_TICKER_NAMES = {
+    '133690': 'TIGER 미국나스닥100', '102110': 'TIGER 200',
+    '305080': 'TIGER 미국채10년선물', '411060': 'ACE KRX금현물',
+    '261220': 'KODEX WTI원유선물(H)', '329200': 'TIGER 리츠부동산인프라',
+}
+PEN_ALL = list(dict.fromkeys(PEN_OFFENSE + PEN_DEFENSE))
+
+
+@st.cache_data(ttl="1h", show_spinner=False)
+def load_pen_prices(kr_dir='data/snowball_kr/monthly'):
+    """또 연금용 6종 월봉 로드 (snowball_kr 폴더, 또 ISA 로더 인프라 재사용)."""
+    def _pen_variants(code):
+        nm = _ko_clean_name(PEN_TICKER_NAMES.get(code, code))
+        return (f"{code}_{nm}_과거_데이터.csv", f"{code}_과거_데이터.csv", f"{code}.csv")
+
+    series = {}
+    for code in PEN_ALL:
+        variants = _pen_variants(code)  # {code}_{name}_과거_데이터.csv 등
+        s = None
+        for fn in variants:
+            s = _series_from_csv(_fetch_ko_raw_csv(fn))
+            if s is not None and len(s) > 3:
+                break
+        if (s is None or len(s) <= 3) and os.path.isdir(kr_dir):
+            norm = lambda x: re.sub(r'[\s_]+', '', x).lower()
+            targets = {norm(v) for v in variants}
+            for f in os.listdir(kr_dir):
+                if f.lower().endswith('.csv') and norm(f) in targets:
+                    try:
+                        s = _series_from_csv(_read_csv_any_encoding(os.path.join(kr_dir, f)))
+                        break
+                    except Exception:
+                        pass
+        if s is not None:
+            series[code] = s
+    if not series:
+        return pd.DataFrame()
+    df = pd.DataFrame(series).sort_index()
+    return df[~df.index.duplicated(keep='last')]
+
+
+def compute_signals_pension(prices):
+    """또 연금 월별 신호·보유 계산.
+
+    각 월 m에서:
+      · 위험회피: 나스닥·코스피 6M MA 이격도가 하나라도 < 0 → 방어
+      · 공격: 나스닥 vs 코스피 6M 수익률 높은 1종
+      · 방어: 방어 4종(가용분) 중 3M MA 이격도 1위 1종
+    종목별 상장 시점이 달라 방어는 '그 시점 가용 종목'만으로 선택(동적).
+    """
+    off = [t for t in PEN_OFFENSE if t in prices.columns]
+    dfn = [t for t in PEN_DEFENSE if t in prices.columns]
+
+    off_ret = prices[off] / prices[off].shift(PEN_OFF_WIN) - 1.0        # 공격 6M 수익률
+    filt_disp = compute_ma_disparity(prices[off], PEN_FILTER_WIN)        # 위험회피 6M 이격도
+    def_disp = compute_ma_disparity(prices[dfn], PEN_DEF_WIN) if dfn else None  # 방어 3M 이격도
+
+    rows = []
+    for m in prices.index:
+        rec = {'signal_month': str(m)}
+        fn = filt_disp.loc[m, PEN_NASDAQ] if PEN_NASDAQ in filt_disp.columns else np.nan
+        fk = filt_disp.loc[m, PEN_KOSPI] if PEN_KOSPI in filt_disp.columns else np.nan
+        rec['filt_nasdaq'] = fn
+        rec['filt_kospi'] = fk
+        if pd.isna(fn) or pd.isna(fk):
+            rec.update({'holds': None, 'defensive': None, 'hold': None, 'reason': '데이터 준비중'})
+            rows.append(rec)
+            continue
+        risk_off = (fn < 0) or (fk < 0)
+        rec['risk_off'] = risk_off
+        rec['filter_pass'] = not risk_off
+
+        ovalid = {t: off_ret.loc[m, t] for t in off if pd.notna(off_ret.loc[m, t])}
+        dvalid = ({t: def_disp.loc[m, t] for t in dfn if pd.notna(def_disp.loc[m, t])}
+                  if def_disp is not None else {})
+        rec['offense_scores'] = ovalid
+        rec['defense_scores'] = dvalid
+
+        if not risk_off and ovalid:
+            pick = max(ovalid, key=ovalid.get)
+            holds, defensive = [pick], False
+            other = [t for t in ovalid if t != pick]
+            reason = f"⚔️ 공격 · {PEN_TICKER_NAMES[pick]} (6M 수익률 우위)"
+        elif dvalid:
+            pick = max(dvalid, key=dvalid.get)
+            holds, defensive = [pick], True
+            trig = ("나스닥 6M 이격도<0" if fn < 0 else "") + (" · KOSPI 6M 이격도<0" if fk < 0 else "")
+            trig = trig.strip(" ·") or "위험회피 발동"
+            reason = f"🛡️ 방어 · {PEN_TICKER_NAMES[pick]} (3M 이격도 1위) [{trig}]"
+        else:
+            rec.update({'holds': None, 'defensive': None, 'hold': None, 'reason': '방어자산 없음(초기구간)'})
+            rows.append(rec)
+            continue
+
+        rec['holds'] = holds
+        rec['defensive'] = defensive
+        rec['hold'] = PEN_TICKER_NAMES[pick]
+        rec['reason'] = reason
+        rows.append(rec)
+
+    return pd.DataFrame(rows).set_index('signal_month', drop=False)
+
+
+def run_backtest_pension(prices, signals, cost=0.0025):
+    """또 연금 백테스트 (단일 종목 보유). compute_performance 호환 bt 반환."""
+    months = list(prices.index)
+    m_to_i = {m: i for i, m in enumerate(months)}
+    records = []
+    prev_w = {}
+    for m in prices.index:
+        i = m_to_i[m]
+        if i + 1 >= len(months):
+            break
+        nm = months[i + 1]
+        srow = signals.loc[str(m)] if str(m) in signals.index else None
+        if srow is None:
+            continue
+        holds = srow['holds']
+        if holds is None or (isinstance(holds, float) and pd.isna(holds)):
+            continue
+        pick = holds[0]
+        p0 = prices.loc[m, pick] if pick in prices.columns else np.nan
+        p1 = prices.loc[nm, pick] if pick in prices.columns else np.nan
+        if pd.isna(p0) or pd.isna(p1) or p0 == 0:
+            continue
+        ret_gross = p1 / p0 - 1.0
+        w_new = {pick: 1.0}
+        bought = sum(max(w_new.get(t, 0.0) - prev_w.get(t, 0.0), 0.0)
+                     for t in set(w_new) | set(prev_w))
+        tc = cost * bought
+        rec = {
+            'signal_month': str(m), 'hold_month': str(nm),
+            'defensive': bool(srow['defensive']),
+            'hold': srow['hold'], 'reason': srow['reason'],
+            'ret_gross': ret_gross, 'cost': tc, 'switched': bought > 1e-9,
+            'ret_strategy': ret_gross - tc,
+        }
+        for b in PEN_BENCHMARKS:
+            if b in prices.columns:
+                p0b, p1b = prices.loc[m, b], prices.loc[nm, b]
+                rec[f'ret_{b}'] = (p1b / p0b - 1.0) if (pd.notna(p0b) and pd.notna(p1b) and p0b != 0) else np.nan
+            else:
+                rec[f'ret_{b}'] = np.nan
+        records.append(rec)
+        prev_w = w_new
+
+    if not records:
+        return pd.DataFrame()
+    bt = pd.DataFrame(records)
+    bt['cum_strategy'] = (1 + bt['ret_strategy']).cumprod()
+    for b in PEN_BENCHMARKS:
+        bt[f'cum_{b}'] = (1 + bt[f'ret_{b}'].fillna(0)).cumprod()
+    peak = bt['cum_strategy'].cummax().clip(lower=1.0)
+    bt['dd_strategy'] = bt['cum_strategy'] / peak - 1.0
+    return bt
