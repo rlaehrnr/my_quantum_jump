@@ -65,6 +65,13 @@ STRATEGY2_TICKERS = [
     '329200',  # TIGER 리츠부동산인프라 (한국 리츠)
 ]
 
+# ── 3번 전략(쏘 연금: 나스닥 + 채권/금 방어 + cond1 위험회피)용 추가 종목 ──
+#    공격 133690·방어 305080·411060은 위에서 이미 수집. 위험회피(TIP/VWO/VEA/VIXY)는 미국 폴더.
+STRATEGY3_TICKERS = [
+    '148070',  # KIWOOM 국고채10년 (2011~)
+    '469830',  # SOL 초단기채권액티브 (2023~, 현금성)
+]
+
 # 종목명 (로그 출력용)
 TICKER_NAMES = {
     '379810': 'KODEX 미국나스닥100', '309230': 'ACE 미국WideMoat가치주',
@@ -77,10 +84,13 @@ TICKER_NAMES = {
     # 2번 전략용
     '133690': 'TIGER 미국나스닥100', '305080': 'TIGER 미국채10년선물',
     '261220': 'KODEX WTI원유선물(H)', '329200': 'TIGER 리츠부동산인프라',
+    # 3번 전략용
+    '148070': 'KIWOOM 국고채10년', '469830': 'SOL 초단기채권액티브',
 }
 
 # 중복 제거하며 순서 유지한 전체 수집 대상
-ALL_TICKERS = list(dict.fromkeys(OFFENSE_TICKERS + DEFENSE_TICKERS + STRATEGY2_TICKERS))
+ALL_TICKERS = list(dict.fromkeys(
+    OFFENSE_TICKERS + DEFENSE_TICKERS + STRATEGY2_TICKERS + STRATEGY3_TICKERS))
 
 START_DATE = '2008-01-01'   # 각 종목은 상장일부터 반환됨 (여유있게 이른 날짜)
 
