@@ -72,6 +72,21 @@ STRATEGY3_TICKERS = [
     '469830',  # SOL 초단기채권액티브 (2023~, 현금성)
 ]
 
+# ── 4번 전략(맘 비과세: 글로벌 모멘텀 공격 + 방어바스켓 + cond1)용 추가 종목 ──
+#    360750(S&P500)·379810(나스닥100)·411060(금현물)·217770(원유인버스)·455030(SOFR)·
+#    305080(미국채10년)·148070(국고채10년)은 위에서 이미 수집. 아래는 신규 8종.
+#    ⚠️ 인도니프티50(2023~)·은행고배당 등 상장이 최근이라 히스토리 짧음 → 백테스트 시작 늦음.
+MAMTAX_TICKERS = [
+    '466940',  # 은행고배당
+    '371160',  # TIGER 차이나항셍테크
+    '283580',  # KODEX 차이나CSI300
+    '453870',  # TIGER 인도니프티50
+    '241180',  # TIGER 일본니케이225
+    '278530',  # KODEX 200TR
+    '229200',  # KODEX 코스닥150
+    '144600',  # KODEX 은선물(H)
+]
+
 # 종목명 (로그 출력용)
 TICKER_NAMES = {
     '379810': 'KODEX 미국나스닥100', '309230': 'ACE 미국WideMoat가치주',
@@ -86,11 +101,16 @@ TICKER_NAMES = {
     '261220': 'KODEX WTI원유선물(H)', '329200': 'TIGER 리츠부동산인프라',
     # 3번 전략용
     '148070': 'KIWOOM 국고채10년', '469830': 'SOL 초단기채권액티브',
+    # 4번 전략용 (맘 비과세)
+    '466940': '은행고배당', '371160': 'TIGER 차이나항셍테크',
+    '283580': 'KODEX 차이나CSI300', '453870': 'TIGER 인도니프티50',
+    '241180': 'TIGER 일본니케이225', '278530': 'KODEX 200TR',
+    '229200': 'KODEX 코스닥150', '144600': 'KODEX 은선물(H)',
 }
 
 # 중복 제거하며 순서 유지한 전체 수집 대상
 ALL_TICKERS = list(dict.fromkeys(
-    OFFENSE_TICKERS + DEFENSE_TICKERS + STRATEGY2_TICKERS + STRATEGY3_TICKERS))
+    OFFENSE_TICKERS + DEFENSE_TICKERS + STRATEGY2_TICKERS + STRATEGY3_TICKERS + MAMTAX_TICKERS))
 
 START_DATE = '2008-01-01'   # 각 종목은 상장일부터 반환됨 (여유있게 이른 날짜)
 
