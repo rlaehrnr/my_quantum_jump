@@ -29,6 +29,10 @@ from utils.snowball import (
     compute_signals_so, run_backtest_so,
     SO_FILTER_ASSET, SO_OFFENSE_ASSETS, SO_DEFENSE_ASSETS, SO_TOPK,
     SIGNAL_ASSETS, C1_RISK_ASSETS, VIXY_SPIKE,
+    # 또 ISA (국내)
+    load_ko_prices, compute_signals_ko, run_backtest_ko,
+    KO_OFFENSE, KO_DEFENSE, KO_TICKER_NAMES, KO_FILTER_ASSET, KO_FILTER_WIN,
+    KO_TOPK, KO_DEF_TOPK, KO_BENCHMARKS,
 )
 from utils.ui_components import inject_custom_css, get_monthly_heatmap, get_mdd_history
 
@@ -49,6 +53,11 @@ ASSET_COLORS = {
     # 쏘 삼성 (SPY/QQQ/GLD/IEF는 위와 공유)
     'EWY': '#F59E0B', 'FDN': '#14B8A6', 'IBB': '#A855F7', 'LIT': '#84CC16',
     'SMH': '#06B6D4', 'XLE': '#EF4444', 'XLF': '#3B82F6',
+    # 또 ISA (국내 ETF, 종목코드 키)
+    '379810': '#10B981', '309230': '#8B5CF6', '360750': '#6366F1', '102110': '#F59E0B',
+    '130730': '#94A3B8', '152380': '#3B82F6', '332620': '#0EA5E9', '411060': '#FBBF24',
+    '137610': '#84CC16', '182480': '#14B8A6',
+    '217770': '#EF4444', '225130': '#F97316', '455030': '#22C55E',
 }
 
 
@@ -784,12 +793,192 @@ def render_so():
 
 
 # ==========================================
+# 또 ISA (탭 4) 렌더
+# ==========================================
+def _ko_short(code):
+    """표시용 짧은 이름 (브랜드 뒤 핵심만): 'KODEX 미국나스닥100' → '미국나스닥100'."""
+    nm = KO_TICKER_NAMES.get(code, code)
+    parts = nm.split(' ', 1)
+    return parts[-1] if len(parts) > 1 else nm
+
+
+def build_ko_detail(signals, bt):
+    """또 ISA 월별 상세 근거 DataFrame."""
+    sig_by_month = {str(r['signal_month']): r for _, r in signals.iterrows()}
+    rows = []
+    for _, b in bt.iterrows():
+        s = sig_by_month.get(b['signal_month'], {})
+        td = s.get('tip_disp', np.nan)
+        rows.append({
+            '보유월': b['hold_month'],
+            '국면': '방어' if b['defensive'] else '공격',
+            '보유': b['hold'],
+            'TIP 이격도': (f"{td*100:+.2f}%" if pd.notna(td) else 'N/A'),
+            '필터': '통과' if s.get('filter_pass') else '이탈',
+            '월수익률': f"{b['ret_strategy']*100:+.2f}%",
+            '누적': f"{b['cum_strategy']:.2f}",
+        })
+    return pd.DataFrame(rows)
+
+
+def render_ko():
+    with st.spinner("국내 ETF 데이터 로딩 중..."):
+        ko_prices = load_ko_prices()
+
+    if ko_prices.empty:
+        st.error(
+            "📁 국내 ETF 데이터가 없습니다. `data/snowball_kr/monthly/` 폴더가 비어있거나 "
+            "아직 수집되지 않았습니다. GitHub Actions에서 **Snowball KR Monthly Update** "
+            "워크플로우를 한 번 실행하세요."
+        )
+        return
+
+    need = KO_OFFENSE + KO_DEFENSE + [KO_FILTER_ASSET]
+    missing = [t for t in need if t not in ko_prices.columns]
+    if missing:
+        miss_disp = ', '.join(f"{t}({KO_TICKER_NAMES.get(t, t)})" if t in KO_TICKER_NAMES else t
+                              for t in missing)
+        st.warning(f"⚠️ 누락된 종목: {miss_disp}. 해당 파일이 아직 없을 수 있습니다.")
+
+    signals = compute_signals_ko(ko_prices)
+    valid = signals.index[signals['holds'].notna()]
+    if len(valid) == 0:
+        st.error("유효한 신호월이 없습니다. (데이터 워밍업 부족 또는 파일 누락)")
+        return
+    lm = valid[-1]
+    last = signals.loc[lm]
+    defensive_now = bool(last['defensive'])
+    holds = last['holds'] or []
+    hold_set = set(holds)
+    hold_disp = " · ".join(
+        f"<span style='color:{ASSET_COLORS.get(t, '#E5E7EB')};'>{_ko_short(t)}</span>" for t in holds)
+
+    st.markdown(
+        f"<div style='font-size:1.5rem; font-weight:800; margin-bottom:8px;'>공격 · 방어 자산 현황 "
+        f"<span style='font-size:12px; color:#9CA3AF; font-weight:500;'>(기준: {lm} 월말 · ISA/연금 매매용)</span></div>",
+        unsafe_allow_html=True)
+    _mode_badge(defensive_now, hold_disp)
+
+    off_scores = last.get('offense_scores', {}) or {}
+    def_scores = last.get('defense_scores', {}) or {}
+    off_ranked = sorted(off_scores, key=off_scores.get, reverse=True)
+
+    col_off, col_def = st.columns(2)
+    with col_off:
+        is_active = not defensive_now
+        label = "⚔️ 공격 후보 (1·3·6·12M 모멘텀 점수 합)" + ("" if is_active else "  · 비활성")
+        st.markdown(f"<div style='font-weight:800; font-size:15px; margin-bottom:4px; "
+                    f"color:{'#10B981' if is_active else '#9CA3AF'};'>{label}</div>", unsafe_allow_html=True)
+        st.markdown(f"<div style='font-size:11px; color:#9CA3AF; margin-bottom:2px;'>10종 중 점수 상위 {KO_TOPK}종 동일가중 매수</div>",
+                    unsafe_allow_html=True)
+        rows = []
+        for i, code in enumerate(off_ranked, 1):
+            v = off_scores[code]
+            rows.append({'순위': i, '종목': f"{code} {_ko_short(code)}",
+                         '모멘텀 점수': (f"{v*100:+.1f}%" if pd.notna(v) else 'N/A'),
+                         '매수': '★' if (is_active and code in hold_set) else ''})
+        odf = pd.DataFrame(rows)
+        def _off_style(row):
+            base = ['' for _ in row]
+            if row['매수'] == '★':
+                c = ASSET_COLORS.get(row['종목'].split(' ', 1)[0], '#10B981')
+                base = [f'background-color: {c}44; font-weight: 800;' for _ in row]
+            elif not is_active:
+                base = ['color: #9CA3AF;' for _ in row]
+            return base
+        st.dataframe(odf.style.apply(_off_style, axis=1), hide_index=True,
+                     use_container_width=True, key="ko_off")
+    with col_def:
+        is_active = defensive_now
+        label = "🛡️ 방어 후보 (1개월 수익률)" + ("" if is_active else "  · 비활성")
+        st.markdown(f"<div style='font-weight:800; font-size:15px; margin-bottom:4px; "
+                    f"color:{'#EF4444' if is_active else '#9CA3AF'};'>{label}</div>", unsafe_allow_html=True)
+        st.markdown(f"<div style='font-size:11px; color:#9CA3AF; margin-bottom:2px;'>3종 중 1M 수익률 상위 {KO_DEF_TOPK}종 동일가중(50:50)</div>",
+                    unsafe_allow_html=True)
+        def_ranked = sorted(def_scores, key=def_scores.get, reverse=True)
+        rows = []
+        for i, code in enumerate(def_ranked, 1):
+            v = def_scores[code]
+            rows.append({'순위': i, '종목': f"{code} {_ko_short(code)}",
+                         '1M 수익률': (f"{v*100:+.1f}%" if pd.notna(v) else 'N/A'),
+                         '매수': '★' if (is_active and code in hold_set) else ''})
+        ddf = pd.DataFrame(rows)
+        def _def_style(row):
+            if row['매수'] == '★':
+                c = ASSET_COLORS.get(row['종목'].split(' ', 1)[0], '#EF4444')
+                return [f'background-color: {c}44; font-weight: 800;' for _ in row]
+            return ['color: #9CA3AF;' for _ in row] if not is_active else ['' for _ in row]
+        st.dataframe(ddf.style.apply(_def_style, axis=1), hide_index=True,
+                     use_container_width=True, key="ko_def")
+
+    # 위험회피 필터 (TIP 10M MA 이격도)
+    st.markdown("<div style='font-size:1.5rem; font-weight:800; margin:16px 0 8px 0;'>위험회피 필터</div>",
+                unsafe_allow_html=True)
+    td = last.get('tip_disp', np.nan)
+    filt_pass = bool(last['filter_pass'])
+    badge = (f"<span style='font-size:13px; font-weight:900; color:#10B981; background:#10B98118; padding:3px 10px; border-radius:6px;'>✅ 통과 (공격 허용)</span>"
+             if filt_pass else
+             f"<span style='font-size:13px; font-weight:900; color:#EF4444; background:#EF444418; padding:3px 10px; border-radius:6px;'>🛑 미통과 (방어 전환)</span>")
+    st.markdown(f"<div style='margin-bottom:6px;'>{badge} <b>필터: TIP 추세</b> "
+                f"<span style='font-size:12px; color:#9CA3AF;'>(미국 물가연동채 TIP의 {KO_FILTER_WIN}개월 이동평균 이격도 &gt; 0 이면 공격)</span></div>",
+                unsafe_allow_html=True)
+    fdata = [{'자산': f'{KO_FILTER_ASSET} (미국 물가연동채)',
+              f'{KO_FILTER_WIN}M MA 이격도': (f"{td*100:+.2f}%" if pd.notna(td) else 'N/A'),
+              '조건': '> 0', '충족?': ('✅' if filt_pass else '❌')}]
+    st.dataframe(pd.DataFrame(fdata), hide_index=True, use_container_width=True, key="ko_filter")
+
+    # 백테스트
+    st.markdown("---")
+    t_col, s_col = st.columns([2.2, 1])
+    with t_col:
+        st.markdown("### 📈 백테스트 성과")
+    with s_col:
+        cost_pct = st.slider("거래비용 %/교체", 0.0, 1.0, 0.25, 0.05, format="%.2f%%",
+                             key="ko_cost",
+                             help="새로 매수하는 비중만큼 차감(턴오버). 벤치마크는 매수 후 보유로 비용 없음.")
+    cost_rate = cost_pct / 100.0
+    bt = run_backtest_ko(ko_prices, signals, cost=cost_rate)
+    if bt.empty:
+        st.warning("백테스트 데이터가 충분하지 않습니다.")
+        return
+    perf = compute_performance(bt)
+
+    # KOSPI200(102110) 벤치마크 비교 라인
+    bench_code = KO_BENCHMARKS[0]
+    if f'cum_{bench_code}' in bt.columns and bt[f'ret_{bench_code}'].notna().sum() > 0:
+        b_cum = bt[f'cum_{bench_code}'].iloc[-1]
+        b_n = len(bt)
+        b_cagr = b_cum ** (12.0 / b_n) - 1.0 if b_cum > 0 else -1.0
+        st.caption(f"📊 참고 벤치마크 — {bench_code} {KO_TICKER_NAMES.get(bench_code,'')} "
+                   f"매수후보유: 누적 {(b_cum-1)*100:,.0f}% · CAGR {b_cagr*100:.1f}%")
+
+    detail_df = build_ko_detail(signals, bt)
+    off_list = ', '.join(f"{c}" for c in KO_OFFENSE)
+    def_list = ', '.join(f"{c}" for c in KO_DEFENSE)
+    settings_dict = {
+        '전략': '또 ISA (국내 ETF)',
+        '위험회피 필터': f'TIP {KO_FILTER_WIN}M MA 이격도 > 0 → 공격',
+        '거래비용/교체': f"{cost_pct:.2f}%",
+        '기간': f"{perf['n_months']}개월 ({bt['hold_month'].iloc[0]} ~ {bt['hold_month'].iloc[-1]})",
+        '공격': f'[{off_list}] 중 1+3+6+12M 수익률 합 상위 {KO_TOPK}종 동일가중',
+        '방어': f'[{def_list}] 중 1M 수익률 상위 {KO_DEF_TOPK}종 동일가중(50:50)',
+        '벤치마크': f"{bench_code}({KO_TICKER_NAMES.get(bench_code,'')})",
+        '주의': '종목별 상장시점이 달라 초기 구간은 가용 종목만으로 순위(동적 유니버스). ISA/연금 매매용.',
+    }
+    render_backtest_section(bt, perf, cost_rate, key_prefix="ko",
+                            strat_color='#0EA5E9', strat_name='또 ISA 전략',
+                            detail_df=detail_df, settings_dict=settings_dict)
+
+
+# ==========================================
 # 탭 배치
 # ==========================================
-tab1, tab2, tab3 = st.tabs(["🇺🇸 또 메리츠", "🇺🇸 맘 삼성", "🇺🇸 쏘 삼성"])
+tab1, tab2, tab3, tab4 = st.tabs(["🇺🇸 또 메리츠", "🇺🇸 맘 삼성", "🇺🇸 쏘 삼성", "🇰🇷 또 ISA"])
 with tab1:
     render_meritz()
 with tab2:
     render_samsung()
 with tab3:
     render_so()
+with tab4:
+    render_ko()
