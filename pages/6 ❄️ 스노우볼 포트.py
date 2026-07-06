@@ -40,6 +40,10 @@ from utils.snowball import (
     # 쏘 연금 (국내 나스닥 단일 + cond1 위험회피)
     load_ssopen_prices, compute_signals_ssopen, run_backtest_ssopen,
     SSOPEN_NASDAQ, SSOPEN_DEFENSE, SSOPEN_DEF_WINDOWS, SSOPEN_TICKER_NAMES, SSOPEN_BENCHMARKS,
+    # 맘 비과세 (국내 글로벌 듀얼모멘텀 + cond1)
+    load_mamtax_prices, compute_signals_mamtax, run_backtest_mamtax,
+    MAMTAX_OFFENSE, MAMTAX_DEFENSE, MAMTAX_TICKER_NAMES, MAMTAX_BENCHMARKS,
+    mamtax_live_ticker, mamtax_live_name,
 )
 from utils.ui_components import inject_custom_css, get_monthly_heatmap, get_mdd_history
 
@@ -69,6 +73,10 @@ ASSET_COLORS = {
     '133690': '#10B981', '305080': '#3B82F6', '261220': '#EF4444', '329200': '#14B8A6',
     # 쏘 연금 (추가 방어: 국고채10년·SOL초단기채)
     '148070': '#0EA5E9', '469830': '#94A3B8',
+    # 맘 비과세 (실운용 티커 기준)
+    '379810': '#10B981', '278530': '#3B82F6', '192090': '#EF4444', '453870': '#F97316',
+    '241180': '#14B8A6', '229200': '#A855F7', '360750': '#6366F1', '466940': '#F59E0B',
+    '371160': '#EC4899', '144600': '#94A3B8', '455030': '#64748B',
 }
 
 
@@ -1311,10 +1319,188 @@ def render_ssopen():
 
 
 # ==========================================
+# 맘 비과세 (탭 7) 렌더 — 글로벌 듀얼모멘텀 + cond1
+# ==========================================
+def build_mamtax_detail(signals, bt):
+    """맘 비과세 월별 상세 근거."""
+    sig_by_month = {str(r['signal_month']): r for _, r in signals.iterrows()}
+    rows = []
+    for _, b in bt.iterrows():
+        s = sig_by_month.get(b['signal_month'], {})
+        vixy = s.get('VIXY_6m', np.nan)
+        rows.append({
+            '보유월': b['hold_month'],
+            '국면': '🛡️방어' if b['defensive'] else '⚔️공격',
+            '보유(실운용)': b['hold'],
+            'cond1': '🛑발동' if s.get('risk_off') else '✅통과',
+            'VIXY 6M': (f"{vixy*100:+.1f}%" if pd.notna(vixy) else 'N/A'),
+            '월수익률': f"{b['ret_strategy']*100:+.2f}%",
+            '누적': f"{b['cum_strategy']:.2f}",
+        })
+    return pd.DataFrame(rows)
+
+
+def render_mamtax():
+    with st.spinner("국내 ETF 데이터 로딩 중..."):
+        mp = load_mamtax_prices()
+        us_prices = load_monthly_prices()  # cond1 신호자산(TIP/VWO/VEA/VIXY)
+
+    if mp.empty:
+        st.error("📁 맘 비과세 데이터가 없습니다. `data/snowball_kr/monthly/`에 공격 10종·방어 6종이 "
+                 "수집됐는지 확인하세요.")
+        return
+    missing = [t for t in (MAMTAX_OFFENSE + MAMTAX_DEFENSE) if t not in mp.columns]
+    if missing:
+        st.warning(f"⚠️ 누락: {', '.join(f'{t}({MAMTAX_TICKER_NAMES.get(t, t)})' for t in missing)}")
+
+    signals = compute_signals_mamtax(mp, us_prices)
+    valid = signals.index[signals['holds'].notna()]
+    if len(valid) == 0:
+        st.error("유효한 신호월이 없습니다. (cond1 자산 TIP/VWO/VEA/VIXY 로드 및 공격 12M 4종 확인)")
+        return
+    last = signals.loc[valid[-1]]
+    defensive_now = bool(last['defensive'])
+    holds = last['holds'] or {}
+    hold_set = set(holds)
+    held_live = {mamtax_live_ticker(t) for t in hold_set}
+    hold_disp = " · ".join(
+        f"<span style='color:{ASSET_COLORS.get(mamtax_live_ticker(t), '#E5E7EB')};'>"
+        f"{mamtax_live_name(t)} {holds[t]*100:.0f}%</span>"
+        for t in holds)
+
+    st.markdown(
+        f"<div style='font-size:1.5rem; font-weight:800; margin-bottom:8px;'>공격 · 방어 자산 현황 "
+        f"<span style='font-size:12px; color:#9CA3AF; font-weight:500;'>(기준: {valid[-1]} 월말 · 비과세계좌 매매용)</span></div>",
+        unsafe_allow_html=True)
+    _mode_badge(defensive_now, hold_disp)
+    st.caption("ℹ️ 신호·백테스트는 장수 종목(133690·102110)으로 계산하고, 표시·매매는 실운용 종목"
+               "(379810 KODEX 미국나스닥100·278530 KODEX 200TR)으로 안내합니다. CSI300은 192090 동일.")
+
+    off_scores = last.get('off_scores', {}) or {}
+    def_scores = last.get('def_scores', {}) or {}
+
+    col_off, col_def = st.columns(2)
+    with col_off:
+        is_active = not defensive_now
+        label = "⚔️ 공격 (12M 수익률 상위4·양수 균등)" + ("" if is_active else "  · 비활성")
+        st.markdown(f"<div style='font-weight:800; font-size:15px; margin-bottom:4px; "
+                    f"color:{'#10B981' if is_active else '#9CA3AF'};'>{label}</div>", unsafe_allow_html=True)
+        st.markdown("<div style='font-size:11px; color:#9CA3AF; margin-bottom:2px;'>10종 중 12M 수익률 상위 4위 → "
+                    "12M 음수 제외 → 남은 승자 균등(듀얼모멘텀)</div>", unsafe_allow_html=True)
+        ranked = sorted(off_scores, key=off_scores.get, reverse=True)
+        rows = []
+        for rk, t in enumerate(ranked, 1):
+            lt = mamtax_live_ticker(t)
+            rows.append({'순위': rk, '실운용': lt, '종목명': mamtax_live_name(t),
+                         '12M수익률': f"{off_scores[t]*100:+.1f}%",
+                         '보유': (f"{holds[t]*100:.0f}%" if t in hold_set else '—')})
+        odf = pd.DataFrame(rows)
+
+        def _off_style(row):
+            if is_active and row['실운용'] in held_live:
+                c = ASSET_COLORS.get(row['실운용'], '#10B981')
+                return [f'background-color: {c}44; font-weight: 800;' for _ in row]
+            return ['color: #9CA3AF;' for _ in row]
+        st.dataframe(odf.style.apply(_off_style, axis=1), hide_index=True,
+                     use_container_width=True, key="mamtax_off")
+    with col_def:
+        is_active = defensive_now
+        label = "🛡️ 방어 후보 (3M MA이격도 상위2)" + ("" if is_active else "  · 비활성")
+        st.markdown(f"<div style='font-weight:800; font-size:15px; margin-bottom:4px; "
+                    f"color:{'#EF4444' if is_active else '#9CA3AF'};'>{label}</div>", unsafe_allow_html=True)
+        st.markdown("<div style='font-size:11px; color:#9CA3AF; margin-bottom:2px;'>원유인버스·금현물·은선물·"
+                    "미국SOFR·미국채10년·국고채10년 중 3M MA이격도 상위 2종, 각 50% (cond1 발동 시)</div>",
+                    unsafe_allow_html=True)
+        def_ranked = sorted(def_scores, key=def_scores.get, reverse=True)
+        rows = [{'티커': c, '종목명': MAMTAX_TICKER_NAMES.get(c, c),
+                 '3M MA이격도': (f"{def_scores[c]*100:+.1f}%" if pd.notna(def_scores[c]) else 'N/A'),
+                 '보유': (f"{holds[c]*100:.0f}%" if c in hold_set else '—')}
+                for c in def_ranked]
+        ddf = pd.DataFrame(rows)
+
+        def _def_style(row):
+            if is_active and row['티커'] in hold_set:
+                c = ASSET_COLORS.get(row['티커'], '#EF4444')
+                return [f'background-color: {c}44; font-weight: 800;' for _ in row]
+            return ['color: #9CA3AF;' for _ in row] if not is_active else ['' for _ in row]
+        st.dataframe(ddf.style.apply(_def_style, axis=1), hide_index=True,
+                     use_container_width=True, key="mamtax_def")
+
+    # 위험회피 필터 (cond1)
+    st.markdown("<div style='font-size:1.5rem; font-weight:800; margin:16px 0 8px 0;'>위험회피 필터 (cond1)</div>",
+                unsafe_allow_html=True)
+    risk_off = bool(last.get('risk_off', False))
+    badge = (f"<span style='font-size:13px; font-weight:900; color:#EF4444; background:#EF444418; padding:3px 10px; border-radius:6px;'>🛑 발동 (방어 전환)</span>"
+             if risk_off else
+             f"<span style='font-size:13px; font-weight:900; color:#10B981; background:#10B98118; padding:3px 10px; border-radius:6px;'>✅ 통과 (공격 허용)</span>")
+    st.markdown(f"<div style='margin-bottom:6px;'>{badge} <b>쏘 연금·또 메리츠와 동일 신호</b> "
+                f"<span style='font-size:12px; color:#9CA3AF;'>(TIP·VWO·VEA 6M 모두 음수 <b>AND</b> (VIXY 6M 음수 또는 ≥ +{int(VIXY_SPIKE*100)}%) → 방어)</span></div>",
+                unsafe_allow_html=True)
+    tip6 = last.get('TIP_6m', np.nan)
+    vwo6 = last.get('VWO_6m', np.nan)
+    vea6 = last.get('VEA_6m', np.nan)
+    vixy6 = last.get('VIXY_6m', np.nan)
+    fdata = [
+        {'자산': 'TIP', '6M 수익률': (f"{tip6*100:+.2f}%" if pd.notna(tip6) else 'N/A'),
+         '발동조건': '< 0', '충족?': ('✅' if (pd.notna(tip6) and tip6 < 0) else '❌')},
+        {'자산': 'VWO', '6M 수익률': (f"{vwo6*100:+.2f}%" if pd.notna(vwo6) else 'N/A'),
+         '발동조건': '< 0', '충족?': ('✅' if (pd.notna(vwo6) and vwo6 < 0) else '❌')},
+        {'자산': 'VEA', '6M 수익률': (f"{vea6*100:+.2f}%" if pd.notna(vea6) else 'N/A'),
+         '발동조건': '< 0', '충족?': ('✅' if (pd.notna(vea6) and vea6 < 0) else '❌')},
+        {'자산': 'VIXY', '6M 수익률': (f"{vixy6*100:+.2f}%" if pd.notna(vixy6) else 'N/A'),
+         '발동조건': f'< 0 또는 ≥ +{int(VIXY_SPIKE*100)}%',
+         '충족?': ('✅' if (pd.notna(vixy6) and (vixy6 < 0 or vixy6 >= VIXY_SPIKE)) else '❌')},
+    ]
+    st.dataframe(pd.DataFrame(fdata), hide_index=True, use_container_width=True, key="mamtax_filter")
+
+    # 백테스트
+    st.markdown("---")
+    t_col, s_col = st.columns([2.2, 1])
+    with t_col:
+        st.markdown("### 📈 백테스트 성과")
+    with s_col:
+        cost_pct = st.slider("거래비용 %/교체", 0.0, 1.0, 0.25, 0.05, format="%.2f%%",
+                             key="mamtax_cost", help="새로 매수하는 비중만큼 차감(턴오버).")
+    cost_rate = cost_pct / 100.0
+    bt = run_backtest_mamtax(mp, signals, cost=cost_rate)
+    if bt.empty:
+        st.warning("백테스트 데이터가 충분하지 않습니다.")
+        return
+    perf = compute_performance(bt)
+
+    bench_bits = []
+    for bc in MAMTAX_BENCHMARKS:
+        col = f'cum_{bc}'
+        if col in bt.columns and bt[f'ret_{bc}'].notna().sum() > 0:
+            bcum = bt[col]
+            b_cagr = bcum.iloc[-1] ** (12.0 / len(bt)) - 1.0 if bcum.iloc[-1] > 0 else -1.0
+            b_mdd = (bcum / bcum.cummax().clip(lower=1.0) - 1.0).min()
+            bench_bits.append(f"{mamtax_live_name(bc)} 매수후보유 CAGR {b_cagr*100:.1f}%·MDD {b_mdd*100:.1f}%")
+    if bench_bits:
+        st.caption("📊 참고 벤치마크 — " + " / ".join(bench_bits) + "  → 전략이 수익↑·낙폭↓")
+
+    detail_df = build_mamtax_detail(signals, bt)
+    settings_dict = {
+        '전략': '맘 비과세 (글로벌 듀얼모멘텀 + cond1)',
+        '공격': '10종 중 12M 수익률 상위4 → 12M 음수 제외 → 승자 균등(듀얼모멘텀)',
+        '방어': '6종 중 3M MA이격도 상위2, 각 50% (cond1 발동 시)',
+        '위험회피 필터': f'cond1: TIP·VWO·VEA 6M 음수 AND (VIXY 6M 음수 또는 ≥ +{int(VIXY_SPIKE*100)}%)',
+        '거래비용/교체': f"{cost_pct:.2f}%",
+        '기간': f"{perf['n_months']}개월 ({bt['hold_month'].iloc[0]} ~ {bt['hold_month'].iloc[-1]})",
+        '벤치마크': '나스닥100·KOSPI200 매수후보유',
+        '티커': '신호·백테스트=133690·102110·192090(장수), 실운용=379810·278530·192090',
+        '주의': '공격 자산 상장시점이 달라 초기는 부분 유니버스(4→10종). 비과세계좌 매매용.',
+    }
+    render_backtest_section(bt, perf, cost_rate, key_prefix="mamtax",
+                            strat_color='#F97316', strat_name='맘 비과세 전략',
+                            detail_df=detail_df, settings_dict=settings_dict)
+
+
+# ==========================================
 # 탭 배치
 # ==========================================
-tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs(
-    ["🇺🇸 또 메리츠", "🇺🇸 맘 삼성", "🇺🇸 쏘 삼성", "🇰🇷 또 ISA", "🇰🇷 또 연금", "🇰🇷 쏘 연금"])
+tab1, tab2, tab3, tab4, tab5, tab6, tab7 = st.tabs(
+    ["🇺🇸 또 메리츠", "🇺🇸 맘 삼성", "🇺🇸 쏘 삼성", "🇰🇷 또 ISA", "🇰🇷 또 연금", "🇰🇷 쏘 연금", "🇰🇷 맘 비과세"])
 with tab1:
     render_meritz()
 with tab2:
@@ -1327,3 +1513,5 @@ with tab5:
     render_pension()
 with tab6:
     render_ssopen()
+with tab7:
+    render_mamtax()
