@@ -153,7 +153,7 @@ def get_mdd_history(equity_series):
         if days < 30:
             return f"{days}일"
         months = days / 30.44  # 평균 한 달 일수
-        return f"{months:.1f}개월"
+        return f"{months:.0f}개월"
     res_df['기간'] = res_df.apply(lambda r: f"{r['시작일']} ~ {r['최저일']}", axis=1)
     res_df['회복기간'] = res_df.apply(lambda r: calc_months(r['시작일'], r['회복일']), axis=1)
     res_df['MDD'] = res_df['MDD'].apply(lambda x: f"{x:.2f}%")
