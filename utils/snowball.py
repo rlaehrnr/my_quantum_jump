@@ -515,7 +515,9 @@ def compute_signals(prices, div_yield):
         div_thr   = thr_f.reindex(prices.index)
         div_rank  = rank_f.reindex(prices.index)
         div_total = total_f.reindex(prices.index)
-        cond2 = (div_pct <= 10).fillna(False)
+        # ★ 전략 변경: 하위 10%(고평가)면 방어 — 단 '1등(=배당 최저=가장 비쌈)'인 달만
+        #   방어에서 제외해 공격으로 돌린다. (rank!=1 조건 추가)
+        cond2 = ((div_pct <= 10) & (div_rank != 1)).fillna(False)
     else:
         div_pct = pd.Series(np.nan, index=prices.index)
         div_thr = pd.Series(np.nan, index=prices.index)
@@ -1096,7 +1098,7 @@ def run_backtest_so(prices, signals, cost=0.0025):
 # 또 ISA (탭 4) — 국내 상장 ETF 모멘텀 로테이션 엔진
 # ==========================================================================
 #   · 공격 10종: (1+3+6+12개월 수익률 합) 상위 3종 동일가중
-#   · 방어 3종:  (1개월 수익률) 상위 2종 동일가중(50:50)
+#   · 방어 3종:  2개월 MA 이격도 상위 2종 동일가중(50:50)
 #   · 위험회피:  TIP 10개월 MA 이격도 > 0 → 공격, 아니면 방어
 #   데이터는 data/snowball_kr/monthly/ (미국 파이프라인과 분리), TIP은 미국 폴더 공유.
 # --------------------------------------------------------------------------
@@ -1223,7 +1225,7 @@ def compute_signals_ko(prices):
       · 위험회피: TIP 10M MA 이격도 > 0 → 공격 허용, 아니면 방어
       · 공격: 그 시점 존재하는 공격 후보(1/3/6/12M 수익률 모두 계산가능) 중
               모멘텀 점수(1+3+6+9+12M 합, 최근1M≥0) 상위 3종 동일가중
-      · 방어: 존재하는 방어 후보 중 1M 수익률 상위 2종 동일가중(50:50)
+      · 방어: 존재하는 방어 후보 중 2개월 MA 이격도 상위 2종 동일가중(50:50)
     종목별 상장 시점이 달라 '그 시점 가용 종목'만으로 순위를 매긴다(동적 유니버스).
 
     run_backtest_ko와 호환되는 holds/defensive/hold/reason + 표시용 컬럼을 담아 반환.
