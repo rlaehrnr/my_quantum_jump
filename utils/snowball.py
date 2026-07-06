@@ -1748,3 +1748,234 @@ def run_backtest_ssopen(prices, signals, cost=0.0025):
     peak = bt['cum_strategy'].cummax().clip(lower=1.0)
     bt['dd_strategy'] = bt['cum_strategy'] / peak - 1.0
     return bt
+
+
+# ==========================================================================
+# 맘 비과세 (탭 7) — 글로벌 듀얼모멘텀 공격 + 방어 바스켓 + cond1 위험회피
+# ==========================================================================
+#   · 공격: 10종 중 12M 수익률 상위 4위 → 그중 12M 음수 종목은 제외하고
+#           남은 '양수 모멘텀 승자'에 균등 재분배(듀얼모멘텀). 평소 4종 각 25%,
+#           약세 브레스 땐 자동 집중.
+#   · 방어: 6종 중 3M MA 이격도 상위 2위, 각 50% (cond1 발동 시).
+#   · 위험회피(cond1, 쏘 연금과 동일): TIP·VWO·VEA·VIXY 6M.
+#   · 티커: 신호·백테스트는 장수 종목(133690·102110·192090),
+#           화면·실운용 표시는 별칭(379810·278530·192090).
+#   검증: CAGR ~31% · MDD -12.8% · Sortino ~4.1 (2016-10~2026-05).
+# --------------------------------------------------------------------------
+MAMTAX_OFFENSE = ['466940', '371160', '192090', '453870', '241180',
+                  '102110', '229200', '133690', '360750', '411060']
+MAMTAX_DEFENSE = ['217770', '411060', '144600', '455030', '305080', '148070']
+MAMTAX_OFF_WIN = 12   # 공격 선정·게이트: 12M 수익률 (상대+절대 모멘텀)
+MAMTAX_DEF_WIN = 3    # 방어 선정: 3M MA 이격도
+MAMTAX_TOP_OFF = 4
+MAMTAX_TOP_DEF = 2
+MAMTAX_BENCHMARKS = ['133690', '102110']   # 나스닥100·KOSPI200 매수후보유
+# 백테스트(장수)↔실운용 티커 별칭: 신호·백테스트는 왼쪽(장수), 표시·매매는 오른쪽.
+MAMTAX_LIVE_ALIAS = {'133690': '379810', '102110': '278530'}
+MAMTAX_ALL = list(dict.fromkeys(MAMTAX_OFFENSE + MAMTAX_DEFENSE))
+
+MAMTAX_TICKER_NAMES = {
+    '466940': '은행고배당', '371160': 'TIGER 차이나항셍테크', '192090': 'TIGER 차이나CSI300',
+    '453870': 'TIGER 인도니프티50', '241180': 'TIGER 일본니케이225',
+    '102110': 'TIGER 200', '229200': 'KODEX 코스닥150', '133690': 'TIGER 미국나스닥100',
+    '360750': 'TIGER 미국S&P500', '411060': 'ACE KRX금현물',
+    '217770': 'TIGER WTI원유선물인버스(H)', '144600': 'KODEX 은선물(H)',
+    '455030': 'KODEX 미국달러SOFR금리액티브', '305080': 'TIGER 미국채10년선물',
+    '148070': 'KIWOOM 국고채10년',
+    # 실운용 별칭 표시명
+    '379810': 'KODEX 미국나스닥100', '278530': 'KODEX 200TR',
+}
+
+
+def mamtax_live_ticker(code):
+    """백테스트 티커 → 실운용 티커 (별칭 없으면 그대로)."""
+    return MAMTAX_LIVE_ALIAS.get(code, code)
+
+
+def mamtax_live_name(code):
+    """실운용 종목명 (별칭 반영)."""
+    return MAMTAX_TICKER_NAMES.get(mamtax_live_ticker(code), code)
+
+
+@st.cache_data(ttl="1h", show_spinner=False)
+def load_mamtax_prices(kr_dir='data/snowball_kr/monthly'):
+    """맘 비과세용 국내 ETF 월봉 로드 (공격 10 + 방어 6, 백테스트 티커).
+
+    실운용 티커(379810·278530)는 신호 계산에 불필요하므로 여기서 안 받는다
+    (엔진은 장수 티커로 계산하고 표시만 별칭으로 매핑).
+    cond1 신호자산(TIP/VWO/VEA/VIXY)은 load_monthly_prices()에서 별도로 받는다.
+    """
+    def _variants(code):
+        nm = _ko_clean_name(MAMTAX_TICKER_NAMES.get(code, code))
+        return (f"{code}_{nm}_과거_데이터.csv", f"{code}_과거_데이터.csv", f"{code}.csv")
+
+    series = {}
+    for code in MAMTAX_ALL:
+        variants = _variants(code)
+        s = None
+        for fn in variants:
+            s = _series_from_csv(_fetch_ko_raw_csv(fn))
+            if s is not None and len(s) > 3:
+                break
+        if (s is None or len(s) <= 3) and os.path.isdir(kr_dir):
+            norm = lambda x: re.sub(r'[\s_]+', '', x).lower()
+            targets = {norm(v) for v in variants}
+            for f in os.listdir(kr_dir):
+                if f.lower().endswith('.csv') and norm(f) in targets:
+                    try:
+                        s = _series_from_csv(_read_csv_any_encoding(os.path.join(kr_dir, f)))
+                        break
+                    except Exception:
+                        pass
+        if s is not None:
+            series[code] = s
+    if not series:
+        return pd.DataFrame()
+    df = pd.DataFrame(series).sort_index()
+    return df[~df.index.duplicated(keep='last')]
+
+
+def compute_signals_mamtax(prices, us_prices):
+    """맘 비과세 월별 신호·보유(가중) 계산.
+
+    각 월 m에서 (모두 m월 말 데이터 기준 — 미래참조 없음):
+      · 위험회피(cond1): TIP·VWO·VEA·VIXY 6M (쏘 연금과 동일).
+      · 발동   → 방어: 6종 중 3M MA 이격도 상위 2위, 각 50%.
+      · 미발동 → 공격: 10종 중 12M 수익률 상위 4위 → 12M 음수 제외 →
+                 남은 승자에 균등 재분배(듀얼모멘텀).
+    readiness: cond1 4종 6M 확정 AND 공격 12M 유효 4종 이상인 달부터 신호.
+    holds는 {백테스트_티커: 비중} dict.
+    """
+    us_ret6 = compute_returns(us_prices, 6) if not us_prices.empty else pd.DataFrame()
+    cond1 = compute_riskoff_cond1(us_prices) if not us_prices.empty else pd.Series(dtype=bool)
+
+    offn = [t for t in MAMTAX_OFFENSE if t in prices.columns]
+    defn = [t for t in MAMTAX_DEFENSE if t in prices.columns]
+    off12 = compute_returns(prices[offn], MAMTAX_OFF_WIN) if offn else pd.DataFrame()
+    def3 = compute_ma_disparity(prices[defn], MAMTAX_DEF_WIN) if defn else pd.DataFrame()
+
+    def _cond1_valid(m):
+        if us_ret6.empty or m not in us_ret6.index:
+            return False
+        for t in SIGNAL_ASSETS:
+            if t not in us_ret6.columns or pd.isna(us_ret6.loc[m, t]):
+                return False
+        return True
+
+    rows = []
+    for m in prices.index:
+        rec = {'signal_month': str(m)}
+        for t in SIGNAL_ASSETS:
+            rec[f'{t}_6m'] = (us_ret6.loc[m, t] if (not us_ret6.empty and m in us_ret6.index
+                                                    and t in us_ret6.columns) else np.nan)
+        offv = ({t: off12.loc[m, t] for t in offn if (m in off12.index and pd.notna(off12.loc[m, t]))}
+                if not off12.empty else {})
+        if not _cond1_valid(m) or len(offv) < MAMTAX_TOP_OFF:
+            rec.update({'holds': None, 'defensive': None, 'risk_off': None,
+                        'reason': '데이터 준비중', 'off_scores': offv, 'def_scores': {}})
+            rows.append(rec)
+            continue
+
+        risk_off = bool(cond1.loc[m]) if m in cond1.index else False
+        rec['risk_off'] = risk_off
+        rec['off_scores'] = offv
+        defv = ({t: def3.loc[m, t] for t in defn if (m in def3.index and pd.notna(def3.loc[m, t]))}
+                if not def3.empty else {})
+        rec['def_scores'] = defv
+
+        if risk_off:
+            if len(defv) < MAMTAX_TOP_DEF:
+                rec.update({'holds': None, 'defensive': None, 'reason': '방어자산 부족(초기)'})
+                rows.append(rec)
+                continue
+            picks = sorted(defv, key=defv.get, reverse=True)[:MAMTAX_TOP_DEF]
+            holds = {t: 1.0 / len(picks) for t in picks}
+            defensive = True
+            reason = ("🛡️ 방어 · "
+                      + ', '.join(MAMTAX_TICKER_NAMES.get(t, t) for t in picks)
+                      + " (3M MA이격도 상위 2, cond1 발동)")
+        else:
+            ranked = sorted(offv, key=offv.get, reverse=True)[:MAMTAX_TOP_OFF]
+            keep = [t for t in ranked if offv[t] >= 0]
+            if keep:
+                holds = {t: 1.0 / len(keep) for t in keep}   # 승자 재분배(듀얼모멘텀)
+                defensive = False
+                reason = ("⚔️ 공격 · "
+                          + ', '.join(mamtax_live_name(t) for t in keep)
+                          + f" (12M 수익률 상위·양수 {len(keep)}종 균등)")
+            else:
+                rec.update({'holds': None, 'defensive': None,
+                            'reason': '공격 양수모멘텀 없음(관망)'})
+                rows.append(rec)
+                continue
+
+        rec['holds'] = holds
+        rec['defensive'] = defensive
+        rec['reason'] = reason
+        rows.append(rec)
+
+    return pd.DataFrame(rows).set_index('signal_month', drop=False)
+
+
+def run_backtest_mamtax(prices, signals, cost=0.0025):
+    """맘 비과세 백테스트 (다종목 가중). compute_performance 호환 bt 반환.
+
+    신호월 m 말 결정 → 다음 달(m+1) 보유 → m→m+1 수익률. 벤치마크: 나스닥100·KOSPI200.
+    거래비용은 새로 매수하는 비중(턴오버)에만 부과.
+    """
+    months = list(prices.index)
+    m_to_i = {m: i for i, m in enumerate(months)}
+    records = []
+    prev_w = {}
+    for m in prices.index:
+        i = m_to_i[m]
+        if i + 1 >= len(months):
+            break
+        nm = months[i + 1]
+        srow = signals.loc[str(m)] if str(m) in signals.index else None
+        if srow is None:
+            continue
+        holds = srow['holds']
+        if holds is None or (isinstance(holds, float) and pd.isna(holds)):
+            continue
+        ret_gross = 0.0
+        ok = True
+        for t, wt in holds.items():
+            p0 = prices.loc[m, t] if t in prices.columns else np.nan
+            p1 = prices.loc[nm, t] if t in prices.columns else np.nan
+            if pd.isna(p0) or pd.isna(p1) or p0 == 0:
+                ok = False
+                break
+            ret_gross += wt * (p1 / p0 - 1.0)
+        if not ok:
+            continue
+        bought = sum(max(holds.get(t, 0.0) - prev_w.get(t, 0.0), 0.0)
+                     for t in set(holds) | set(prev_w))
+        tc = cost * bought
+        hold_disp = ', '.join(f"{mamtax_live_name(t)} {holds[t] * 100:.0f}%" for t in holds)
+        rec = {
+            'signal_month': str(m), 'hold_month': str(nm),
+            'defensive': bool(srow['defensive']),
+            'hold': hold_disp, 'reason': srow['reason'],
+            'ret_gross': ret_gross, 'cost': tc, 'switched': bought > 1e-9,
+            'ret_strategy': ret_gross - tc,
+        }
+        for b in MAMTAX_BENCHMARKS:
+            if b in prices.columns:
+                p0b, p1b = prices.loc[m, b], prices.loc[nm, b]
+                rec[f'ret_{b}'] = ((p1b / p0b - 1.0)
+                                   if (pd.notna(p0b) and pd.notna(p1b) and p0b != 0) else np.nan)
+            else:
+                rec[f'ret_{b}'] = np.nan
+        records.append(rec)
+        prev_w = holds
+
+    if not records:
+        return pd.DataFrame()
+    bt = pd.DataFrame(records)
+    bt['cum_strategy'] = (1 + bt['ret_strategy']).cumprod()
+    for b in MAMTAX_BENCHMARKS:
+        bt[f'cum_{b}'] = (1 + bt[f'ret_{b}'].fillna(0)).cumprod()
+    peak = bt['cum_strategy'].cummax().clip(lower=1.0)
+    bt['dd_strategy'] = bt['cum_strategy'] / peak - 1.0
+    return bt
