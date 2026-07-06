@@ -477,7 +477,7 @@ def render_meritz():
                  if cond2_on else
                  f"<span style='font-size:13px; font-weight:900; color:#10B981; background:#10B98118; padding:3px 10px; border-radius:6px;'>미발동</span>")
         st.markdown(f"<div style='margin-bottom:6px;'>{badge} <b>조건2: 밸류에이션</b> "
-                    f"<span style='font-size:12px; color:#9CA3AF;'>(배당 5Y 백분위 ≤ 10%)</span></div>",
+                    f"<span style='font-size:12px; color:#9CA3AF;'>(배당 5Y 백분위 ≤ 10% → 방어 · 단 1등=최고가는 공격)</span></div>",
                     unsafe_allow_html=True)
         div_pct = last['div_pct']
         div_val = last.get('div_value', np.nan)
@@ -489,17 +489,24 @@ def render_meritz():
             with m1:
                 rank_str = (f"{int(div_rank)}등 / {int(div_total)}개월"
                             if pd.notna(div_rank) and pd.notna(div_total) else f"{div_pct:.1f}%")
-                triggered = div_pct <= 10
-                delta = f"{div_pct:.1f}% → 10% 이하 발동" if triggered else f"{div_pct:.1f}% → 안전 구간"
-                st.metric("5Y 밸류 순위 (1등=가장 비쌈)", rank_str, delta=delta,
-                          delta_color="inverse" if triggered else "off")
+                is_rank1 = pd.notna(div_rank) and int(div_rank) == 1
+                cond2_trig = bool(div_pct <= 10) and not is_rank1   # 실제 방어 발동(1등 제외)
+                if is_rank1:
+                    delta = f"{div_pct:.1f}% · 1등(최고가) → 공격 전환"
+                elif cond2_trig:
+                    delta = f"{div_pct:.1f}% → 10% 이하 방어"
+                else:
+                    delta = f"{div_pct:.1f}% → 안전 구간"
+                st.metric("5Y 밸류 순위 (1등=최고가→공격)", rank_str, delta=delta,
+                          delta_color="inverse" if cond2_trig else "off")
             with m2:
                 if pd.notna(div_val):
                     if pd.notna(div_thr):
-                        triggered = bool(div_pct <= 10)
-                        cmp = f"{div_val:.2f}% {'≤' if triggered else '>'} 기준점 {div_thr:.2f}%"
+                        cmp = f"{div_val:.2f}% {'≤' if div_pct <= 10 else '>'} 기준점 {div_thr:.2f}%"
+                        if is_rank1:
+                            cmp += " · 1등→공격"
                         st.metric("현재 배당수익률", f"{div_val:.2f}%", delta=cmp,
-                                  delta_color="inverse" if triggered else "off")
+                                  delta_color="inverse" if cond2_trig else "off")
                     else:
                         st.metric("현재 배당수익률", f"{div_val:.2f}%")
         else:
@@ -511,6 +518,12 @@ def render_meritz():
     with t_col:
         st.markdown("### 📈 백테스트 성과")
     with s_col:
+        st.markdown(
+            "<div style='text-align:right; font-size:11px; color:#9CA3AF; margin:-4px 0 4px 0;'>"
+            "배당수익률 출처: "
+            "<a href='https://www.multpl.com/s-p-500-dividend-yield' target='_blank'>multpl.com</a> · "
+            "<a href='https://dqydj.com/sp-500-dividend-yield/' target='_blank'>dqydj.com</a></div>",
+            unsafe_allow_html=True)
         cost_pct = st.slider("거래비용 %/교체", 0.0, 1.0, 0.25, 0.05, format="%.2f%%",
                              key="meritz_cost",
                              help="종목 교체 시에만 차감(턴오버). 벤치마크는 매수 후 보유로 비용 없음.")
