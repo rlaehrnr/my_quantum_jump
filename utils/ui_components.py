@@ -247,16 +247,42 @@ def apply_custom_total_styling(row, top_codes):
         styles.append(style)
     return styles
 
+@st.cache_data(ttl=1800, show_spinner=False)
+def _load_vix_df():
+    """VIX CSV를 GitHub raw URL 우선, 실패 시 로컬에서 로드.
+
+    봇(Action)이 data/vix data.csv 를 커밋하면 재배포/리부트 없이 최대 30분 내
+    자동 반영된다. (스노우볼 데이터와 동일한 raw-URL 패턴)
+    """
+    import io, urllib.parse
+    raw = ("https://raw.githubusercontent.com/rlaehrnr/my_quantum_jump/main/data/"
+           + urllib.parse.quote("vix data.csv"))
+    try:
+        import requests
+        r = requests.get(raw, timeout=8)
+        if r.status_code == 200 and r.text.strip():
+            return pd.read_csv(io.StringIO(r.text))
+    except Exception:
+        pass
+    try:
+        if os.path.exists('data/vix data.csv'):
+            return pd.read_csv('data/vix data.csv')
+    except Exception:
+        pass
+    return pd.DataFrame()
+
+
 # 2. VIX 공포지수 위젯 렌더링
 def render_vix_widget(safe_date):
-    vix_file = 'data/vix data.csv'
     vix_latest_high, vix_latest_date_str = "데이터없음", ""
     vix_35_date_str, vix_35_high, days_diff_str = "-", "-", "-"
     is_vix_warning = False
 
-    if os.path.exists(vix_file):
+    vix_df = _load_vix_df()
+    if vix_df is not None and not vix_df.empty:
         try:
-            vix_df = pd.read_csv(vix_file)
+            vix_df = vix_df.copy()
+            vix_df.columns = [c.strip() for c in vix_df.columns]
             vix_df['날짜'] = pd.to_datetime(vix_df['날짜'])
             vix_df = vix_df.sort_values('날짜')
             if not vix_df.empty:
