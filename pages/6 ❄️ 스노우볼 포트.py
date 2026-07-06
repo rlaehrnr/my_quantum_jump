@@ -249,10 +249,10 @@ def build_meritz_detail_excel(signals, bt, prices):
             cr = np.nan
         cf_hold.append(pick)
         cf_ret.append(round(cr*100, 2) if pd.notna(cr) else np.nan)
-        cf_diff.append(round((r['ret_strategy'] - cr)*100, 2) if pd.notna(cr) else np.nan)
+        cf_diff.append(round((cr - r['ret_strategy'])*100, 2) if pd.notna(cr) else np.nan)
     base['방어대신_공격보유'] = cf_hold
     base['공격시_수익률(%)'] = cf_ret
-    base['방어−공격_차이(%)'] = cf_diff   # +면 방어가 이득(손실 회피), −면 공격이 나았음
+    base['공격−방어_차이(%)'] = cf_diff   # +면 공격이 나았음(방어가 그만큼 손해), −면 방어가 이득(손실 회피)
     return base
 
 
