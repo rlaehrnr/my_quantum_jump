@@ -224,6 +224,38 @@ def build_meritz_detail(signals, bt):
     return pd.DataFrame(rows)
 
 
+def build_meritz_detail_excel(signals, bt, prices):
+    """엑셀 전용 상세표: build_meritz_detail + '방어가 아니었다면?' 반사실 컬럼.
+
+    방어월마다 '공격이었다면 무엇을(TQQQ/USD) 보유하고 그 달 수익률이 얼마였을지'와,
+    실제 방어 수익률과의 차이(방어−공격)를 덧붙인다. 공격월은 '-'.
+    """
+    base = build_meritz_detail(signals, bt)
+    cf_hold, cf_ret, cf_diff = [], [], []
+    for _, r in bt.iterrows():
+        if not r['defensive']:
+            cf_hold.append('-'); cf_ret.append(np.nan); cf_diff.append(np.nan)
+            continue
+        m = pd.Period(r['signal_month'], 'M'); nm = pd.Period(r['hold_month'], 'M')
+        s = signals.loc[m]
+        tqqq_v = s.get('ret12_TQQQ', np.nan); usd_v = s.get('ret12_USD', np.nan)
+        pick = 'TQQQ' if (pd.notna(tqqq_v) and (pd.isna(usd_v) or tqqq_v >= usd_v)) else 'USD'
+        cr = np.nan
+        try:
+            p0 = prices.loc[m, pick]; p1 = prices.loc[nm, pick]
+            if pd.notna(p0) and pd.notna(p1) and p0 != 0:
+                cr = p1 / p0 - 1.0
+        except Exception:
+            cr = np.nan
+        cf_hold.append(pick)
+        cf_ret.append(round(cr*100, 2) if pd.notna(cr) else np.nan)
+        cf_diff.append(round((r['ret_strategy'] - cr)*100, 2) if pd.notna(cr) else np.nan)
+    base['방어대신_공격보유'] = cf_hold
+    base['공격시_수익률(%)'] = cf_ret
+    base['방어−공격_차이(%)'] = cf_diff   # +면 방어가 이득(손실 회피), −면 공격이 나았음
+    return base
+
+
 def build_samsung_detail(signals, bt):
     """맘 삼성 월별 상세 근거표 (필터 → 공격/방어 후보 → 보유 → 결과)."""
     rows = []
@@ -306,7 +338,7 @@ def build_report_excel(settings_dict, stats_df, detail_df, df_res, cum_df, mdd_d
 
 
 def render_backtest_section(bt, perf, cost_rate, key_prefix, strat_color, strat_name,
-                           detail_df, settings_dict):
+                           detail_df, settings_dict, excel_detail_df=None):
     """백테스트 카드 + 자산곡선 + 월별 로그 (탭 공용)."""
     bms = perf.get('benchmarks', {})
     qqq = bms.get('QQQ')
@@ -357,7 +389,8 @@ def render_backtest_section(bt, perf, cost_rate, key_prefix, strat_color, strat_
     with hdr:
         st.markdown("#### 📋 월별 상세 근거")
     with dl:
-        xls = build_report_excel(settings_dict, stats_df, detail_df, df_res, cum_df, mdd_df, strat_name)
+        _xl_detail = detail_df if excel_detail_df is None else excel_detail_df
+        xls = build_report_excel(settings_dict, stats_df, _xl_detail, df_res, cum_df, mdd_df, strat_name)
         st.download_button(
             "📥 종합 엑셀 리포트", data=xls,
             file_name=f"스노우볼_{strat_name}_리포트.xlsx",
@@ -512,18 +545,20 @@ def render_meritz():
         else:
             st.info("배당 데이터 부족 (60개월 워밍업 또는 파일 없음)")
 
+    # 배당수익률 출처 (밸류에이션 아래 · 구분선 위, 우측 정렬)
+    st.markdown(
+        "<div style='text-align:right; font-size:11px; color:#9CA3AF; margin:2px 0 0 0;'>"
+        "배당수익률 출처: "
+        "<a href='https://www.multpl.com/s-p-500-dividend-yield' target='_blank'>multpl.com</a> · "
+        "<a href='https://dqydj.com/sp-500-dividend-yield/' target='_blank'>dqydj.com</a></div>",
+        unsafe_allow_html=True)
+
     # 백테스트
     st.markdown("---")
     t_col, s_col = st.columns([2.2, 1])
     with t_col:
         st.markdown("### 📈 백테스트 성과")
     with s_col:
-        st.markdown(
-            "<div style='text-align:right; font-size:11px; color:#9CA3AF; margin:-4px 0 4px 0;'>"
-            "배당수익률 출처: "
-            "<a href='https://www.multpl.com/s-p-500-dividend-yield' target='_blank'>multpl.com</a> · "
-            "<a href='https://dqydj.com/sp-500-dividend-yield/' target='_blank'>dqydj.com</a></div>",
-            unsafe_allow_html=True)
         cost_pct = st.slider("거래비용 %/교체", 0.0, 1.0, 0.25, 0.05, format="%.2f%%",
                              key="meritz_cost",
                              help="종목 교체 시에만 차감(턴오버). 벤치마크는 매수 후 보유로 비용 없음.")
@@ -544,7 +579,8 @@ def render_meritz():
     }
     render_backtest_section(bt, perf, cost_rate, key_prefix="meritz",
                             strat_color='#10B981', strat_name='또 메리츠 전략',
-                            detail_df=detail_df, settings_dict=settings_dict)
+                            detail_df=detail_df, settings_dict=settings_dict,
+                            excel_detail_df=build_meritz_detail_excel(signals, bt, prices))
 
 
 # ==========================================
