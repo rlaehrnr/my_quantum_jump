@@ -12,13 +12,6 @@ jobs:
     runs-on: ubuntu-latest
     env:
       TZ: Asia/Seoul
-      # 아래 5개는 GitHub 저장소 Settings → Secrets and variables → Actions 에 등록.
-      # 시크릿이 없으면 데이터 갱신만 하고 메일은 조용히 생략된다.
-      VIX_SMTP_USER: ${{ secrets.VIX_SMTP_USER }}
-      VIX_SMTP_PASS: ${{ secrets.VIX_SMTP_PASS }}
-      VIX_ALERT_TO:  ${{ secrets.VIX_ALERT_TO }}
-      VIX_SMTP_HOST: ${{ secrets.VIX_SMTP_HOST }}
-      VIX_SMTP_PORT: ${{ secrets.VIX_SMTP_PORT }}
 
     steps:
     - name: 1. 저장소 코드 불러오기
@@ -34,7 +27,7 @@ jobs:
         python -m pip install --upgrade pip
         pip install pandas numpy yfinance requests
 
-    - name: 4. VIX 업데이트 + 35 돌파 알림
+    - name: 4. VIX 데이터 업데이트
       run: python update_vix.py
 
     - name: 5. 깃허브에 변경사항 커밋 & 푸시
