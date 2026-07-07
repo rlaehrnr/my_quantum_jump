@@ -42,7 +42,7 @@ from utils.snowball import (
     SSOPEN_NASDAQ, SSOPEN_DEFENSE, SSOPEN_DEF_WINDOWS, SSOPEN_TICKER_NAMES, SSOPEN_BENCHMARKS,
     # 맘 비과세 (국내 글로벌 듀얼모멘텀 + cond1)
     load_mamtax_prices, compute_signals_mamtax, run_backtest_mamtax,
-    MAMTAX_OFFENSE, MAMTAX_DEFENSE, MAMTAX_TICKER_NAMES, MAMTAX_BENCHMARKS,
+    MAMTAX_OFFENSE, MAMTAX_DEFENSE, MAMTAX_TICKER_NAMES, MAMTAX_BENCHMARKS, MAMTAX_TOP_OFF,
     mamtax_live_ticker, mamtax_live_name,
 )
 from utils.ui_components import inject_custom_css, get_monthly_heatmap, get_mdd_history
@@ -254,6 +254,91 @@ def build_meritz_detail_excel(signals, bt, prices):
     base['공격시_수익률(%)'] = cf_ret
     base['공격−방어_차이(%)'] = cf_diff   # +면 공격이 나았음(방어가 그만큼 손해), −면 방어가 이득(손실 회피)
     return base
+
+
+# ──────────────────────────────────────────────────────────
+# 방어월 반사실: '공격이었다면 무엇을·수익률' — 전 전략 공용 (엑셀 전용)
+# ──────────────────────────────────────────────────────────
+def _cf_samsung(s):
+    passed = [t for t in SS_OFFENSE_ASSETS if pd.notna(s.get(f'disp12_{t}')) and s.get(f'disp12_{t}') > 0]
+    return {t: 1.0/len(passed) for t in passed} if passed else {}
+
+
+def _cf_so(s):
+    scores = {t: s.get(f'score_{t}') for t in SO_OFFENSE_ASSETS if pd.notna(s.get(f'score_{t}'))}
+    if not scores:
+        return {}
+    top = sorted(scores, key=scores.get, reverse=True)[:SO_TOPK]
+    picks = [t for t in top if pd.notna(s.get(f'abs_{t}')) and s.get(f'abs_{t}') > 0]
+    return {t: 1.0/len(picks) for t in picks} if picks else {}
+
+
+def _cf_ko(s):
+    ovalid = s.get('offense_scores') or {}
+    oabs = s.get('offense_absmom') or {}
+    if not ovalid:
+        return {}
+    top = sorted(ovalid, key=ovalid.get, reverse=True)[:KO_TOPK]
+    picks = [t for t in top if oabs.get(t, -1) >= 0]
+    return {t: 1.0/len(picks) for t in picks} if picks else {}
+
+
+def _cf_pension(s):
+    ovalid = s.get('offense_scores') or {}
+    return {max(ovalid, key=ovalid.get): 1.0} if ovalid else {}
+
+
+def _cf_ssopen(s):
+    return {SSOPEN_NASDAQ: 1.0}
+
+
+def _cf_mamtax(s):
+    offv = s.get('off_scores') or {}
+    if not offv:
+        return {}
+    ranked = sorted(offv, key=offv.get, reverse=True)[:MAMTAX_TOP_OFF]
+    keep = [t for t in ranked if offv[t] >= 0]
+    return {t: 1.0/len(keep) for t in keep} if keep else {}
+
+
+def _build_cf_excel(base_df, signals, bt, prices, cf_fn, name_fn):
+    """엑셀 전용: 방어월마다 '공격이었다면 보유(비중)·그 수익률·공격−방어 차이' 3열 추가.
+
+    각 전략 signals에 저장된 점수로 '공격이었다면의 보유'를 재구성하고,
+    해당 월→다음 달 수익률을 그 전략의 prices에서 계산한다. 공격월은 '-'.
+    """
+    sig_by = {str(idx): row for idx, row in signals.iterrows()}
+    cf_hold, cf_ret, cf_diff = [], [], []
+    for _, r in bt.iterrows():
+        if not r['defensive']:
+            cf_hold.append('-'); cf_ret.append(np.nan); cf_diff.append(np.nan)
+            continue
+        s = sig_by.get(str(r['signal_month']))
+        cfo = cf_fn(s) if s is not None else {}
+        if not cfo:
+            cf_hold.append('공격후보없음'); cf_ret.append(np.nan); cf_diff.append(np.nan)
+            continue
+        m = pd.Period(r['signal_month'], 'M'); nm = pd.Period(r['hold_month'], 'M')
+        cr = 0.0; ok = True
+        for t, w in cfo.items():
+            try:
+                p0 = prices.loc[m, t]; p1 = prices.loc[nm, t]
+            except Exception:
+                ok = False; break
+            if pd.isna(p0) or pd.isna(p1) or p0 == 0:
+                ok = False; break
+            cr += w * (p1 / p0 - 1.0)
+        if not ok:
+            cf_hold.append('데이터부족'); cf_ret.append(np.nan); cf_diff.append(np.nan)
+            continue
+        cf_hold.append(', '.join(f"{name_fn(t)} {w*100:.0f}%" for t, w in cfo.items()))
+        cf_ret.append(round(cr*100, 2))
+        cf_diff.append(round((cr - r['ret_strategy'])*100, 2))
+    out = base_df.copy()
+    out['방어대신_공격보유'] = cf_hold
+    out['공격시_수익률(%)'] = cf_ret
+    out['공격−방어_차이(%)'] = cf_diff
+    return out
 
 
 def build_samsung_detail(signals, bt):
@@ -707,7 +792,8 @@ def render_samsung():
     }
     render_backtest_section(bt, perf, cost_rate, key_prefix="ss",
                             strat_color='#06B6D4', strat_name='맘 삼성 전략',
-                            detail_df=detail_df, settings_dict=settings_dict)
+                            detail_df=detail_df, settings_dict=settings_dict,
+                            excel_detail_df=_build_cf_excel(detail_df, signals, bt, prices, _cf_samsung, lambda t: t))
 
 
 def render_so():
@@ -857,7 +943,8 @@ def render_so():
     }
     render_backtest_section(bt, perf, cost_rate, key_prefix="so",
                             strat_color='#F59E0B', strat_name='쏘 삼성 전략',
-                            detail_df=detail_df, settings_dict=settings_dict)
+                            detail_df=detail_df, settings_dict=settings_dict,
+                            excel_detail_df=_build_cf_excel(detail_df, signals, bt, prices, _cf_so, lambda t: t))
 
 
 # ==========================================
@@ -1040,7 +1127,8 @@ def render_ko():
     }
     render_backtest_section(bt, perf, cost_rate, key_prefix="ko",
                             strat_color='#0EA5E9', strat_name='또 ISA 전략',
-                            detail_df=detail_df, settings_dict=settings_dict)
+                            detail_df=detail_df, settings_dict=settings_dict,
+                            excel_detail_df=_build_cf_excel(detail_df, signals, bt, ko_prices, _cf_ko, lambda t: KO_TICKER_NAMES.get(t, t)))
 
 
 # ==========================================
@@ -1200,7 +1288,8 @@ def render_pension():
     }
     render_backtest_section(bt, perf, cost_rate, key_prefix="pen",
                             strat_color='#8B5CF6', strat_name='또 연금 전략',
-                            detail_df=detail_df, settings_dict=settings_dict)
+                            detail_df=detail_df, settings_dict=settings_dict,
+                            excel_detail_df=_build_cf_excel(detail_df, signals, bt, pen_prices, _cf_pension, lambda t: PEN_TICKER_NAMES.get(t, t)))
 
 
 # ==========================================
@@ -1364,7 +1453,8 @@ def render_ssopen():
     }
     render_backtest_section(bt, perf, cost_rate, key_prefix="ssopen",
                             strat_color='#EC4899', strat_name='쏘 연금 전략',
-                            detail_df=detail_df, settings_dict=settings_dict)
+                            detail_df=detail_df, settings_dict=settings_dict,
+                            excel_detail_df=_build_cf_excel(detail_df, signals, bt, ss_prices, _cf_ssopen, lambda t: SSOPEN_TICKER_NAMES.get(t, t)))
 
 
 # ==========================================
@@ -1542,7 +1632,8 @@ def render_mamtax():
     }
     render_backtest_section(bt, perf, cost_rate, key_prefix="mamtax",
                             strat_color='#F97316', strat_name='맘 비과세 전략',
-                            detail_df=detail_df, settings_dict=settings_dict)
+                            detail_df=detail_df, settings_dict=settings_dict,
+                            excel_detail_df=_build_cf_excel(detail_df, signals, bt, mp, _cf_mamtax, mamtax_live_name))
 
 
 # ==========================================
