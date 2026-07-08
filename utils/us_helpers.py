@@ -331,6 +331,8 @@ def run_backtest_triple_us(df, start_year, end_year, ma_months, apply_timing, to
 
     return pd.DataFrame(records), pd.DataFrame(trade_logs)
 
+@st.cache_data(show_spinner=False)
+def run_custom_backtest_us(df, start_year_c, end_year_c, ma_months_c, apply_timing_c, w1, w3, w6, w12, custom_pct, rank_c_s, rank_c_e):
     spx = get_spx_history_cached()
     if not spx.empty:
         spx['MA'] = spx['Close'].rolling(ma_months_c * 20).mean()
