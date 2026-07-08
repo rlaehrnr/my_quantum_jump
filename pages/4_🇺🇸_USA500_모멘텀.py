@@ -19,16 +19,12 @@ from utils.ui_components import (
 from utils.us_helpers import (
     preprocess_us_data, add_naver_links, robust_get_us_ma_all, robust_get_us_idx_return, 
     get_spx_history_cached, generate_excel_report_cached, 
-    get_strategy_stocks_us_custom, run_backtest_us_fast, run_custom_backtest_us,
-    calc_us_momentum, get_triple_momentum_us, run_backtest_triple_us,
-    run_backtest_triple_us_m4, get_multi4_cond1_map, get_multi4_start_ym
+    calc_us_momentum, get_triple_momentum_us,
+    run_backtest_triple_us_m4, get_multi4_cond1_map, get_multi4_start_ym,
+    get_benchmark_monthly_returns
 )
 
 inject_custom_css()
-
-@st.cache_data(show_spinner=False)
-def cached_run_custom_backtest_us(df, start_year_c, end_year_c, ma_months_c, apply_timing_c, w1, w3, w6, w12, custom_pct, rank_c_s, rank_c_e):
-    return run_custom_backtest_us(df, start_year_c, end_year_c, ma_months_c, apply_timing_c, w1, w3, w6, w12, custom_pct, rank_c_s, rank_c_e)
 
 st.markdown('''
     <div style="margin-bottom: 20px;">
@@ -56,7 +52,7 @@ years_list = sorted(valid_years)
 min_y, max_y = min(years_list), max(years_list)
 if min_y >= max_y: min_y = max_y - 1 
 
-tab1, tab2, tab3, tab4, tab5 = st.tabs(["📅 월별 상세 분석", "🕒 실시간 데일리 순위", "📈 전략 백테스트", "🏅 스코어 커스텀 백테스트", "🛡️ 멀티4 방어 백테스트"])
+tab1, tab2, tab3 = st.tabs(["📅 월별 상세 분석", "🕒 실시간 데일리 순위", "📈 전략 백테스트"])
 
 # ==========================================
 # 탭 1. 월별 상세 분석
@@ -257,174 +253,17 @@ with tab2:
     else:
         st.info("데일리 데이터가 준비되지 않았습니다.")
 
+
 # ==========================================
-# 탭 3. 전략 백테스트
+# 탭 3. 전략 백테스트 (3·6·12 교집합 + 멀티4 방어)
 # ==========================================
 with tab3:
-    with st.form("bt_settings_form_usa", border=False):
-        st.markdown("<h4 style='margin:0;'>⚙️ 시뮬레이션 설정</h4>", unsafe_allow_html=True)
-        st.markdown('<p class="strategy-desc">3-1M · 6-1M · 12-1M 각각 상위 N위에 모두 든 교집합 → 12-1M 내림차순 정렬 → 매수 순위까지 매수</p>', unsafe_allow_html=True)
-        c1, c_ma_us, c_chk = st.columns([1.5, 1, 1.5])
-        with c1: start_year, end_year = st.slider("📅 테스트 기간", min_y, max_y, (min_y, max_y), key='t3_yr_usa')
-        with c_ma_us: ma_months_t3 = st.slider("📉 마켓타이밍 (개월선)", 1, 12, 12, key='t3_ma_usa')
-        with c_chk:
-            st.markdown("<div style='margin-top: 35px;'></div>", unsafe_allow_html=True)
-            apply_timing = st.checkbox("🛑 마켓타이밍 적용 (이탈 시 현금)", value=True, key='t3_chk_usa')
-        
-        st.markdown("<hr style='margin: 10px 0px;'>", unsafe_allow_html=True)
-        st.markdown("##### ✂️ 교집합 추출 및 매수 순위 설정")
-        
-        c_ex1, c_ex2, c_ex3 = st.columns([1.3, 1.5, 0.8])
-        with c_ex1: 
-            top_n_t3 = st.number_input("🎯 교집합 추출 기준 (각 지표 상위 N위)", min_value=1, max_value=500, value=150, key='t3_n_all_usa')
-        with c_ex2: 
-            rank_t3_s, rank_t3_e = st.slider("🛒 매수 순위 (12-1 정렬)", 1, 50, (1, 10), key='t3_rnk_usa')
-        with c_ex3:
-            st.markdown("<div style='margin-top: 28px;'></div>", unsafe_allow_html=True)
-            run_bt_us = st.form_submit_button("✅ 백테스트 실행", use_container_width=True)
-
-    if run_bt_us or 'run_bt_state_usa_v7' not in st.session_state:
-        st.session_state['run_bt_state_usa_v7'] = True
-
-    if st.session_state.get('run_bt_state_usa_v7', False):
-        spx_hist = get_spx_history_cached()
-        
-        with st.spinner("3·6·12 교집합 백테스트 구동 중..."):
-            df_res, df_trades = run_backtest_triple_us(
-                df_master, start_year, end_year, ma_months_t3, apply_timing, 
-                top_n_t3, rank_t3_s, rank_t3_e, spx_hist
-            )
-            if not df_res.empty:
-                s_cols = [c for c in df_res.columns if c not in ['투자월', 'invested']]
-                df_cum = (1 + df_res.set_index('투자월')[s_cols] / 100).cumprod() * 100
-                df_cum.loc[(pd.to_datetime(df_res['투자월'].iloc[0]) - pd.DateOffset(months=1)).strftime('%Y-%m')] = 100
-                df_cum = df_cum.sort_index()
-
-                stats = []
-                for col in s_cols:
-                    final_val = df_cum[col].iloc[-1]
-                    years = len(df_res)/12
-                    cagr = ((final_val/100)**(1/years)-1)*100 if final_val > 0 else -100
-                    win_rate = (df_res.loc[df_res['invested'], col]>0).mean()*100 if df_res['invested'].any() else 0
-                    mdd = ((df_cum[col]/df_cum[col].cummax())-1).min()*100
-                    stats.append({"전략명": col, "CAGR (연평균)": f"{cagr:.1f}%", "총 누적수익률": f"{final_val-100:,.1f}%", "MDD (최대낙폭)": f"{mdd:.1f}%", "투자월 비율": f"{(df_res['invested'].sum()/len(df_res))*100:.1f}%", "월별 승률": f"{win_rate:.1f}%", "평균 수익률": f"{df_res.loc[df_res['invested'], col].mean():.2f}%" if df_res['invested'].any() else "0.00%"})
-                
-                stats_df = pd.DataFrame(stats)
-                
-                settings_dict = {
-                    '테스트 시작 연도': f"{start_year}년",
-                    '테스트 종료 연도': f"{end_year}년",
-                    '마켓타이밍 (개월선)': f"{ma_months_t3}개월선",
-                    '마켓타이밍 적용': "적용(현금)" if apply_timing else "미적용",
-                    '교집합 추출 기준': f"각 지표 상위 {top_n_t3}위",
-                    '매수 순위 (12-1 정렬)': f"{rank_t3_s}위 ~ {rank_t3_e}위"
-                }
-
-                excel_data = generate_excel_report_cached(tuple(settings_dict.items()), stats_df, df_res, df_cum, df_trades)
-
-                col_t, col_b = st.columns([7.5, 2.5])
-                with col_t: st.markdown("#### 📊 전략 핵심 통계 (초기 자본 100 기준)")
-                with col_b: 
-                    st.download_button("📥 종합 엑셀 리포트 다운로드", data=excel_data, file_name="USA_3-6-12교집합_백테스트.xlsx", mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", use_container_width=True)
-
-                st.dataframe(get_styled_stats(stats_df), use_container_width=True, hide_index=True)
-                
-                st.markdown("#### 🗓️ 상세 분석 (월별 수익률 히트맵 & MDD)")
-                analysis_strat_t3 = s_cols[0]
-                
-                col_hm, col_mdd = st.columns([7.5, 2.5])
-                with col_hm: st.dataframe(get_monthly_heatmap(df_res, analysis_strat_t3), use_container_width=True)
-                with col_mdd: st.dataframe(get_mdd_history(df_cum[analysis_strat_t3]), use_container_width=True, hide_index=True)
-                
-                st.plotly_chart(px.line(df_cum.reset_index().melt(id_vars='투자월'), x='투자월', y='value', color='variable', log_y=True, title="누적 자산 성장 곡선 (Log Scale)"), use_container_width=True)
-                with st.expander("📝 월별 전체 상세 기록 보기"): st.dataframe(df_res.drop(columns=['invested']).set_index('투자월').style.format("{:.2f}%"), use_container_width=True)
-            else:
-                st.warning("해당 조건에서 교집합 종목이 없어 백테스트 결과가 비어 있습니다. 교집합 기준(N위)을 늘리거나 기간을 조정해 보세요.")
-
-# ==========================================
-# 탭 4. 스코어 커스텀 백테스트
-# ==========================================
-with tab4:
-    col_title_c, col_check_c = st.columns([1, 4])
-    with col_title_c: st.markdown("<h4 style='margin:0;'>⚙️ 스코어 가중치 설정</h4>", unsafe_allow_html=True)
-    with col_check_c:
-        st.markdown("<div style='margin-top: 12px;'></div>", unsafe_allow_html=True)
-        apply_timing_c = st.checkbox("🛑 마켓타이밍 적용 (이탈 시 현금)", value=True, key='t4_chk_main_usa')
-    
-    with st.form("custom_form_usa", border=False):
-        c1, c2, c3, c4, c5 = st.columns([1, 1, 1, 1, 0.8])
-        with c1: w1 = st.number_input("📉 1개월 가중치", value=-0.1, step=0.1, format="%.1f")
-        with c2: w3 = st.number_input("📈 3개월 가중치", value=0.7, step=0.1, format="%.1f")
-        with c3: w6 = st.number_input("📈 6개월 가중치", value=0.4, step=0.1, format="%.1f")
-        with c4: w12 = st.number_input("📈 12개월 가중치", value=0.0, step=0.1, format="%.1f")
-        with c5:
-            st.markdown("<div style='margin-top: 28px;'></div>", unsafe_allow_html=True)
-            apply_weights = st.form_submit_button("✅ 실행", use_container_width=True)
-            
-    st.markdown("<hr style='margin: 15px 0px;'>", unsafe_allow_html=True)
-    c6, c_ma_c, c7, c8 = st.columns([1, 0.8, 1, 1])
-    with c6: start_year_c, end_year_c = st.slider("📅 테스트 기간", min_y, max_y, (min_y, max_y), key='t4_yr_usa')
-    with c_ma_c: ma_months_t4 = st.slider("📉 마켓타이밍 (개월선)", 1, 12, 12, key='t4_ma_usa')
-    with c7: custom_pct = st.slider("🏅 상위 % 커트라인", 5, 50, 30, step=5, key='t4_pct_usa')
-    with c8: rank_c_s, rank_c_e = st.slider("🏅 매수 순위", 1, 30, (1, 10), key='t4_rnk_usa')
-
-    if apply_weights or 'custom_run_usa' not in st.session_state: st.session_state['custom_run_usa'] = True
-    if st.session_state.get('custom_run_usa', False):
-        with st.spinner("미국 커스텀 시뮬레이션 중..."):
-            df_res_c, df_trades_c = cached_run_custom_backtest_us(df_master, start_year_c, end_year_c, ma_months_t4, apply_timing_c, w1, w3, w6, w12, custom_pct, rank_c_s, rank_c_e)
-            if not df_res_c.empty:
-                df_cum_c = (1 + df_res_c.set_index('투자월')[['커스텀 전략']] / 100).cumprod() * 100
-                df_cum_c.loc[(pd.to_datetime(df_res_c['투자월'].iloc[0]) - pd.DateOffset(months=1)).strftime('%Y-%m')] = 100
-                df_cum_c = df_cum_c.sort_index()
-
-                col_tc, col_bc = st.columns([7.5, 2.5])
-                with col_tc: st.markdown("#### 📊 전략 핵심 통계")
-                with col_bc: st.download_button("📥 상세내역 다운로드", df_trades_c.to_csv(index=False).encode('utf-8-sig'), "USA500_커스텀_백테스트.csv", "text/csv", use_container_width=True)
-
-                final_val_c = df_cum_c['커스텀 전략'].iloc[-1]
-                years_c = len(df_res_c) / 12
-                cagr_c = ((final_val_c/100)**(1/years_c)-1)*100 if final_val_c > 0 else -100
-                mdd_c = ((df_cum_c['커스텀 전략']/df_cum_c['커스텀 전략'].cummax())-1).min()*100
-                stats_c = [{"전략명": "커스텀 스코어", "CAGR (연평균)": f"{cagr_c:.1f}%", "총 누적수익률": f"{final_val_c-100:,.1f}%", "MDD (최대낙폭)": f"{mdd_c:.1f}%", "투자월 비율": f"{(df_res_c['invested'].sum()/len(df_res_c))*100:.1f}%", "월별 승률": f"{(df_res_c.loc[df_res_c['invested'], '커스텀 전략']>0).mean()*100:.1f}%" if df_res_c['invested'].any() else "0.0%", "평균 수익률": f"{df_res_c.loc[df_res_c['invested'], '커스텀 전략'].mean():.2f}%" if df_res_c['invested'].any() else "0.00%"}]
-                
-                stats_df_t4 = pd.DataFrame(stats_c)
-                settings_dict_t4 = {
-                    '테스트 시작 연도': f"{start_year_c}년",
-                    '테스트 종료 연도': f"{end_year_c}년",
-                    '마켓타이밍 (개월선)': f"{ma_months_t4}개월선",
-                    '마켓타이밍 적용': "적용(현금)" if apply_timing_c else "미적용",
-                    '가중치 설정': f"{w1}, {w3}, {w6}, {w12}",
-                    '교집합 추출 기준': f"상위 {custom_pct}% 이내",
-                    '매수 순위': f"{rank_c_s}위 ~ {rank_c_e}위"
-                }
-                
-                excel_data_t4 = generate_excel_report_cached(tuple(settings_dict_t4.items()), stats_df_t4, df_res_c, df_cum_c, df_trades_c)
-
-                st.dataframe(get_styled_stats(stats_df_t4), use_container_width=True, hide_index=True)
-                
-                col_hm_c, col_mdd_c = st.columns([6, 4])
-                with col_hm_c: st.dataframe(get_monthly_heatmap(df_res_c, '커스텀 전략'), use_container_width=True)
-                with col_mdd_c: st.dataframe(get_mdd_history(df_cum_c['커스텀 전략']), use_container_width=True, hide_index=True)
-
-                st.plotly_chart(px.line(df_cum_c.reset_index(), x='투자월', y='커스텀 전략', log_y=True, title="커스텀 누적 성과"), use_container_width=True)
-                with st.expander("📝 월별 전체 상세 기록 보기"): st.dataframe(df_res_c.drop(columns=['invested']).set_index('투자월').style.format("{:.2f}%"), use_container_width=True)
-
-# ==========================================
-# 탭 5. 멀티4 방어 백테스트 (3·6·12 교집합 + 스노우볼 cond1 위험회피)
-# ==========================================
-with tab5:
     m4_start = get_multi4_start_ym()
-    if m4_start:
-        st.markdown(
-            f"<div style='background:#EEF6FF; border:1px solid #BBD7FF; border-radius:10px; padding:10px 14px; margin-bottom:10px;'>"
-            f"🛡️ <b>멀티4 위험회피</b>: (TIP·VWO·VEA 6M 모두 음수) <b>AND</b> (VIXY 6M &lt; 0 <b>또는</b> ≥ +40%) → 방어(현금). "
-            f"SPY 마켓타이밍과 <b>OR</b>로 결합됩니다. VIXY 상장 관계로 멀티4는 <b>{m4_start}부터</b> 작동하고, 그 전 구간은 SPY 필터만 적용됩니다.</div>",
-            unsafe_allow_html=True)
-    else:
-        st.warning("🛡️ 멀티4 신호 데이터(TIP·VWO·VEA·VIXY)를 불러오지 못했습니다. 현재는 SPY 마켓타이밍만 적용됩니다.")
+    m4_note = (f"멀티4: TIP·VWO·VEA 6M 음수 &amp; (VIXY 6M&lt;0 또는 ≥+40%) 방어 · SPY 개월선과 OR · {m4_start}~ 작동"
+               if m4_start else "멀티4 신호 데이터 없음 → SPY 마켓타이밍만 적용")
 
     with st.form("bt_m4_form_usa", border=False):
-        st.markdown("<h4 style='margin:0;'>⚙️ 시뮬레이션 설정</h4>", unsafe_allow_html=True)
+        st.markdown(f"<h4 style='margin:0;'>⚙️ 시뮬레이션 설정 <span style='font-size:12px; color:gray; font-weight:normal;'>&nbsp;&nbsp;{m4_note}</span></h4>", unsafe_allow_html=True)
         st.markdown('<p class="strategy-desc">3-1M · 6-1M · 12-1M 각 상위 N위 교집합 → 12-1M 정렬 → 매수 순위까지 매수. 방어 = SPY 개월선 이탈 OR 멀티4</p>', unsafe_allow_html=True)
         cm1, cm_ma, cm_chk = st.columns([1.5, 1, 1.5])
         with cm1: start_year_m, end_year_m = st.slider("📅 테스트 기간", min_y, max_y, (min_y, max_y), key='t5_yr_usa')
@@ -462,20 +301,41 @@ with tab5:
                 top_n_t5, rank_t5_s, rank_t5_e, spx_hist_m
             )
             if not df_res_m.empty:
-                s_cols_m = [c for c in df_res_m.columns if c not in ['투자월', 'invested']]
-                df_cum_m = (1 + df_res_m.set_index('투자월')[s_cols_m] / 100).cumprod() * 100
+                strat_col = [c for c in df_res_m.columns if c not in ['투자월', 'invested']][0]
+
+                # 벤치마크(SPY·QQQ) 월간수익률을 테스트 투자월에 정렬
+                bench = get_benchmark_monthly_returns()
+                ret_all = df_res_m.set_index('투자월')[[strat_col]].copy()
+                bench_cols = []
+                for b in ['SPY', 'QQQ']:
+                    if not bench.empty and b in bench.columns:
+                        ret_all[b] = bench[b].reindex(ret_all.index)
+                        bench_cols.append(b)
+                all_cols = [strat_col] + bench_cols
+
+                df_cum_m = (1 + ret_all[all_cols].fillna(0.0) / 100).cumprod() * 100
                 df_cum_m.loc[(pd.to_datetime(df_res_m['투자월'].iloc[0]) - pd.DateOffset(months=1)).strftime('%Y-%m')] = 100
                 df_cum_m = df_cum_m.sort_index()
 
-                stats_m = []
-                for col in s_cols_m:
-                    final_val = df_cum_m[col].iloc[-1]
-                    years = len(df_res_m)/12
-                    cagr = ((final_val/100)**(1/years)-1)*100 if final_val > 0 else -100
-                    win_rate = (df_res_m.loc[df_res_m['invested'], col]>0).mean()*100 if df_res_m['invested'].any() else 0
-                    mdd = ((df_cum_m[col]/df_cum_m[col].cummax())-1).min()*100
-                    stats_m.append({"전략명": col, "CAGR (연평균)": f"{cagr:.1f}%", "총 누적수익률": f"{final_val-100:,.1f}%", "MDD (최대낙폭)": f"{mdd:.1f}%", "투자월 비율": f"{(df_res_m['invested'].sum()/len(df_res_m))*100:.1f}%", "월별 승률": f"{win_rate:.1f}%", "평균 수익률": f"{df_res_m.loc[df_res_m['invested'], col].mean():.2f}%" if df_res_m['invested'].any() else "0.00%"})
-                stats_df_m = pd.DataFrame(stats_m)
+                invested_mask = df_res_m.set_index('투자월')['invested'].reindex(ret_all.index).fillna(False).astype(bool)
+                years = len(df_res_m) / 12
+
+                def _stat_row(name, is_strat):
+                    cum = df_cum_m[name]; final_val = cum.iloc[-1]
+                    cagr = ((final_val/100)**(1/years)-1)*100 if final_val > 0 and years > 0 else -100
+                    mdd = ((cum/cum.cummax())-1).min()*100
+                    r = ret_all[name]
+                    if is_strat and invested_mask.any():
+                        rr = r[invested_mask.values]
+                        win = (rr > 0).mean()*100; avg = rr.mean()
+                        inv_ratio = invested_mask.sum()/len(invested_mask)*100
+                    else:
+                        rr = r.dropna()
+                        win = (rr > 0).mean()*100 if len(rr) else 0; avg = rr.mean() if len(rr) else 0
+                        inv_ratio = 100.0
+                    return {"전략명": name, "CAGR (연평균)": f"{cagr:.1f}%", "총 누적수익률": f"{final_val-100:,.1f}%", "MDD (최대낙폭)": f"{mdd:.1f}%", "투자월 비율": f"{inv_ratio:.1f}%", "월별 승률": f"{win:.1f}%", "평균 수익률": f"{avg:.2f}%"}
+
+                stats_df_m = pd.DataFrame([_stat_row(strat_col, True)] + [_stat_row(b, False) for b in bench_cols])
 
                 m4_defense_cnt = int((df_trades_m['전략'].isin(['멀티4', '마켓타이밍+멀티4'])).sum()) if not df_trades_m.empty else 0
                 settings_dict_m = {
@@ -486,24 +346,25 @@ with tab5:
                     '멀티4 위험회피': f"적용 (유효 {m4_start}~)" if (use_multi4 and m4_start) else "미적용",
                     '교집합 추출 기준': f"각 지표 상위 {top_n_t5}위",
                     '매수 순위 (12-1 정렬)': f"{rank_t5_s}위 ~ {rank_t5_e}위",
-                    '멀티4 방어 발동 개월': f"{m4_defense_cnt}개월"
+                    '멀티4 방어 발동 개월': f"{m4_defense_cnt}개월",
+                    '벤치마크': ", ".join(bench_cols) if bench_cols else "없음"
                 }
                 excel_data_m = generate_excel_report_cached(tuple(settings_dict_m.items()), stats_df_m, df_res_m, df_cum_m, df_trades_m)
 
                 col_tm, col_bm = st.columns([7.5, 2.5])
-                with col_tm: st.markdown("#### 📊 전략 핵심 통계 (초기 자본 100 기준)")
+                with col_tm: st.markdown("#### 📊 전략 핵심 통계 (초기 자본 100 기준 · SPY·QQQ 비교)")
                 with col_bm:
-                    st.download_button("📥 종합 엑셀 리포트 다운로드", data=excel_data_m, file_name="USA500_멀티4방어_백테스트.xlsx", mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", use_container_width=True)
+                    st.download_button("📥 종합 엑셀 리포트 다운로드", data=excel_data_m, file_name="USA500_전략백테스트.xlsx", mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", use_container_width=True)
 
                 st.dataframe(get_styled_stats(stats_df_m), use_container_width=True, hide_index=True)
 
                 st.markdown("#### 🗓️ 상세 분석 (월별 수익률 히트맵 & MDD)")
-                analysis_strat_t5 = s_cols_m[0]
+                analysis_strat_t5 = strat_col
                 col_hm_m, col_mdd_m = st.columns([7.5, 2.5])
                 with col_hm_m: st.dataframe(get_monthly_heatmap(df_res_m, analysis_strat_t5), use_container_width=True)
                 with col_mdd_m: st.dataframe(get_mdd_history(df_cum_m[analysis_strat_t5]), use_container_width=True, hide_index=True)
 
-                st.plotly_chart(px.line(df_cum_m.reset_index().melt(id_vars='투자월'), x='투자월', y='value', color='variable', log_y=True, title="누적 자산 성장 곡선 (Log Scale)"), use_container_width=True)
-                with st.expander("📝 월별 전체 상세 기록 보기"): st.dataframe(df_res_m.drop(columns=['invested']).set_index('투자월').style.format("{:.2f}%"), use_container_width=True)
+                st.plotly_chart(px.line(df_cum_m.reset_index().melt(id_vars='투자월'), x='투자월', y='value', color='variable', log_y=True, title="누적 자산 성장 곡선 (Log Scale · 전략 vs SPY·QQQ)", labels={'variable': '', 'value': '누적자산'}), use_container_width=True)
+                with st.expander("📝 월별 전체 상세 기록 보기 (전략·벤치마크)"): st.dataframe(ret_all.style.format("{:.2f}%", na_rep="-"), use_container_width=True)
             else:
                 st.warning("해당 조건에서 결과가 비어 있습니다. 교집합 기준(N위)이나 기간을 조정해 보세요.")
