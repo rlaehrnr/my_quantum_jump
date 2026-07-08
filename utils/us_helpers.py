@@ -494,3 +494,45 @@ def run_backtest_triple_us_m4(df, start_year, end_year, ma_months, apply_timing,
                                '종목명': '해당종목없음', '수익률(%)': 0.0})
 
     return pd.DataFrame(records), pd.DataFrame(trade_logs)
+
+
+@st.cache_data(show_spinner=False)
+def get_benchmark_monthly_returns():
+    """
+    SPY · QQQ 월간 수익률(%) → DataFrame(index='YYYY-MM', columns=['SPY','QQQ']).
+    1순위 yfinance(전체기간, 배당반영), 2순위 FDR, 3순위 스노우볼 CSV(2005~).
+    투자월 m의 벤치마크 = 해당 캘린더월 종가수익률(전략 '이번달수익률'과 동일 정렬).
+    """
+    cols = {}
+    for name in ['SPY', 'QQQ']:
+        s = None
+        try:
+            h = yf.Ticker(name).history(start='1998-01-01')
+            if not h.empty:
+                if h.index.tz is not None:
+                    h.index = h.index.tz_localize(None)
+                s = h['Close']
+        except Exception:
+            s = None
+        if s is None or len(s) == 0:
+            try:
+                d = fdr.DataReader(name, '1998-01-01')
+                if not d.empty:
+                    s = d['Close']
+            except Exception:
+                s = None
+        if s is not None and len(s) > 0:
+            s = pd.Series(pd.to_numeric(s.values, errors='coerce'), index=pd.to_datetime(s.index)).dropna()
+            m = s.resample('ME').last()
+            m.index = m.index.to_period('M')
+            cols[name] = m
+        else:
+            ss = _load_snowball_signal_series(name)   # Period 인덱스 월말 종가
+            if not ss.empty:
+                cols[name] = ss
+    if not cols:
+        return pd.DataFrame()
+    px = pd.DataFrame(cols).sort_index()
+    ret = (px / px.shift(1) - 1.0) * 100.0
+    ret.index = ret.index.strftime('%Y-%m')
+    return ret
