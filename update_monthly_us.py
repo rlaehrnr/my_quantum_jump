@@ -41,37 +41,80 @@ def process_monthly_ticker(row, start_date, base_date, dates, base_date_str, inv
         }
     except: return None
 
-# ----------------- [전략 1] USA 300 유니버스 추출 -----------------
-def get_top_us_stocks(market, limit=None):
-    try:
-        df = fdr.StockListing(market)
-        if df.empty: return pd.DataFrame()
-        cap_col = [c for c in df.columns if '시가총액' in c or ('mar' in c.lower() and 'cap' in c.lower())]
-        if cap_col:
-            df['시가총액_raw'] = pd.to_numeric(df[cap_col[0]].astype(str).str.replace(',', '').str.replace('.0', '', regex=False), errors='coerce')
-            df = df.dropna(subset=['시가총액_raw']).sort_values('시가총액_raw', ascending=False)
-        else:
-            df['시가총액_raw'] = 0
-        if limit:
-            df = df.head(limit)
-        code_col = 'Code' if 'Code' in df.columns else 'Symbol'
-        name_col = 'Name' if 'Name' in df.columns else 'Company'
-        df = df.rename(columns={code_col: '종목코드', name_col: '종목명'})
-        df['시장'] = market
-        df['종목코드'] = df['종목코드'].astype(str).str.replace('.', '-', regex=False)
-        return df[['종목코드', '종목명', '시장', '시가총액_raw']]
-    except: return pd.DataFrame()
+# ----------------- [전략 1] USA 500 유니버스 추출 (Nasdaq 스크리너, 시총·거래소·ADR 포함) -----------------
+import requests
 
-# ----------------- [전략 1] USA 500 유니버스 추출 (거래소 무관 시총 상위 500) -----------------
+_NASDAQ_HEADERS = {
+    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0 Safari/537.36',
+    'Accept': 'application/json, text/plain, */*',
+    'Accept-Language': 'en-US,en;q=0.9',
+    'Origin': 'https://www.nasdaq.com',
+    'Referer': 'https://www.nasdaq.com/',
+}
+
+def fetch_screener_exchange(exchange):
+    """
+    Nasdaq 공식 스크리너에서 거래소별 전체 종목(시가총액 포함) 로드.
+    exchange: 'NASDAQ' | 'NYSE' | 'AMEX'
+    반환 컬럼: 종목코드, 종목명, 시장, 시가총액_raw(=시가총액, 백만달러 단위)
+    """
+    url = ("https://api.nasdaq.com/api/screener/stocks"
+           f"?tableonly=true&limit=10000&download=true&exchange={exchange}")
+    try:
+        r = requests.get(url, headers=_NASDAQ_HEADERS, timeout=30)
+        r.raise_for_status()
+        data = r.json().get('data') or {}
+        rows = data.get('rows')
+        if rows is None:
+            rows = (data.get('table') or {}).get('rows')
+        if not rows:
+            print(f"⚠️ [{exchange}] 스크리너 응답에 rows 없음")
+            return pd.DataFrame()
+
+        df = pd.DataFrame(rows)
+        if 'symbol' not in df.columns or 'marketCap' not in df.columns:
+            print(f"⚠️ [{exchange}] 예상 컬럼 없음: {list(df.columns)[:8]}")
+            return pd.DataFrame()
+
+        # 시가총액: '$1,234,567,890' / '1234567890' / '' → 숫자(달러) → 백만달러 단위
+        cap_usd = pd.to_numeric(
+            df['marketCap'].astype(str).str.replace(r'[\$,]', '', regex=True).str.strip().replace('', '0'),
+            errors='coerce').fillna(0)
+        out = pd.DataFrame({
+            '종목코드': (df['symbol'].astype(str).str.strip()
+                          .str.replace('/', '-', regex=False)
+                          .str.replace('.', '-', regex=False)),
+            '종목명': df.get('name', df['symbol']).astype(str).str.strip(),
+            '시장': exchange,
+            '시가총액_raw': (cap_usd / 1_000_000.0).round(1),   # 백만달러 (기존 파일과 동일 스케일)
+        })
+        # 이상치 제거: 빈 티커 / 지나치게 긴 티커(워런트·유닛 등) / 시총 0
+        out = out[out['종목코드'].str.fullmatch(r'[A-Z][A-Z0-9\-]{0,6}', na=False)]
+        return out
+    except Exception as e:
+        print(f"🚨 [{exchange}] 스크리너 실패: {e}")
+        return pd.DataFrame()
+
 def generate_usa500(base_date, dates, start_date, base_date_str, invest_year, invest_month_str, invest_month_dash, top_n=500):
-    print(f"\n📌 [USA 500] 유니버스 추출 시작 (NASDAQ+NYSE 통합 시총 상위 {top_n})...")
-    # 거래소별 150개가 아니라, 두 거래소를 합쳐 시가총액순으로 상위 top_n
-    all_us = pd.concat([get_top_us_stocks('NASDAQ', None), get_top_us_stocks('NYSE', None)], ignore_index=True)
-    if all_us.empty: return
-    universe = (all_us.drop_duplicates(subset=['종목코드'])
-                      .sort_values('시가총액_raw', ascending=False)
+    print(f"\n📌 [USA 500] 유니버스 추출 시작 (Nasdaq 스크리너, NASDAQ+NYSE 통합 시총 상위 {top_n})...")
+    parts = [p for p in [fetch_screener_exchange('NASDAQ'), fetch_screener_exchange('NYSE')] if not p.empty]
+    if not parts:
+        print("🚨 [USA 500] 유니버스 소스를 불러오지 못해 생성을 건너뜁니다(기존 파일 유지).")
+        return
+
+    all_us = pd.concat(parts, ignore_index=True)
+    all_us = all_us[all_us['시가총액_raw'] > 0]
+    universe = (all_us.sort_values('시가총액_raw', ascending=False)
+                      .drop_duplicates(subset=['종목코드'], keep='first')
                       .head(top_n).reset_index(drop=True))
-    if universe.empty: return
+    if universe.empty:
+        print("🚨 [USA 500] 유효 시총 종목이 없어 건너뜁니다.")
+        return
+
+    n_nas = int((universe['시장'] == 'NASDAQ').sum()); n_nys = int((universe['시장'] == 'NYSE').sum())
+    print(f"   └ 유니버스 {len(universe)}종목 (NASDAQ {n_nas} / NYSE {n_nys})")
+    print(f"   └ 시총 1~5위: {universe['종목명'].head(5).tolist()}")
+    print(f"   └ TSM 포함? {'예' if (universe['종목코드']=='TSM').any() else '아니오'}")
 
     os.makedirs('archive_usa', exist_ok=True)
     results = []
