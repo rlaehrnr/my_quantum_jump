@@ -121,11 +121,8 @@ def get_styled_stats(df_stats):
 def get_mdd_history(equity_series):
     df = equity_series.to_frame(name='equity')
     records = []
-    # 시작 자본(1.0) 대비 초기 낙폭도 포착하도록 peak을 max(1.0, 첫값)에서 시작.
-    # (compute_performance의 dd = cum / cummax(clip lower=1.0) - 1 과 동일한 기준)
-    _start_val = float(df['equity'].iloc[0])
-    peak_date, peak_val = df.index[0], max(1.0, _start_val)
-    trough_date, trough_val = df.index[0], peak_val
+    peak_date, peak_val = df.index[0], df['equity'].iloc[0]
+    trough_date, trough_val = peak_date, peak_val
     in_dd = False
     for date, row in df.iterrows():
         val = row['equity']
@@ -153,7 +150,7 @@ def get_mdd_history(equity_series):
         if days < 30:
             return f"{days}일"
         months = days / 30.44  # 평균 한 달 일수
-        return f"{months:.0f}개월"
+        return f"{months:.1f}개월"
     res_df['기간'] = res_df.apply(lambda r: f"{r['시작일']} ~ {r['최저일']}", axis=1)
     res_df['회복기간'] = res_df.apply(lambda r: calc_months(r['시작일'], r['회복일']), axis=1)
     res_df['MDD'] = res_df['MDD'].apply(lambda x: f"{x:.2f}%")
@@ -238,7 +235,7 @@ def apply_custom_total_styling(row, top_codes):
         style = ''
         if is_top and col == '종목명_L':
             style += 'background-color: #FFF9C4; font-weight: bold; color: #333;' 
-        if isinstance(col, str) and ('(%)' in col or col == '커스텀스코어' or '수익률' in col):
+        if isinstance(col, str) and ('(%)' in col or col == '커스텀스코어' or col == '종합모멘텀' or '수익률' in col):
             try:
                 v = float(val)
                 if v > 0: style += 'color: #D32F2F;'
@@ -247,42 +244,16 @@ def apply_custom_total_styling(row, top_codes):
         styles.append(style)
     return styles
 
-@st.cache_data(ttl=1800, show_spinner=False)
-def _load_vix_df():
-    """VIX CSV를 GitHub raw URL 우선, 실패 시 로컬에서 로드.
-
-    봇(Action)이 data/vix data.csv 를 커밋하면 재배포/리부트 없이 최대 30분 내
-    자동 반영된다. (스노우볼 데이터와 동일한 raw-URL 패턴)
-    """
-    import io, urllib.parse
-    raw = ("https://raw.githubusercontent.com/rlaehrnr/my_quantum_jump/main/data/"
-           + urllib.parse.quote("vix data.csv"))
-    try:
-        import requests
-        r = requests.get(raw, timeout=8)
-        if r.status_code == 200 and r.text.strip():
-            return pd.read_csv(io.StringIO(r.text))
-    except Exception:
-        pass
-    try:
-        if os.path.exists('data/vix data.csv'):
-            return pd.read_csv('data/vix data.csv')
-    except Exception:
-        pass
-    return pd.DataFrame()
-
-
 # 2. VIX 공포지수 위젯 렌더링
 def render_vix_widget(safe_date):
+    vix_file = 'data/vix data.csv'
     vix_latest_high, vix_latest_date_str = "데이터없음", ""
     vix_35_date_str, vix_35_high, days_diff_str = "-", "-", "-"
     is_vix_warning = False
 
-    vix_df = _load_vix_df()
-    if vix_df is not None and not vix_df.empty:
+    if os.path.exists(vix_file):
         try:
-            vix_df = vix_df.copy()
-            vix_df.columns = [c.strip() for c in vix_df.columns]
+            vix_df = pd.read_csv(vix_file)
             vix_df['날짜'] = pd.to_datetime(vix_df['날짜'])
             vix_df = vix_df.sort_values('날짜')
             if not vix_df.empty:
@@ -323,6 +294,7 @@ us_main_cfg.update({
     '6-1개월(%)': st.column_config.NumberColumn('6-1개월(%)', format="%.2f%%"),
     '3-1개월(%)': st.column_config.NumberColumn('3-1개월(%)', format="%.2f%%"),
     '커스텀스코어': st.column_config.NumberColumn('커스텀스코어', format="%.2f"),
+    '종합모멘텀': st.column_config.NumberColumn('종합모멘텀', format="%.2f"),
     '종가': st.column_config.NumberColumn('종가', format="%.2f"),
     '시가총액': st.column_config.NumberColumn('시가총액', format="%d")
 })
