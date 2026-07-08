@@ -235,7 +235,7 @@ def apply_custom_total_styling(row, top_codes):
         style = ''
         if is_top and col == '종목명_L':
             style += 'background-color: #FFF9C4; font-weight: bold; color: #333;' 
-        if isinstance(col, str) and ('(%)' in col or col == '커스텀스코어' or col == '종합모멘텀' or '수익률' in col):
+        if isinstance(col, str) and ('(%)' in col or col == '커스텀스코어' or '수익률' in col):
             try:
                 v = float(val)
                 if v > 0: style += 'color: #D32F2F;'
@@ -294,7 +294,6 @@ us_main_cfg.update({
     '6-1개월(%)': st.column_config.NumberColumn('6-1개월(%)', format="%.2f%%"),
     '3-1개월(%)': st.column_config.NumberColumn('3-1개월(%)', format="%.2f%%"),
     '커스텀스코어': st.column_config.NumberColumn('커스텀스코어', format="%.2f"),
-    '종합모멘텀': st.column_config.NumberColumn('종합모멘텀', format="%.2f"),
     '종가': st.column_config.NumberColumn('종가', format="%.2f"),
     '시가총액': st.column_config.NumberColumn('시가총액', format="%d")
 })
