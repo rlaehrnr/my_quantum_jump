@@ -15,10 +15,13 @@ jobs:
     - name: 1. 저장소 코드 불러오기
       uses: actions/checkout@v3
 
-    - name: 2. 1일 체크 로직 (한국 시간 기준 1일 아침 8시 15분에만 작동)
+    - name: 2. 1일 체크 로직 (예약 실행은 매월 1일만 / 수동 실행은 항상 허용)
       id: date_check
       run: |
-        if [ "$(date +'%d')" != "01" ]; then
+        if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+          echo "수동 실행(workflow_dispatch): 날짜 가드 없이 진행합니다."
+          echo "run_job=true" >> $GITHUB_ENV
+        elif [ "$(date +'%d')" != "01" ]; then
           echo "오늘은 매월 1일이 아닙니다. 스킵합니다."
           echo "run_job=false" >> $GITHUB_ENV
         else
