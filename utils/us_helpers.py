@@ -31,9 +31,15 @@ def preprocess_us_data(df, is_daily=False):
     df['종목명'] = df['종목명'].fillna(df['종목코드'])
     df['종목명'] = np.where(df['종목명'].astype(str).str.lower() == 'nan', df['종목코드'], df['종목명'])
     
+    # 💡 시장 컬럼명이 영어(Market/Exchange 등)여도 '시장'으로 인식
+    if '시장' not in df.columns:
+        for alt in ['Market', 'market', 'MARKET', 'Exchange', 'exchange', 'EXCHANGE', '거래소']:
+            if alt in df.columns:
+                df = df.rename(columns={alt: '시장'})
+                break
     if '시장' not in df.columns: df['시장'] = 'US'
     df['시장'] = df['시장'].fillna('US')
-    df['시장'] = np.where(df['시장'].astype(str).str.lower() == 'nan', 'US', df['시장'])
+    df['시장'] = np.where(df['시장'].astype(str).str.lower().isin(['nan', '']), 'US', df['시장'])
     
     df['통합티커'] = df['시장'] + ":" + df['종목코드']
 
@@ -194,6 +200,34 @@ def get_strategy_stocks_us_custom(df_month, top_n_12=150, top_n_6=150, top_n_3=1
     # 💡 완벽하게 3개(원본, 12-1&6-1, 6-1&3-1)만 리턴합니다.
     return df_calc, strat1, strat2
 
+def get_triple_momentum_us(df_month, cutoff, mode='pct'):
+    """
+    3-1 · 6-1 · 12-1 각각 상위(cutoff)에 든 종목의 '3중 교집합'을 12-1 내림차순으로 정렬해 반환.
+
+    mode='pct'  → cutoff는 상위 %  (예: 30 → 각 지표 상위 30% 종목)
+    mode='rank' → cutoff는 상위 N위 (예: 150 → 각 지표 상위 150종목)
+
+    반환: 교집합 종목 DataFrame (12-1개월(%) 내림차순, 원본 컬럼 + 모멘텀 컬럼 포함)
+    """
+    d = calc_us_momentum(df_month)
+    cols = ['3-1개월(%)', '6-1개월(%)', '12-1개월(%)']
+    code_sets = []
+    for c in cols:
+        s = d.dropna(subset=[c])
+        if s.empty:
+            code_sets.append(set())
+            continue
+        if mode == 'pct':
+            thr = s[c].quantile(1 - cutoff / 100.0)
+            picked = s[s[c] >= thr]
+        else:  # rank
+            picked = s.sort_values(c, ascending=False).head(int(cutoff))
+        code_sets.append(set(picked['종목코드']))
+
+    inter = set.intersection(*code_sets) if code_sets else set()
+    out = d[d['종목코드'].isin(inter)].sort_values('12-1개월(%)', ascending=False).reset_index(drop=True)
+    return out
+
 @st.cache_data(show_spinner=False)
 def run_backtest_us_fast(df, start_year, end_year, ma_months, apply_timing, rank_s1, rank_s2, top_n_12, top_n_6, top_n_3, spx):
     if not spx.empty:
@@ -251,7 +285,52 @@ def run_backtest_us_fast(df, start_year, end_year, ma_months, apply_timing, rank
     return pd.DataFrame(records), pd.DataFrame(trade_logs)
 
 @st.cache_data(show_spinner=False)
-def run_custom_backtest_us(df, start_year_c, end_year_c, ma_months_c, apply_timing_c, w1, w3, w6, w12, custom_pct, rank_c_s, rank_c_e):
+def run_backtest_triple_us(df, start_year, end_year, ma_months, apply_timing, top_n_cutoff, rank_s, rank_e, spx):
+    """
+    [3중 교집합 전략 백테스트]
+    매월: 3-1 · 6-1 · 12-1 각 상위 top_n_cutoff위에 모두 든 종목(교집합)을
+          12-1 내림차순 정렬 → rank_s ~ rank_e 순위 매수 → 다음달(이번달수익률) 성과 집계.
+    apply_timing: S&P500 (ma_months*20)일선 이탈 시 현금(0%).
+    """
+    if not spx.empty:
+        spx = spx.copy()
+        spx['MA'] = spx['Close'].rolling(ma_months * 20).mean()
+        spx['Is_Below'] = spx['Close'] < spx['MA']
+
+    strat_name = '🎯 3·6·12 교집합 (12-1 정렬)'
+    records, trade_logs = [], []
+    for m_str in sorted(df['투자월'].dropna().unique()):
+        m_yr = int(m_str.split('-')[0])
+        if not (start_year <= m_yr <= end_year): continue
+        df_m = df[df['투자월'] == m_str].copy()
+        if df_m.empty: continue
+
+        base_date = pd.to_datetime(m_str + '-01') - pd.Timedelta(days=5)
+        is_below = False
+        if not spx.empty:
+            past = spx[spx.index <= base_date]
+            if not past.empty: is_below = past['Is_Below'].iloc[-1]
+        mult = 0.0 if (apply_timing and is_below) else 1.0
+
+        picks_all = get_triple_momentum_us(df_m, cutoff=top_n_cutoff, mode='rank')
+        picks = picks_all.iloc[rank_s - 1:rank_e] if not picks_all.empty else pd.DataFrame()
+        ret = picks['이번달수익률'].mean() * mult if not picks.empty else 0.0
+
+        records.append({'투자월': m_str, 'invested': mult > 0, strat_name: ret})
+
+        if mult > 0 and not picks.empty:
+            for i, (_, r) in enumerate(picks.iterrows()):
+                trade_logs.append({'투자월': m_str, '전략': '3·6·12교집합', '순위': f"{i+rank_s}위",
+                                   '종목명': r.get('종목명', r['종목코드']), '수익률(%)': r['이번달수익률']})
+        elif mult <= 0:
+            trade_logs.append({'투자월': m_str, '전략': '마켓타이밍', '순위': '-',
+                               '종목명': '현금보유(CASH)', '수익률(%)': 0.0})
+        else:
+            trade_logs.append({'투자월': m_str, '전략': '교집합없음', '순위': '-',
+                               '종목명': '해당종목없음', '수익률(%)': 0.0})
+
+    return pd.DataFrame(records), pd.DataFrame(trade_logs)
+
     spx = get_spx_history_cached()
     if not spx.empty:
         spx['MA'] = spx['Close'].rolling(ma_months_c * 20).mean()
