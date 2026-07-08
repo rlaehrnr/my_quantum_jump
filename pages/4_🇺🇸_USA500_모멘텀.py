@@ -4,7 +4,7 @@ import plotly.express as px
 from datetime import datetime, timedelta
 import os
 
-st.set_page_config(page_title="USA 300 통합 모멘텀", layout="wide")
+st.set_page_config(page_title="USA 500 통합 모멘텀", layout="wide")
 
 from utils.data_loader import load_archive_data, get_folder_hash
 from utils.calculator import get_cycle_year, PRESIDENTIAL_DANGEROUS_MONTHS
@@ -33,7 +33,7 @@ st.markdown('''
     <div style="margin-bottom: 20px;">
         <a href="https://m.stock.naver.com/worldstock/" target="_blank" class="title-link" style="text-decoration: none; color: inherit;">
             <div style="display: flex; align-items: center; flex-wrap: wrap; gap: 12px;">
-                <h1 style="margin: 0; padding: 0; font-size: 2.2rem; font-weight: 800; line-height: 1.2; word-break: keep-all;">🇺🇸 USA 300 통합 모멘텀 (Top 300)</h1>
+                <h1 style="margin: 0; padding: 0; font-size: 2.2rem; font-weight: 800; line-height: 1.2; word-break: keep-all;">🇺🇸 USA 500 통합 모멘텀 (Top 500)</h1>
                 <span style="font-size: 0.95rem; color: #10b981; background-color: #d1fae5; padding: 4px 10px; border-radius: 6px; border: 1px solid #6ee7b7; white-space: nowrap;">🔗 네이버 증권 이동</span>
             </div>
         </a>
@@ -147,7 +147,7 @@ with tab1:
         
         col_total_t, col_total_i, col_total_r = st.columns([5.5, 2.5, 4.0])
         with col_total_t: 
-            st.markdown("<h3 style='margin:0;'>🌐 USA 300 전체 순위</h3>", unsafe_allow_html=True)
+            st.markdown("<h3 style='margin:0;'>🌐 USA 500 전체 순위</h3>", unsafe_allow_html=True)
         with col_total_i:
             top_n_total_t1 = st.number_input("전체 순위 하이라이트 (N위)", 1, len(df_us_t1), 10, key="top_n_total_t1_usa", label_visibility="collapsed")
         with col_total_r:
@@ -164,7 +164,9 @@ with tab1:
 # 탭 2. 실시간 데일리 순위
 # ==========================================
 with tab2:
-    f_daily_path = 'data/momentum_data_daily_usa300.csv'
+    f_daily_path = 'data/momentum_data_daily_usa500.csv'
+    if not os.path.exists(f_daily_path):
+        f_daily_path = 'data/momentum_data_daily_usa300.csv'
     if os.path.exists(f_daily_path):
         df_daily_raw = pd.read_csv(f_daily_path)
         df_daily = preprocess_us_data(df_daily_raw, is_daily=True)
@@ -239,7 +241,7 @@ with tab2:
         top_n_total_d = st.session_state.get("top_n_total_t1_usa", 10)
         col_total_td, col_total_id, col_total_rd = st.columns([5.5, 2.5, 4.0])
         with col_total_td: 
-            st.markdown(f"<h3 style='margin:0;'>🌐 USA 300 전체 순위</h3>", unsafe_allow_html=True)
+            st.markdown(f"<h3 style='margin:0;'>🌐 USA 500 전체 순위</h3>", unsafe_allow_html=True)
         with col_total_id:
             top_n_total_d = st.number_input("전체 순위 하이라이트 (N위)", 1, len(df_us_d), top_n_total_d, key="top_n_total_t2_usa", label_visibility="collapsed")
         with col_total_rd:
@@ -376,7 +378,7 @@ with tab4:
 
                 col_tc, col_bc = st.columns([7.5, 2.5])
                 with col_tc: st.markdown("#### 📊 전략 핵심 통계")
-                with col_bc: st.download_button("📥 상세내역 다운로드", df_trades_c.to_csv(index=False).encode('utf-8-sig'), "USA300_커스텀_백테스트.csv", "text/csv", use_container_width=True)
+                with col_bc: st.download_button("📥 상세내역 다운로드", df_trades_c.to_csv(index=False).encode('utf-8-sig'), "USA500_커스텀_백테스트.csv", "text/csv", use_container_width=True)
 
                 final_val_c = df_cum_c['커스텀 전략'].iloc[-1]
                 years_c = len(df_res_c) / 12
