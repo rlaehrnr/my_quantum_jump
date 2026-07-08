@@ -63,14 +63,23 @@ def process_daily_ticker(row, start_date, today, dates, real_base_date_str, csv_
 
 def run_daily_update(target_name, archive_folder, output_file, real_base_date_str, real_base_date, today, dates, start_date):
     print(f"\n📌 [{target_name}] 데일리 업데이트 시작...")
-    archive_files = sorted(glob.glob(f'{archive_folder}/only_*.csv'))
+    import re
+    archive_files = glob.glob(f'{archive_folder}/only_*.csv')
     if not archive_files:
         print(f"🚨 {archive_folder}에 데이터가 없습니다.")
         return
-        
-    latest_file = archive_files[-1]
+
+    # 💡 파일명의 YYYY_MM으로 '가장 최근 월'을 고른다(알파벳 정렬이 아님).
+    #    같은 달에 usa300/usa500이 함께 있으면 usa500을 우선.
+    def _fkey(p):
+        b = os.path.basename(p)
+        m = re.search(r'_(\d{4})_(\d{2})\.csv$', b)
+        ym = (int(m.group(1)), int(m.group(2))) if m else (0, 0)
+        return (ym[0], ym[1], 1 if 'usa500' in b else 0)
+    latest_file = max(archive_files, key=_fkey)
     df_latest = pd.read_csv(latest_file)
-    
+    print(f"   └ 유니버스 파일: {os.path.basename(latest_file)} ({len(df_latest)}종목)")
+
     # 💡 엑셀 컬럼이 Ticker든 Symbol이든 문제없이 잡도록 방어 로직 강화
     rename_dict = {}
     for col in df_latest.columns:
@@ -79,10 +88,15 @@ def run_daily_update(target_name, archive_folder, output_file, real_base_date_st
         if c_up in ['NAME', 'COMPANY', 'SECURITY']: rename_dict[col] = '종목명'
         if c_up in ['DATE']: rename_dict[col] = '종목선정일'
     df_latest = df_latest.rename(columns=rename_dict)
-    
+
     if '종목명' not in df_latest.columns: df_latest['종목명'] = df_latest['종목코드']
+    # 💡 시장 컬럼명이 '거래소'(또는 영문)여도 '시장'으로 인식 → 데일리에도 NASDAQ/NYSE 유지
+    if '시장' not in df_latest.columns:
+        for alt in ['거래소', 'Market', 'market', 'MARKET', 'Exchange', 'exchange']:
+            if alt in df_latest.columns:
+                df_latest = df_latest.rename(columns={alt: '시장'}); break
     if '시장' not in df_latest.columns: df_latest['시장'] = 'US'
-        
+
     universe = df_latest[['종목코드', '종목명', '시장']].drop_duplicates(subset=['종목코드'])
     if '시가총액_raw' in df_latest.columns: universe['시가총액_raw'] = df_latest['시가총액_raw']
     elif '시가총액' in df_latest.columns: universe['시가총액_raw'] = df_latest['시가총액']
@@ -127,8 +141,8 @@ def main():
     # 1. SP500 업데이트
     run_daily_update('S&P 500', 'archive_sp500', 'data/momentum_data_daily_sp500.csv', real_base_date_str, real_base_date, today, dates, start_date)
     
-    # 2. USA300 업데이트
-    run_daily_update('USA 300', 'archive_usa', 'data/momentum_data_daily_usa300.csv', real_base_date_str, real_base_date, today, dates, start_date)
+    # 2. USA 500 업데이트 (월간 아카이브 최신 파일의 유니버스 = 시총 상위 500)
+    run_daily_update('USA 500', 'archive_usa', 'data/momentum_data_daily_usa500.csv', real_base_date_str, real_base_date, today, dates, start_date)
     
     print("\n🎉 모든 미국장 일간 업데이트가 완료되었습니다!")
 
