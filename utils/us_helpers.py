@@ -365,3 +365,132 @@ def run_custom_backtest_us(df, start_year_c, end_year_c, ma_months_c, apply_timi
             trade_logs.append({'투자월': m_str, '전략': '마켓타이밍', '순위': '-', '종목명': '현금보유(CASH)', '수익률(%)': 0.0})
             
     return pd.DataFrame(records), pd.DataFrame(trade_logs)
+
+
+# ==========================================================================
+# 🛡️ 멀티4 (스노우볼 cond1) 위험회피 신호
+#   규칙: (TIP·VWO·VEA 6M 수익률 모두 음수) AND (VIXY 6M < 0  OR  VIXY 6M ≥ +40%)
+#   데이터: data/snowball/monthly/{TICKER}_과거_데이터.csv  (컬럼: 날짜, 종가 / 월말)
+#   타이밍: 신호월 m → 투자월 m+1 (스노우볼과 동일 정렬)
+#   VIXY 상장(2011-01)+6M 이후부터 유효. 그 전 투자월은 맵에 키 없음 → 호출측 기본 False
+#           (= 상장 이전 구간은 SPY 마켓타이밍만 적용)
+# ==========================================================================
+_SNOWBALL_RAW_BASE = "https://raw.githubusercontent.com/rlaehrnr/my_quantum_jump/main/data/snowball/monthly/"
+_MULTI4_TICKERS = ['TIP', 'VWO', 'VEA', 'VIXY']
+VIXY_SPIKE = 0.40
+
+
+def _load_snowball_signal_series(ticker):
+    """스노우볼 신호 ETF 월말 종가 Series(index=Period['M']). raw GitHub 우선 + 로컬 폴백."""
+    import urllib.parse, os, glob, re
+    fname = f"{ticker}_과거_데이터.csv"
+    df = None
+    try:
+        url = _SNOWBALL_RAW_BASE + urllib.parse.quote(fname)
+        df = pd.read_csv(url, encoding='utf-8-sig')
+    except Exception:
+        df = None
+    if df is None or df.empty:
+        want = re.sub(r'[\s_]+', '', fname)
+        for p in glob.glob('data/snowball/monthly/*.csv'):
+            if re.sub(r'[\s_]+', '', os.path.basename(p)) == want:
+                try:
+                    df = pd.read_csv(p, encoding='utf-8-sig')
+                except Exception:
+                    df = None
+                break
+    if df is None or df.empty:
+        return pd.Series(dtype=float)
+    df.columns = [c.strip() for c in df.columns]
+    if '날짜' not in df.columns or '종가' not in df.columns:
+        return pd.Series(dtype=float)
+    df['날짜'] = pd.to_datetime(df['날짜'], errors='coerce')
+    df = df.dropna(subset=['날짜'])
+    s = df.set_index('날짜')['종가'].astype(float).sort_index()
+    s.index = s.index.to_period('M')
+    return s[~s.index.duplicated(keep='last')]
+
+
+@st.cache_data(ttl="6h", show_spinner=False)
+def get_multi4_cond1_map():
+    """
+    멀티4 위험회피 신호 → {투자월'YYYY-MM': True/False}.
+    유효(4종 6M 모두 존재)한 투자월만 키로 포함. 상장 전 월은 키 없음 → 호출측 기본 False.
+    """
+    series = {}
+    for t in _MULTI4_TICKERS:
+        s = _load_snowball_signal_series(t)
+        if s.empty:
+            return {}
+        series[t] = s
+    px = pd.DataFrame(series).sort_index()
+    r6 = px / px.shift(6) - 1.0
+    base_neg = (r6[['TIP', 'VWO', 'VEA']] < 0).all(axis=1)
+    vixy = r6['VIXY']
+    ready = r6[_MULTI4_TICKERS].notna().all(axis=1)
+    cond1 = base_neg & ((vixy < 0) | (vixy >= VIXY_SPIKE))
+    out = {}
+    for period, is_ready in ready.items():
+        if not is_ready:
+            continue
+        inv = (period + 1).strftime('%Y-%m')   # 신호월+1 = 투자월
+        out[inv] = bool(cond1.loc[period])
+    return out
+
+
+def get_multi4_start_ym():
+    """멀티4가 실제로 작동하기 시작하는 첫 투자월('YYYY-MM'). 데이터 없으면 None."""
+    m = get_multi4_cond1_map()
+    return min(m.keys()) if m else None
+
+
+@st.cache_data(show_spinner=False)
+def run_backtest_triple_us_m4(df, start_year, end_year, ma_months, apply_timing, use_multi4, top_n_cutoff, rank_s, rank_e, spx):
+    """
+    3중 교집합 전략(12-1 정렬 → rank_s~rank_e 매수) + 방어 필터.
+    방어 = apply_timing AND ( SPY (ma_months*20)일선 이탈  OR  멀티4 cond1 ).
+    use_multi4=False면 SPY 필터만(= run_backtest_triple_us와 동일).
+    멀티4는 VIXY 상장+6M 이후 투자월에만 작동(그 전은 SPY만).
+    """
+    cond1_map = get_multi4_cond1_map() if use_multi4 else {}
+    if not spx.empty:
+        spx = spx.copy()
+        spx['MA'] = spx['Close'].rolling(ma_months * 20).mean()
+        spx['Is_Below'] = spx['Close'] < spx['MA']
+
+    strat_name = '🛡️ 3·6·12 교집합 + 멀티4' if use_multi4 else '🎯 3·6·12 교집합 (12-1 정렬)'
+    records, trade_logs = [], []
+    for m_str in sorted(df['투자월'].dropna().unique()):
+        m_yr = int(m_str.split('-')[0])
+        if not (start_year <= m_yr <= end_year): continue
+        df_m = df[df['투자월'] == m_str].copy()
+        if df_m.empty: continue
+
+        base_date = pd.to_datetime(m_str + '-01') - pd.Timedelta(days=5)
+        is_below = False
+        if not spx.empty:
+            past = spx[spx.index <= base_date]
+            if not past.empty: is_below = past['Is_Below'].iloc[-1]
+        is_m4 = bool(cond1_map.get(m_str, False))
+        defense = bool(apply_timing and (is_below or is_m4))
+        mult = 0.0 if defense else 1.0
+
+        picks_all = get_triple_momentum_us(df_m, cutoff=top_n_cutoff, mode='rank')
+        picks = picks_all.iloc[rank_s - 1:rank_e] if not picks_all.empty else pd.DataFrame()
+        ret = picks['이번달수익률'].mean() * mult if not picks.empty else 0.0
+
+        records.append({'투자월': m_str, 'invested': mult > 0, strat_name: ret})
+
+        if mult > 0 and not picks.empty:
+            for i, (_, r) in enumerate(picks.iterrows()):
+                trade_logs.append({'투자월': m_str, '전략': '3·6·12교집합', '순위': f"{i+rank_s}위",
+                                   '종목명': r.get('종목명', r['종목코드']), '수익률(%)': r['이번달수익률']})
+        elif defense:
+            reason = '마켓타이밍+멀티4' if (is_below and is_m4) else ('멀티4' if is_m4 else '마켓타이밍')
+            trade_logs.append({'투자월': m_str, '전략': reason, '순위': '-',
+                               '종목명': '현금보유(CASH)', '수익률(%)': 0.0})
+        else:
+            trade_logs.append({'투자월': m_str, '전략': '교집합없음', '순위': '-',
+                               '종목명': '해당종목없음', '수익률(%)': 0.0})
+
+    return pd.DataFrame(records), pd.DataFrame(trade_logs)
