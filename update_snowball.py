@@ -43,6 +43,13 @@ ALL_TICKERS = list(dict.fromkeys(CORE_TICKERS + SAMSUNG_TICKERS + SO_TICKERS))
 #    (배당·분할 없는 GLD/SLV는 수정가로 받아도 값이 사실상 동일 → 무해)
 ADJUSTED_TICKERS = set(ALL_TICKERS)
 
+# 수집 시작일: 기본 2005. 단 QQQ·SPY는 상장이 일러(SPY 1993, QQQ 1999) 더 길게 받는다.
+#   (다른 자산은 그대로 2005 — 전략들은 TQQQ·VIXY 등 2010~2011 상장 자산에 묶여 있어
+#    QQQ/SPY 연장이 전략 백테스트엔 영향 없고, 외부 용도(SP500 페이지 등)에만 도움된다.)
+#   1990-01-01을 주면 소스가 실제 상장일부터 클램프해 반환한다.
+DEFAULT_START = '2005-01-01'
+EARLY_START = {'QQQ': '1990-01-01', 'SPY': '1990-01-01'}
+
 
 # ==========================================
 # ETF 월봉 수집
@@ -98,6 +105,7 @@ def fetch_etf(ticker):
     우선 시도하고, FDR('Adj Close')을 폴백으로 둔다.
     """
     adjusted = ticker in ADJUSTED_TICKERS
+    start = EARLY_START.get(ticker, DEFAULT_START)
     kind = '수정주가' if adjusted else '원시주가'
     if adjusted:
         order = [('yfinance', fetch_etf_yfinance), ('fdr', fetch_etf_fdr)]
@@ -105,7 +113,7 @@ def fetch_etf(ticker):
         order = [('fdr', fetch_etf_fdr), ('yfinance', fetch_etf_yfinance)]
     for name, fn in order:
         try:
-            s = fn(ticker, adjusted=adjusted)
+            s = fn(ticker, start=start, adjusted=adjusted)
             s = _drop_incomplete_month(s)   # 진행 중인 현재 달 제거 (완성월까지만)
             if s is not None and len(s) > 12:
                 print(f"  ✅ {ticker}: {name}({kind})로 {len(s)}개월 수집 (최근 {s.index[-1].date()})")
