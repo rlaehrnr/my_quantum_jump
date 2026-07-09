@@ -17,6 +17,7 @@ import streamlit as st
 import pandas as pd
 import numpy as np
 import plotly.graph_objects as go
+import re
 
 from utils.snowball import (
     load_monthly_prices, load_dividend_yield,
@@ -110,6 +111,39 @@ if prices.empty:
 
 
 # ==========================================
+# 네이버 차트 링크 헬퍼
+# ==========================================
+# 미국 ETF 네이버 해외주식 거래소 접미사 (기본 'O'=나스닥). NYSE 등 안 열리면 여기만 수정.
+NAVER_US_EXCH = {}
+
+
+def naver_kr_url(code):
+    return f"https://finance.naver.com/item/main.naver?code={code}"
+
+
+def naver_us_url(ticker):
+    return f"https://m.stock.naver.com/worldstock/stock/{ticker}.{NAVER_US_EXCH.get(ticker, 'O')}/total"
+
+
+def naver_code(url):
+    """네이버 URL에서 코드/티커 추출 (스타일러 매칭용). URL이 아니면 원본 반환."""
+    if not isinstance(url, str):
+        return url
+    m = re.search(r'code=(\w+)', url)
+    if m:
+        return m.group(1)
+    m = re.search(r'stock/([A-Za-z0-9]+)\.', url)
+    return m.group(1) if m else url
+
+
+def naver_linkcol(df, col, us=False):
+    """df[col]의 코드/티커를 네이버 URL로 바꾸고, 그 컬럼용 LinkColumn 설정을 반환."""
+    df[col] = df[col].map(naver_us_url if us else naver_kr_url)
+    disp = r'stock/([A-Za-z0-9]+)\.' if us else r'code=(\w+)'
+    return {col: st.column_config.LinkColumn(col, display_text=disp)}
+
+
+# ==========================================
 # 공용 렌더 헬퍼
 # ==========================================
 def _style_asset_table(rows, active, selected_set, value_label):
@@ -121,11 +155,13 @@ def _style_asset_table(rows, active, selected_set, value_label):
     df = (pd.DataFrame(rows)
           .sort_values(value_label, ascending=False, na_position='last')
           .reset_index(drop=True))
+    df['자산'] = df['자산'].map(naver_us_url)   # 네이버 차트 링크용 URL화
 
     def _row_style(row):
         n = len(row)
-        if active and row['자산'] in selected_set:
-            c = ASSET_COLORS.get(row['자산'], '#6B7280')
+        _code = naver_code(row['자산'])
+        if active and _code in selected_set:
+            c = ASSET_COLORS.get(_code, '#6B7280')
             return [f'background-color: {c}55; font-weight: 800;'] * n
         if not active:
             return ['color: #9CA3AF;'] * n
@@ -553,7 +589,8 @@ def render_meritz():
         rows = [{'자산': t, '수익률': last.get(f'ret12_{t}', np.nan)} for t in OFFENSE_ASSETS]
         sel = {selected_hold} if is_active else set()
         st.dataframe(_style_asset_table(rows, is_active, sel, '수익률'),
-                     hide_index=True, use_container_width=True, key="meritz_off")
+                     hide_index=True, use_container_width=True, key="meritz_off",
+                     column_config={'자산': st.column_config.LinkColumn('자산', display_text=r'stock/([A-Za-z0-9]+)\.')})
     with col_def:
         is_active = defensive_now
         label = "🛡️ 방어 자산 (12개월 MA 이격도)" + ("" if is_active else "  · 비활성")
@@ -562,7 +599,8 @@ def render_meritz():
         rows = [{'자산': t, '이격도': last.get(f'disp12_{t}', np.nan)} for t in DEFENSE_ASSETS]
         sel = {selected_hold} if is_active else set()
         st.dataframe(_style_asset_table(rows, is_active, sel, '이격도'),
-                     hide_index=True, use_container_width=True, key="meritz_def")
+                     hide_index=True, use_container_width=True, key="meritz_def",
+                     column_config={'자산': st.column_config.LinkColumn('자산', display_text=r'stock/([A-Za-z0-9]+)\.')})
 
     # 위험회피 옵션 (조건1 / 조건2)
     st.markdown("<div style='font-size:1.5rem; font-weight:800; margin:18px 0 10px 0;'>위험회피 옵션</div>",
@@ -722,7 +760,8 @@ def render_samsung():
         rows = [{'자산': t, '이격도': last.get(f'disp12_{t}', np.nan)} for t in SS_OFFENSE_ASSETS]
         sel = hold_set if is_active else set()
         st.dataframe(_style_asset_table(rows, is_active, sel, '이격도'),
-                     hide_index=True, use_container_width=True, key="ss_off")
+                     hide_index=True, use_container_width=True, key="ss_off",
+                     column_config={'자산': st.column_config.LinkColumn('자산', display_text=r'stock/([A-Za-z0-9]+)\.')})
     with col_def:
         is_active = defensive_now
         label = "🛡️ 방어 자산 (IEF50 · GLD50 고정)" + ("" if is_active else "  · 비활성")
@@ -733,7 +772,8 @@ def render_samsung():
         rows = [{'자산': t, '이격도': last.get(f'disp_{t}', np.nan)} for t in SS_DEFENSE_ASSETS]
         sel = hold_set if is_active else set()
         st.dataframe(_style_asset_table(rows, is_active, sel, '이격도'),
-                     hide_index=True, use_container_width=True, key="ss_def")
+                     hide_index=True, use_container_width=True, key="ss_def",
+                     column_config={'자산': st.column_config.LinkColumn('자산', display_text=r'stock/([A-Za-z0-9]+)\.')})
 
     # 진입 필터 — 제목 줄 오른쪽에 토글 + N 슬라이더 (새 줄 없이 한 줄 배치)
     ft_col, tog_col, sld_col = st.columns([2.0, 1.1, 1.6])
@@ -841,7 +881,8 @@ def render_so():
                  '4M MA': _fmt_ab(last.get(f'abs_{t}', np.nan))} for t in SO_OFFENSE_ASSETS]
         sel = hold_set if is_active else set()
         st.dataframe(_style_asset_table(rows, is_active, sel, '모멘텀'),
-                     hide_index=True, use_container_width=True, key="so_off")
+                     hide_index=True, use_container_width=True, key="so_off",
+                     column_config={'자산': st.column_config.LinkColumn('자산', display_text=r'stock/([A-Za-z0-9]+)\.')})
     with col_def:
         is_active = defensive_now
         label = "🛡️ 방어 자산 (GLD50 · IEF50 고정)" + ("" if is_active else "  · 비활성")
@@ -853,12 +894,13 @@ def render_so():
         ddf = pd.DataFrame(def_rows)
         if is_active:
             def _def_style(row):
-                c = ASSET_COLORS.get(row['자산'], '#6B7280')
+                c = ASSET_COLORS.get(naver_code(row['자산']), '#6B7280')
                 return [f'background-color: {c}55; font-weight: 800;'] * len(row)
             sty = ddf.style.apply(_def_style, axis=1)
         else:
             sty = ddf.style.apply(lambda row: ['color: #9CA3AF;'] * len(row), axis=1)
-        st.dataframe(sty, hide_index=True, use_container_width=True, key="so_def")
+        st.dataframe(sty, hide_index=True, use_container_width=True, key="so_def",
+                     column_config=naver_linkcol(ddf, '자산', us=True))
 
     # 회피 필터 (SPY 모멘텀 점수) — 제목 옆에 리스크오프 토글
     rf_col, ro_col = st.columns([2.6, 1.4])
@@ -1038,12 +1080,13 @@ def render_ko():
                          f'{KO_ABSMOM_WIN}M 이격도': ((f"{am*100:+.1f}%" if pd.notna(am) else 'N/A') + am_mark)})
         odf = pd.DataFrame(rows)
         def _off_style(row):
-            if is_active and row['티커'] in hold_set:
-                c = ASSET_COLORS.get(row['티커'], '#10B981')
+            if is_active and naver_code(row['티커']) in hold_set:
+                c = ASSET_COLORS.get(naver_code(row['티커']), '#10B981')
                 return [f'background-color: {c}44; font-weight: 800;' for _ in row]
             return ['color: #9CA3AF;' for _ in row] if not is_active else ['' for _ in row]
         st.dataframe(odf.style.apply(_off_style, axis=1), hide_index=True,
-                     use_container_width=True, key="ko_off")
+                     use_container_width=True, key="ko_off",
+                     column_config=naver_linkcol(odf, '티커'))
     with col_def:
         is_active = defensive_now
         label = f"🛡️ 방어 후보 ({KO_DEF_WIN}M MA 이격도)" + ("" if is_active else "  · 비활성")
@@ -1059,12 +1102,13 @@ def render_ko():
                          f'{KO_DEF_WIN}M 이격도': (f"{v*100:+.1f}%" if pd.notna(v) else 'N/A')})
         ddf = pd.DataFrame(rows)
         def _def_style(row):
-            if is_active and row['티커'] in hold_set:
-                c = ASSET_COLORS.get(row['티커'], '#EF4444')
+            if is_active and naver_code(row['티커']) in hold_set:
+                c = ASSET_COLORS.get(naver_code(row['티커']), '#EF4444')
                 return [f'background-color: {c}44; font-weight: 800;' for _ in row]
             return ['color: #9CA3AF;' for _ in row] if not is_active else ['' for _ in row]
         st.dataframe(ddf.style.apply(_def_style, axis=1), hide_index=True,
-                     use_container_width=True, key="ko_def")
+                     use_container_width=True, key="ko_def",
+                     column_config=naver_linkcol(ddf, '티커'))
 
     # 위험회피 필터 (TIP 10M MA 이격도)
     st.markdown("<div style='font-size:1.5rem; font-weight:800; margin:16px 0 8px 0;'>위험회피 필터</div>",
@@ -1203,12 +1247,13 @@ def render_pension():
                 for c in off_ranked]
         odf = pd.DataFrame(rows)
         def _off_style(row):
-            if is_active and row['티커'] in hold_set:
-                c = ASSET_COLORS.get(row['티커'], '#10B981')
+            if is_active and naver_code(row['티커']) in hold_set:
+                c = ASSET_COLORS.get(naver_code(row['티커']), '#10B981')
                 return [f'background-color: {c}44; font-weight: 800;' for _ in row]
             return ['color: #9CA3AF;' for _ in row] if not is_active else ['' for _ in row]
         st.dataframe(odf.style.apply(_off_style, axis=1), hide_index=True,
-                     use_container_width=True, key="pen_off")
+                     use_container_width=True, key="pen_off",
+                     column_config=naver_linkcol(odf, '티커'))
     with col_def:
         is_active = defensive_now
         label = f"🛡️ 방어 후보 ({PEN_DEF_WIN}M MA 이격도 1위)" + ("" if is_active else "  · 비활성")
@@ -1222,12 +1267,13 @@ def render_pension():
                 for c in def_ranked]
         ddf = pd.DataFrame(rows)
         def _def_style(row):
-            if is_active and row['티커'] in hold_set:
-                c = ASSET_COLORS.get(row['티커'], '#EF4444')
+            if is_active and naver_code(row['티커']) in hold_set:
+                c = ASSET_COLORS.get(naver_code(row['티커']), '#EF4444')
                 return [f'background-color: {c}44; font-weight: 800;' for _ in row]
             return ['color: #9CA3AF;' for _ in row] if not is_active else ['' for _ in row]
         st.dataframe(ddf.style.apply(_def_style, axis=1), hide_index=True,
-                     use_container_width=True, key="pen_def")
+                     use_container_width=True, key="pen_def",
+                     column_config=naver_linkcol(ddf, '티커'))
 
     # 위험회피 필터
     st.markdown("<div style='font-size:1.5rem; font-weight:800; margin:16px 0 8px 0;'>위험회피 필터</div>",
@@ -1361,11 +1407,12 @@ def render_ssopen():
 
         def _off_style(row):
             if is_active:
-                c = ASSET_COLORS.get(row['티커'], '#10B981')
+                c = ASSET_COLORS.get(naver_code(row['티커']), '#10B981')
                 return [f'background-color: {c}44; font-weight: 800;' for _ in row]
             return ['color: #9CA3AF;' for _ in row]
         st.dataframe(odf.style.apply(_off_style, axis=1), hide_index=True,
-                     use_container_width=True, key="ssopen_off")
+                     use_container_width=True, key="ssopen_off",
+                     column_config=naver_linkcol(odf, '티커'))
     with col_def:
         is_active = defensive_now
         label = "🛡️ 방어 후보 (1+3+6+12M 수익률 합 1위)" + ("" if is_active else "  · 비활성")
@@ -1380,12 +1427,13 @@ def render_ssopen():
         ddf = pd.DataFrame(rows)
 
         def _def_style(row):
-            if is_active and row['티커'] in hold_set:
-                c = ASSET_COLORS.get(row['티커'], '#EF4444')
+            if is_active and naver_code(row['티커']) in hold_set:
+                c = ASSET_COLORS.get(naver_code(row['티커']), '#EF4444')
                 return [f'background-color: {c}44; font-weight: 800;' for _ in row]
             return ['color: #9CA3AF;' for _ in row] if not is_active else ['' for _ in row]
         st.dataframe(ddf.style.apply(_def_style, axis=1), hide_index=True,
-                     use_container_width=True, key="ssopen_def")
+                     use_container_width=True, key="ssopen_def",
+                     column_config=naver_linkcol(ddf, '티커'))
 
     # 위험회피 필터 (cond1)
     st.markdown("<div style='font-size:1.5rem; font-weight:800; margin:16px 0 8px 0;'>위험회피 필터 (cond1)</div>",
@@ -1537,12 +1585,13 @@ def render_mamtax():
         odf = pd.DataFrame(rows)
 
         def _off_style(row):
-            if is_active and row['실운용'] in held_live:
-                c = ASSET_COLORS.get(row['실운용'], '#10B981')
+            if is_active and naver_code(row['실운용']) in held_live:
+                c = ASSET_COLORS.get(naver_code(row['실운용']), '#10B981')
                 return [f'background-color: {c}44; font-weight: 800;' for _ in row]
             return ['color: #9CA3AF;' for _ in row]
         st.dataframe(odf.style.apply(_off_style, axis=1), hide_index=True,
-                     use_container_width=True, key="mamtax_off")
+                     use_container_width=True, key="mamtax_off",
+                     column_config=naver_linkcol(odf, '실운용'))
     with col_def:
         is_active = defensive_now
         label = "🛡️ 방어 후보 (3M MA이격도 상위2)" + ("" if is_active else "  · 비활성")
@@ -1559,12 +1608,13 @@ def render_mamtax():
         ddf = pd.DataFrame(rows)
 
         def _def_style(row):
-            if is_active and row['티커'] in hold_set:
-                c = ASSET_COLORS.get(row['티커'], '#EF4444')
+            if is_active and naver_code(row['티커']) in hold_set:
+                c = ASSET_COLORS.get(naver_code(row['티커']), '#EF4444')
                 return [f'background-color: {c}44; font-weight: 800;' for _ in row]
             return ['color: #9CA3AF;' for _ in row] if not is_active else ['' for _ in row]
         st.dataframe(ddf.style.apply(_def_style, axis=1), hide_index=True,
-                     use_container_width=True, key="mamtax_def")
+                     use_container_width=True, key="mamtax_def",
+                     column_config=naver_linkcol(ddf, '티커'))
 
     # 위험회피 필터 (cond1)
     st.markdown("<div style='font-size:1.5rem; font-weight:800; margin:16px 0 8px 0;'>위험회피 필터 (cond1)</div>",
