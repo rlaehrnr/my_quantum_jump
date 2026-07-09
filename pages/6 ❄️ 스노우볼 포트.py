@@ -118,7 +118,7 @@ NAVER_US_EXCH = {}
 
 
 def naver_kr_url(code):
-    return f"https://finance.naver.com/item/main.naver?code={code}"
+    return f"https://m.stock.naver.com/domestic/stock/{code}/total"
 
 
 def naver_us_url(ticker):
@@ -129,17 +129,14 @@ def naver_code(url):
     """네이버 URL에서 코드/티커 추출 (스타일러 매칭용). URL이 아니면 원본 반환."""
     if not isinstance(url, str):
         return url
-    m = re.search(r'code=(\w+)', url)
-    if m:
-        return m.group(1)
-    m = re.search(r'stock/([A-Za-z0-9]+)\.', url)
+    m = re.search(r'/stock/([A-Za-z0-9]+)[./]', url)
     return m.group(1) if m else url
 
 
 def naver_linkcol(df, col, us=False):
     """df[col]의 코드/티커를 네이버 URL로 바꾸고, 그 컬럼용 LinkColumn 설정을 반환."""
     df[col] = df[col].map(naver_us_url if us else naver_kr_url)
-    disp = r'stock/([A-Za-z0-9]+)\.' if us else r'code=(\w+)'
+    disp = r'stock/([A-Za-z0-9]+)\.' if us else r'stock/([A-Za-z0-9]+)/'
     return {col: st.column_config.LinkColumn(col, display_text=disp)}
 
 
