@@ -1,10 +1,10 @@
-name: Snowball Monthly Data Update
+name: Snowball Data Update (Daily)
 
 on:
   schedule:
     # 💡 매월 1일 UTC 06:00 = 한국 시간 매월 1일 오후 3시
     #    (미국 시장 전월 말 마감 데이터가 반영된 후 실행)
-    - cron: '0 6 1 * *'
+    - cron: '0 22 * * *'   # 매일 UTC 22:00 (미국 마감 후) = KST 익일 07:00
   workflow_dispatch:   # 수동 실행 버튼
 
 jobs:
@@ -35,4 +35,4 @@ jobs:
         git config --local user.email "action@github.com"
         git config --local user.name "GitHub Action Bot"
         git add data/snowball/
-        git diff --quiet && git diff --staged --quiet || (git commit -m "🤖 [Snowball] 매월 데이터 자동 업데이트" && git push)
+        git diff --quiet && git diff --staged --quiet || (git commit -m "🤖 [Snowball] 데이터 자동 갱신 (월말 자료·일별 재조정 반영)" && git push)
