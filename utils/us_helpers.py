@@ -486,9 +486,26 @@ def run_backtest_triple_us_m4(df, start_year, end_year, ma_months, apply_timing,
 
         picks_all = get_triple_momentum_us(df_m, cutoff=top_n_cutoff, mode='rank')
         picks = picks_all.iloc[rank_s - 1:rank_e] if not picks_all.empty else pd.DataFrame()
-        ret = picks['이번달수익률'].mean() * mult if not picks.empty else 0.0
+        offense_ret = picks['이번달수익률'].mean() if not picks.empty else 0.0   # 반사실: 방어 안 하고 공격했을 때 수익률
+        ret = offense_ret * mult                                                # 실제(방어면 0)
 
-        records.append({'투자월': m_str, 'invested': mult > 0, strat_name: ret})
+        if not defense:
+            stop_reason = ''
+        elif is_below and is_m4:
+            stop_reason = 'S&P500 240일선 이탈 + 멀티4'
+        elif is_m4:
+            stop_reason = '멀티4 필터'
+        else:
+            stop_reason = 'S&P500 240일선 이탈'
+
+        records.append({
+            '투자월': m_str,
+            'invested': mult > 0,
+            strat_name: ret,                                # 정밀도 유지(누적계산용) — 방어월은 0
+            '중지사유': stop_reason,
+            '공격시수익률(%)': round(offense_ret, 2),          # 방어했더라도 '공격했다면' 수익률
+            '공격-방어차이(%p)': round(offense_ret - ret, 2),  # 양수=방어가 손해, 음수=방어가 이득
+        })
 
         if mult > 0 and not picks.empty:
             for i, (_, r) in enumerate(picks.iterrows()):
