@@ -467,7 +467,7 @@ def run_backtest_triple_us_m4(df, start_year, end_year, ma_months, apply_timing,
         df_m = df[df['투자월'] == m_str].copy()
         if df_m.empty: continue
 
-        base_date = pd.to_datetime(df_m['종목선정일'].iloc[0]) if ('종목선정일' in df_m.columns and pd.notna(df_m['종목선정일'].iloc[0])) else (pd.to_datetime(m_str + '-01') - pd.Timedelta(days=5))
+        base_date = pd.to_datetime(m_str + '-01') - pd.Timedelta(days=5)
         is_below = False
         if not spx.empty:
             past = spx[spx.index <= base_date]
