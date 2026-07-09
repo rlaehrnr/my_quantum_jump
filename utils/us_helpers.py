@@ -1,538 +1,242 @@
 import pandas as pd
-import numpy as np
-from datetime import datetime, timedelta
 import FinanceDataReader as fdr
-import yfinance as yf
-import io
-import streamlit as st
+from datetime import datetime, timedelta
+import os
+import glob
+from concurrent.futures import ThreadPoolExecutor, as_completed
 
-def preprocess_us_data(df, is_daily=False):
-    col_mapping = {
-        'Date': '종목선정일', 'Year': '투자연도_raw', 'Ticker': '종목코드', 
-        'Close_Price': '종가', 'Past_1M_Return(%)': '1개월(%)', 
-        'Past_3M_Return(%)': '3개월(%)', 'Past_6M_Return(%)': '6개월(%)', 
-        'Past_12M_Return(%)': '12개월(%)', 'Forward_1M_Return(%)': '이번달수익률',
-        '기준일(월말)': '종목선정일', '기준가': '종가', '다음달수익률(%)': '이번달수익률'
-    }
-    
-    # 💡 [핵심 복구] 과거 SP500 데이터가 증발하지 않도록 데이터를 안전하게 병합하는 로직 원상복구
-    for eng, kor in col_mapping.items():
-        if eng in df.columns and kor in df.columns:
-            df[kor] = df[kor].fillna(df[eng])
-            df = df.drop(columns=[eng])
-        elif eng in df.columns:
-            df = df.rename(columns={eng: kor})
-            
-    df = df.dropna(subset=['종목코드'])
-    df['종목코드'] = df['종목코드'].astype(str).replace('nan', '')
-    df = df[df['종목코드'] != '']
-    
-    if '종목명' not in df.columns: df['종목명'] = df['종목코드']
-    df['종목명'] = df['종목명'].fillna(df['종목코드'])
-    df['종목명'] = np.where(df['종목명'].astype(str).str.lower() == 'nan', df['종목코드'], df['종목명'])
-    
-    # 💡 시장 컬럼명이 영어(Market/Exchange 등)여도 '시장'으로 인식
-    if '시장' not in df.columns:
-        for alt in ['Market', 'market', 'MARKET', 'Exchange', 'exchange', 'EXCHANGE', '거래소']:
-            if alt in df.columns:
-                df = df.rename(columns={alt: '시장'})
-                break
-    if '시장' not in df.columns: df['시장'] = 'US'
-    df['시장'] = df['시장'].fillna('US')
-    df['시장'] = np.where(df['시장'].astype(str).str.lower().isin(['nan', '']), 'US', df['시장'])
-    
-    df['통합티커'] = df['시장'] + ":" + df['종목코드']
+def get_end_of_month(dt, months_ago):
+    first_of_current = dt.replace(day=1)
+    target_month = first_of_current - pd.DateOffset(months=months_ago - 1)
+    return target_month - pd.Timedelta(days=1)
 
-    if not is_daily:
-        df['종목선정일'] = pd.to_datetime(df['종목선정일'], errors='coerce')
-        df = df.dropna(subset=['종목선정일'])
-        target_dates = df['종목선정일'] + pd.Timedelta(days=15)
-        df['투자월'] = target_dates.dt.strftime('%Y-%m')
-        df['투자연도'] = target_dates.dt.year
-    else:
-        if '기준일' in df.columns:
-            df['기준일'] = pd.to_datetime(df['기준일'], errors='coerce')
-
-    target_cols = ['시가총액', '종가', '거래량', '1개월(%)', '3개월(%)', '6개월(%)', '12개월(%)', '이번달수익률']
-    for col in target_cols:
-        if col in df.columns: df[col] = pd.to_numeric(df[col], errors='coerce').fillna(0)
-        else: df[col] = 0
-        
-    return df
-
-def add_naver_links(df):
-    exceptions_k = ['CIEN', 'COHR', 'EQNR', 'DELL', 'HSBC']
-    
-    def get_naver_ticker(row):
-        code_str = str(row['종목코드']).strip()
-        market_str = str(row.get('시장', '')).upper()
-        
-        if code_str in exceptions_k:
-            return f"{code_str}.K"
-        elif 'NASDAQ' in market_str or '나스닥' in market_str:
-            return f"{code_str}.O"
-        else:
-            return code_str 
-            
-    df['통합티커_L'] = df.apply(lambda r: f"https://m.stock.naver.com/worldstock/stock/{get_naver_ticker(r)}/total#{r.get('통합티커', r['종목코드'])}", axis=1)
-    df['종목명_L'] = df.apply(lambda r: f"https://m.stock.naver.com/fchart/foreign/stock/{get_naver_ticker(r)}#{r['종목명']}", axis=1)
-    return df
-
-@st.cache_data(ttl=3600)
-def robust_get_us_ma_all(target_date_str, ticker='^GSPC'):
+def calculate_past_return(df_hist, target_date, base_price):
     try:
-        target_date = pd.to_datetime(target_date_str).normalize()
-        start_date = target_date - pd.Timedelta(days=450)
-        end_date = target_date + pd.Timedelta(days=2)
+        past_df = df_hist[df_hist.index <= pd.to_datetime(target_date)]
+        if past_df.empty or base_price <= 0: return 0.0
+        base_val = past_df['Close'].iloc[-1]
+        return round(((base_price / base_val) - 1) * 100, 2)
+    except: return 0.0
+
+def process_monthly_ticker(row, start_date, base_date, dates, base_date_str, invest_year, invest_month_dash):
+    code, name, market = str(row['종목코드']).strip(), row['종목명'], row['시장']
+    marcap = row.get('시가총액_raw', row.get('시가총액', 0))
+    try:
+        df_hist = fdr.DataReader(code, start_date, base_date)
+        if df_hist.empty: return None
+        if df_hist.index.tz is not None: df_hist.index = df_hist.index.tz_localize(None)
+        base_price = df_hist['Close'].iloc[-1]
         
-        df = pd.DataFrame()
-        try:
-            df = yf.Ticker(ticker).history(start=start_date.strftime('%Y-%m-%d'), end=end_date.strftime('%Y-%m-%d'))
-            if not df.empty and df.index.tz is not None: df.index = df.index.tz_localize(None)
-        except: pass
-        if df.empty:
-            df = fdr.DataReader('US500' if ticker == '^GSPC' else 'IXIC', start_date, end_date)
-        if df.empty: return 0.0, {}
-        
-        df.index = pd.to_datetime(df.index).normalize()
-        df = df[df.index <= target_date]
-        if df.empty: return 0.0, {}
-        
-        curr_p = df['Close'].iloc[-1]
-        mas = {
-            4: round(df['Close'].rolling(80).mean().iloc[-1], 2) if len(df) >= 80 else None,
-            5: round(df['Close'].rolling(100).mean().iloc[-1], 2) if len(df) >= 100 else None,
-            6: round(df['Close'].rolling(120).mean().iloc[-1], 2) if len(df) >= 120 else None,
-            10: round(df['Close'].rolling(200).mean().iloc[-1], 2) if len(df) >= 200 else None,
-            12: round(df['Close'].rolling(240).mean().iloc[-1], 2) if len(df) >= 240 else None
+        return {
+            # 💡 [한국 방식 동일] 투자연도/투자월을 파일에 직접 기록 → 로더가 파일명에 의존하지 않음
+            '투자연도': invest_year,
+            '투자월': invest_month_dash,
+            '종목선정일': base_date_str, '시장': market, '종목명': name, '종목코드': code, 
+            '시가총액': marcap, '종가': base_price,
+            '1개월(%)': calculate_past_return(df_hist, dates[1], base_price),
+            '3개월(%)': calculate_past_return(df_hist, dates[3], base_price),
+            '6개월(%)': calculate_past_return(df_hist, dates[6], base_price),
+            '12개월(%)': calculate_past_return(df_hist, dates[12], base_price),
+            '이번달수익률': 0.0
         }
-        return curr_p, mas
-    except Exception: return 0.0, {}
+    except: return None
 
-@st.cache_data(ttl=3600)
-def robust_get_us_idx_return(target_date_str, ticker='^GSPC'):
-    try:
-        target_date = pd.to_datetime(target_date_str).normalize()
-        # 데이터 여유있게 수집 (MTD 계산을 위해 최소 40일 이상 필요)
-        start_date = target_date - pd.Timedelta(days=150)
-        end_date = target_date + pd.Timedelta(days=2)
-        
-        df = pd.DataFrame()
-        try:
-            df = yf.Ticker(ticker).history(start=start_date.strftime('%Y-%m-%d'), end=end_date.strftime('%Y-%m-%d'))
-            if not df.empty and df.index.tz is not None: df.index = df.index.tz_localize(None)
-        except: pass
-        if df.empty:
-            df = fdr.DataReader('US500' if ticker == '^GSPC' else 'IXIC', start_date, end_date)
-        if df.empty: return 0.0, 0.0
-        
-        df.index = pd.to_datetime(df.index).normalize()
-        df = df[df.index <= target_date]
-        if df.empty: return 0.0, 0.0
-        
-        curr_p = df['Close'].iloc[-1]
-        
-        # 💡 [핵심 수정: MTD 로직] 이번 달 1일보다 이전 날짜 중 가장 마지막 거래일(즉, 전월 말일) 찾기
-        first_day_of_month = target_date.replace(day=1)
-        prev_month_end_df = df[df.index < first_day_of_month]
-        
-        ret_mtd = 0.0
-        if not prev_month_end_df.empty:
-            prev_month_end_price = prev_month_end_df['Close'].iloc[-1]
-            ret_mtd = round(((curr_p / prev_month_end_price) - 1) * 100, 2)
-            
-        # 3개월 수익률은 기존의 Rolling 방식을 유지 (필요 시 수정 가능)
-        df_3m = df[df.index <= target_date - pd.DateOffset(months=3)]
-        ret_3m = round(((curr_p / df_3m['Close'].iloc[-1]) - 1) * 100, 2) if not df_3m.empty else 0.0
-        
-        return ret_mtd, ret_3m
-    except Exception: return 0.0, 0.0
+# ----------------- [전략 1] USA 500 유니버스 추출 (Nasdaq 스크리너, 시총·거래소·ADR 포함) -----------------
+import requests
 
-@st.cache_data(ttl=86400, show_spinner=False)
-def get_spx_history_cached():
-    try:
-        spx = pd.DataFrame()
-        try:
-            spx = yf.Ticker('^GSPC').history(start='1998-01-01')
-            if not spx.empty and spx.index.tz is not None: spx.index = spx.index.tz_localize(None)
-        except: pass
-        if spx.empty: spx = fdr.DataReader('US500', '1998-01-01')
-        if not spx.empty: spx.index = pd.to_datetime(spx.index).normalize()
-        return spx
-    except: return pd.DataFrame()
+_NASDAQ_HEADERS = {
+    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0 Safari/537.36',
+    'Accept': 'application/json, text/plain, */*',
+    'Accept-Language': 'en-US,en;q=0.9',
+    'Origin': 'https://www.nasdaq.com',
+    'Referer': 'https://www.nasdaq.com/',
+}
 
-@st.cache_data(show_spinner=False)
-def generate_excel_report_cached(settings_tuple, df_stats, df_monthly, df_cum_ret, df_trade):
-    output = io.BytesIO()
-    with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
-        df_set = pd.DataFrame(list(settings_tuple), columns=['설정 항목', '값'])
-        df_set.to_excel(writer, sheet_name='요약_및_통계', index=False, startrow=0)
-        df_stats.to_excel(writer, sheet_name='요약_및_통계', index=False, startrow=len(df_set) + 2)
-        df_monthly.to_excel(writer, sheet_name='월별_수익률', index=False)
-        df_mdd = ((df_cum_ret / df_cum_ret.cummax()) - 1) * 100
-        df_mdd.reset_index().to_excel(writer, sheet_name='전략별_MDD', index=False)
-        df_cum_ret.reset_index().to_excel(writer, sheet_name='누적_수익률', index=False)
-        if not df_trade.empty:
-            df_trade.to_excel(writer, sheet_name='상세_매매내역', index=False)
-    return output.getvalue()
-
-def calc_us_momentum(df):
-    df_calc = df.copy()
-    for m in [3, 6, 12]:
-        if f'{m}개월(%)' in df_calc.columns and '1개월(%)' in df_calc.columns:
-            df_calc[f'{m}-1개월(%)'] = ((1 + df_calc[f'{m}개월(%)']/100) / (1 + df_calc['1개월(%)']/100) - 1) * 100
-        else: df_calc[f'{m}-1개월(%)'] = 0.0
-    return df_calc
-
-def get_strategy_stocks_us_custom(df_month, top_n_12=150, top_n_6=150, top_n_3=150):
-    df_calc = calc_us_momentum(df_month)
-    df_12_valid = df_calc[df_calc['12-1개월(%)'] > 0]
-    df_6_valid = df_calc[df_calc['6-1개월(%)'] > 0]
-    df_3_valid = df_calc[df_calc['3-1개월(%)'] > 0]
-    
-    top_12 = df_12_valid.sort_values('12-1개월(%)', ascending=False).head(top_n_12)
-    top_6 = df_6_valid.sort_values('6-1개월(%)', ascending=False).head(top_n_6)
-    top_3 = df_3_valid.sort_values('3-1개월(%)', ascending=False).head(top_n_3)
-    
-    strat1 = top_12[top_12['종목코드'].isin(top_6['종목코드'])].sort_values('6-1개월(%)', ascending=False)
-    strat2 = top_6[top_6['종목코드'].isin(top_3['종목코드'])].sort_values('6-1개월(%)', ascending=False)
-    
-    # 💡 완벽하게 3개(원본, 12-1&6-1, 6-1&3-1)만 리턴합니다.
-    return df_calc, strat1, strat2
-
-def get_triple_momentum_us(df_month, cutoff, mode='pct'):
+def fetch_screener_exchange(exchange):
     """
-    3-1 · 6-1 · 12-1 각각 상위(cutoff)에 든 종목의 '3중 교집합'을 12-1 내림차순으로 정렬해 반환.
-
-    mode='pct'  → cutoff는 상위 %  (예: 30 → 각 지표 상위 30% 종목)
-    mode='rank' → cutoff는 상위 N위 (예: 150 → 각 지표 상위 150종목)
-
-    반환: 교집합 종목 DataFrame (12-1개월(%) 내림차순, 원본 컬럼 + 모멘텀 컬럼 포함)
+    Nasdaq 공식 스크리너에서 거래소별 전체 종목(시가총액 포함) 로드.
+    exchange: 'NASDAQ' | 'NYSE' | 'AMEX'
+    반환 컬럼: 종목코드, 종목명, 시장, 시가총액_raw(=시가총액, 백만달러 단위)
     """
-    d = calc_us_momentum(df_month)
-    cols = ['3-1개월(%)', '6-1개월(%)', '12-1개월(%)']
-    code_sets = []
-    for c in cols:
-        s = d.dropna(subset=[c])
-        if s.empty:
-            code_sets.append(set())
-            continue
-        if mode == 'pct':
-            thr = s[c].quantile(1 - cutoff / 100.0)
-            picked = s[s[c] >= thr]
-        else:  # rank
-            picked = s.sort_values(c, ascending=False).head(int(cutoff))
-        code_sets.append(set(picked['종목코드']))
+    url = ("https://api.nasdaq.com/api/screener/stocks"
+           f"?tableonly=true&limit=10000&download=true&exchange={exchange}")
+    try:
+        r = requests.get(url, headers=_NASDAQ_HEADERS, timeout=30)
+        r.raise_for_status()
+        data = r.json().get('data') or {}
+        rows = data.get('rows')
+        if rows is None:
+            rows = (data.get('table') or {}).get('rows')
+        if not rows:
+            print(f"⚠️ [{exchange}] 스크리너 응답에 rows 없음")
+            return pd.DataFrame()
 
-    inter = set.intersection(*code_sets) if code_sets else set()
-    out = d[d['종목코드'].isin(inter)].sort_values('12-1개월(%)', ascending=False).reset_index(drop=True)
-    return out
+        df = pd.DataFrame(rows)
+        if 'symbol' not in df.columns or 'marketCap' not in df.columns:
+            print(f"⚠️ [{exchange}] 예상 컬럼 없음: {list(df.columns)[:8]}")
+            return pd.DataFrame()
 
-@st.cache_data(show_spinner=False)
-def run_backtest_us_fast(df, start_year, end_year, ma_months, apply_timing, rank_s1, rank_s2, top_n_12, top_n_6, top_n_3, spx):
-    if not spx.empty:
-        spx['MA'] = spx['Close'].rolling(ma_months * 20).mean()
-        spx['Is_Below'] = spx['Close'] < spx['MA']
-        
-    records, trade_logs = [], []
-    for m_str in sorted(df['투자월'].dropna().unique()):
-        m_yr = int(m_str.split('-')[0])
-        if not (start_year <= m_yr <= end_year): continue
-        df_calc = df[df['투자월'] == m_str].copy()
-        if df_calc.empty: continue
-        
-        base_date = pd.to_datetime(m_str + '-01') - pd.Timedelta(days=5)
-        is_below = False
-        if not spx.empty:
-            past_spx = spx[spx.index <= base_date]
-            if not past_spx.empty: is_below = past_spx['Is_Below'].iloc[-1]
-                
-        mult = 0.0 if (apply_timing and is_below) else 1.0
-        
-        _, s1_all, s2_all = get_strategy_stocks_us_custom(df_calc, top_n_12, top_n_6, top_n_3)
-        s1 = s1_all.iloc[rank_s1[0]-1:rank_s1[1]] if not s1_all.empty else pd.DataFrame()
-        s2 = s2_all.iloc[rank_s2[0]-1:rank_s2[1]] if not s2_all.empty else pd.DataFrame()
-        
-        r1 = s1['이번달수익률'].mean() * mult if not s1.empty else 0
-        r2 = s2['이번달수익률'].mean() * mult if not s2.empty else 0
-        
-        s1_codes = set(s1['종목코드']) if not s1.empty else set()
-        s2_codes = set(s2['종목코드']) if not s2.empty else set()
-        all_codes = s1_codes.union(s2_codes)
-        ret_combined_excl = df_calc[df_calc['종목코드'].isin(all_codes)]['이번달수익률'].mean() * mult if all_codes else 0
-        
-        sum_ret = (s1['이번달수익률'].sum() if not s1.empty else 0) + (s2['이번달수익률'].sum() if not s2.empty else 0)
-        total_len = len(s1) + len(s2)
-        ret_combined_incl = (sum_ret / total_len * mult) if total_len > 0 else 0
-        
-        records.append({
-            '투자월': m_str, 'invested': mult > 0, 
-            f'🔥 12-1M & 6-1M ({rank_s1[0]}~{rank_s1[1]}위)': r1, 
-            f'🐎 6-1M & 3-1M ({rank_s2[0]}~{rank_s2[1]}위)': r2,
-            '앙상블 (50:50 전략)': (r1 * 0.5) + (r2 * 0.5),
-            '통합 전략 (중복 제외 1/N)': ret_combined_excl,
-            '통합 전략 (중복 인정 1/N)': ret_combined_incl
+        # 시가총액: '$1,234,567,890' / '1234567890' / '' → 숫자(달러) → 백만달러 단위
+        cap_usd = pd.to_numeric(
+            df['marketCap'].astype(str).str.replace(r'[\$,]', '', regex=True).str.strip().replace('', '0'),
+            errors='coerce').fillna(0)
+        out = pd.DataFrame({
+            '종목코드': (df['symbol'].astype(str).str.strip()
+                          .str.replace('/', '-', regex=False)
+                          .str.replace('.', '-', regex=False)),
+            '종목명': df.get('name', df['symbol']).astype(str).str.strip(),
+            '시장': exchange,
+            '시가총액_raw': (cap_usd / 1_000_000.0).round(1),   # 백만달러 (기존 파일과 동일 스케일)
         })
-        
-        if mult > 0:
-            if not s1.empty:
-                for i, (_, r) in enumerate(s1.iterrows()): trade_logs.append({'투자월': m_str, '전략': '12-1M & 6-1M', '순위': f"{i+rank_s1[0]}위", '종목명': r['종목명'], '수익률(%)': r['이번달수익률']})
-            if not s2.empty:
-                for i, (_, r) in enumerate(s2.iterrows()): trade_logs.append({'투자월': m_str, '전략': '6-1M & 3-1M', '순위': f"{i+rank_s2[0]}위", '종목명': r['종목명'], '수익률(%)': r['이번달수익률']})
-        else:
-            trade_logs.append({'투자월': m_str, '전략': '마켓타이밍', '순위': '-', '종목명': '현금보유(CASH)', '수익률(%)': 0.0})
-            
-    return pd.DataFrame(records), pd.DataFrame(trade_logs)
-
-@st.cache_data(show_spinner=False)
-def run_backtest_triple_us(df, start_year, end_year, ma_months, apply_timing, top_n_cutoff, rank_s, rank_e, spx):
-    """
-    [3중 교집합 전략 백테스트]
-    매월: 3-1 · 6-1 · 12-1 각 상위 top_n_cutoff위에 모두 든 종목(교집합)을
-          12-1 내림차순 정렬 → rank_s ~ rank_e 순위 매수 → 다음달(이번달수익률) 성과 집계.
-    apply_timing: S&P500 (ma_months*20)일선 이탈 시 현금(0%).
-    """
-    if not spx.empty:
-        spx = spx.copy()
-        spx['MA'] = spx['Close'].rolling(ma_months * 20).mean()
-        spx['Is_Below'] = spx['Close'] < spx['MA']
-
-    strat_name = '🎯 3·6·12 교집합 (12-1 정렬)'
-    records, trade_logs = [], []
-    for m_str in sorted(df['투자월'].dropna().unique()):
-        m_yr = int(m_str.split('-')[0])
-        if not (start_year <= m_yr <= end_year): continue
-        df_m = df[df['투자월'] == m_str].copy()
-        if df_m.empty: continue
-
-        base_date = pd.to_datetime(m_str + '-01') - pd.Timedelta(days=5)
-        is_below = False
-        if not spx.empty:
-            past = spx[spx.index <= base_date]
-            if not past.empty: is_below = past['Is_Below'].iloc[-1]
-        mult = 0.0 if (apply_timing and is_below) else 1.0
-
-        picks_all = get_triple_momentum_us(df_m, cutoff=top_n_cutoff, mode='rank')
-        picks = picks_all.iloc[rank_s - 1:rank_e] if not picks_all.empty else pd.DataFrame()
-        ret = picks['이번달수익률'].mean() * mult if not picks.empty else 0.0
-
-        records.append({'투자월': m_str, 'invested': mult > 0, strat_name: ret})
-
-        if mult > 0 and not picks.empty:
-            for i, (_, r) in enumerate(picks.iterrows()):
-                trade_logs.append({'투자월': m_str, '전략': '3·6·12교집합', '순위': f"{i+rank_s}위",
-                                   '종목명': r.get('종목명', r['종목코드']), '수익률(%)': r['이번달수익률']})
-        elif mult <= 0:
-            trade_logs.append({'투자월': m_str, '전략': '마켓타이밍', '순위': '-',
-                               '종목명': '현금보유(CASH)', '수익률(%)': 0.0})
-        else:
-            trade_logs.append({'투자월': m_str, '전략': '교집합없음', '순위': '-',
-                               '종목명': '해당종목없음', '수익률(%)': 0.0})
-
-    return pd.DataFrame(records), pd.DataFrame(trade_logs)
-
-@st.cache_data(show_spinner=False)
-def run_custom_backtest_us(df, start_year_c, end_year_c, ma_months_c, apply_timing_c, w1, w3, w6, w12, custom_pct, rank_c_s, rank_c_e):
-    spx = get_spx_history_cached()
-    if not spx.empty:
-        spx['MA'] = spx['Close'].rolling(ma_months_c * 20).mean()
-        spx['Is_Below'] = spx['Close'] < spx['MA']
-        
-    records, trade_logs = [], []
-    for m_str in sorted(df['투자월'].dropna().unique()):
-        m_yr = int(m_str.split('-')[0])
-        if not (start_year_c <= m_yr <= end_year_c): continue
-        df_calc = df[df['투자월'] == m_str].copy()
-        if df_calc.empty: continue
-        
-        base_date = pd.to_datetime(m_str + '-01') - pd.Timedelta(days=5)
-        is_below = False
-        if not spx.empty:
-            past_spx = spx[spx.index <= base_date]
-            if not past_spx.empty: is_below = past_spx['Is_Below'].iloc[-1]
-                
-        mult = 0.0 if (apply_timing_c and is_below) else 1.0
-        
-        df_calc['스코어'] = (df_calc['1개월(%)']*w1) + (df_calc['3개월(%)']*w3) + (df_calc['6개월(%)']*w6) + (df_calc['12개월(%)']*w12)
-        target = df_calc[df_calc['스코어'] >= df_calc['스코어'].quantile(1-custom_pct/100)].sort_values('스코어', ascending=False).iloc[rank_c_s-1:rank_c_e]
-        
-        avg_ret = target['이번달수익률'].mean() * mult if not target.empty else 0
-        records.append({'투자월': m_str, 'invested': mult > 0, '커스텀 전략': avg_ret})
-        
-        if mult > 0:
-            for i, (_, r) in enumerate(target.iterrows()): trade_logs.append({'투자월': m_str, '전략': '커스텀', '순위': f"{i+rank_c_s}위", '종목명': r['종목명'], '수익률(%)': r['이번달수익률']})
-        else:
-            trade_logs.append({'투자월': m_str, '전략': '마켓타이밍', '순위': '-', '종목명': '현금보유(CASH)', '수익률(%)': 0.0})
-            
-    return pd.DataFrame(records), pd.DataFrame(trade_logs)
-
-
-# ==========================================================================
-# 🛡️ 멀티4 (스노우볼 cond1) 위험회피 신호
-#   규칙: (TIP·VWO·VEA 6M 수익률 모두 음수) AND (VIXY 6M < 0  OR  VIXY 6M ≥ +40%)
-#   데이터: data/snowball/monthly/{TICKER}_과거_데이터.csv  (컬럼: 날짜, 종가 / 월말)
-#   타이밍: 신호월 m → 투자월 m+1 (스노우볼과 동일 정렬)
-#   VIXY 상장(2011-01)+6M 이후부터 유효. 그 전 투자월은 맵에 키 없음 → 호출측 기본 False
-#           (= 상장 이전 구간은 SPY 마켓타이밍만 적용)
-# ==========================================================================
-_SNOWBALL_RAW_BASE = "https://raw.githubusercontent.com/rlaehrnr/my_quantum_jump/main/data/snowball/monthly/"
-_MULTI4_TICKERS = ['TIP', 'VWO', 'VEA', 'VIXY']
-VIXY_SPIKE = 0.40
-
-
-def _load_snowball_signal_series(ticker):
-    """스노우볼 신호 ETF 월말 종가 Series(index=Period['M']). raw GitHub 우선 + 로컬 폴백."""
-    import urllib.parse, os, glob, re
-    fname = f"{ticker}_과거_데이터.csv"
-    df = None
-    try:
-        url = _SNOWBALL_RAW_BASE + urllib.parse.quote(fname)
-        df = pd.read_csv(url, encoding='utf-8-sig')
-    except Exception:
-        df = None
-    if df is None or df.empty:
-        want = re.sub(r'[\s_]+', '', fname)
-        for p in glob.glob('data/snowball/monthly/*.csv'):
-            if re.sub(r'[\s_]+', '', os.path.basename(p)) == want:
-                try:
-                    df = pd.read_csv(p, encoding='utf-8-sig')
-                except Exception:
-                    df = None
-                break
-    if df is None or df.empty:
-        return pd.Series(dtype=float)
-    df.columns = [c.strip() for c in df.columns]
-    if '날짜' not in df.columns or '종가' not in df.columns:
-        return pd.Series(dtype=float)
-    df['날짜'] = pd.to_datetime(df['날짜'], errors='coerce')
-    df = df.dropna(subset=['날짜'])
-    s = df.set_index('날짜')['종가'].astype(float).sort_index()
-    s.index = s.index.to_period('M')
-    return s[~s.index.duplicated(keep='last')]
-
-
-@st.cache_data(ttl="6h", show_spinner=False)
-def get_multi4_cond1_map():
-    """
-    멀티4 위험회피 신호 → {투자월'YYYY-MM': True/False}.
-    유효(4종 6M 모두 존재)한 투자월만 키로 포함. 상장 전 월은 키 없음 → 호출측 기본 False.
-    """
-    series = {}
-    for t in _MULTI4_TICKERS:
-        s = _load_snowball_signal_series(t)
-        if s.empty:
-            return {}
-        series[t] = s
-    px = pd.DataFrame(series).sort_index()
-    r6 = px / px.shift(6) - 1.0
-    base_neg = (r6[['TIP', 'VWO', 'VEA']] < 0).all(axis=1)
-    vixy = r6['VIXY']
-    ready = r6[_MULTI4_TICKERS].notna().all(axis=1)
-    cond1 = base_neg & ((vixy < 0) | (vixy >= VIXY_SPIKE))
-    out = {}
-    for period, is_ready in ready.items():
-        if not is_ready:
-            continue
-        inv = (period + 1).strftime('%Y-%m')   # 신호월+1 = 투자월
-        out[inv] = bool(cond1.loc[period])
-    return out
-
-
-def get_multi4_start_ym():
-    """멀티4가 실제로 작동하기 시작하는 첫 투자월('YYYY-MM'). 데이터 없으면 None."""
-    m = get_multi4_cond1_map()
-    return min(m.keys()) if m else None
-
-
-@st.cache_data(show_spinner=False)
-def run_backtest_triple_us_m4(df, start_year, end_year, ma_months, apply_timing, use_multi4, top_n_cutoff, rank_s, rank_e, spx):
-    """
-    3중 교집합 전략(12-1 정렬 → rank_s~rank_e 매수) + 방어 필터.
-    방어 = apply_timing AND ( SPY (ma_months*20)일선 이탈  OR  멀티4 cond1 ).
-    use_multi4=False면 SPY 필터만(= run_backtest_triple_us와 동일).
-    멀티4는 VIXY 상장+6M 이후 투자월에만 작동(그 전은 SPY만).
-    """
-    cond1_map = get_multi4_cond1_map() if use_multi4 else {}
-    if not spx.empty:
-        spx = spx.copy()
-        spx['MA'] = spx['Close'].rolling(ma_months * 20).mean()
-        spx['Is_Below'] = spx['Close'] < spx['MA']
-
-    strat_name = '🛡️ 3·6·12 교집합 + 멀티4' if use_multi4 else '🎯 3·6·12 교집합 (12-1 정렬)'
-    records, trade_logs = [], []
-    for m_str in sorted(df['투자월'].dropna().unique()):
-        m_yr = int(m_str.split('-')[0])
-        if not (start_year <= m_yr <= end_year): continue
-        df_m = df[df['투자월'] == m_str].copy()
-        if df_m.empty: continue
-
-        base_date = pd.to_datetime(m_str + '-01') - pd.Timedelta(days=5)
-        is_below = False
-        if not spx.empty:
-            past = spx[spx.index <= base_date]
-            if not past.empty: is_below = past['Is_Below'].iloc[-1]
-        is_m4 = bool(cond1_map.get(m_str, False))
-        defense = bool(apply_timing and (is_below or is_m4))
-        mult = 0.0 if defense else 1.0
-
-        picks_all = get_triple_momentum_us(df_m, cutoff=top_n_cutoff, mode='rank')
-        picks = picks_all.iloc[rank_s - 1:rank_e] if not picks_all.empty else pd.DataFrame()
-        ret = picks['이번달수익률'].mean() * mult if not picks.empty else 0.0
-
-        records.append({'투자월': m_str, 'invested': mult > 0, strat_name: ret})
-
-        if mult > 0 and not picks.empty:
-            for i, (_, r) in enumerate(picks.iterrows()):
-                trade_logs.append({'투자월': m_str, '전략': '3·6·12교집합', '순위': f"{i+rank_s}위",
-                                   '종목명': r.get('종목명', r['종목코드']), '수익률(%)': r['이번달수익률']})
-        elif defense:
-            reason = '마켓타이밍+멀티4' if (is_below and is_m4) else ('멀티4' if is_m4 else '마켓타이밍')
-            trade_logs.append({'투자월': m_str, '전략': reason, '순위': '-',
-                               '종목명': '현금보유(CASH)', '수익률(%)': 0.0})
-        else:
-            trade_logs.append({'투자월': m_str, '전략': '교집합없음', '순위': '-',
-                               '종목명': '해당종목없음', '수익률(%)': 0.0})
-
-    return pd.DataFrame(records), pd.DataFrame(trade_logs)
-
-
-@st.cache_data(show_spinner=False)
-def get_benchmark_monthly_returns():
-    """
-    SPY · QQQ 월간 수익률(%) → DataFrame(index='YYYY-MM', columns=['SPY','QQQ']).
-    1순위 yfinance(전체기간, 배당반영), 2순위 FDR, 3순위 스노우볼 CSV(2005~).
-    투자월 m의 벤치마크 = 해당 캘린더월 종가수익률(전략 '이번달수익률'과 동일 정렬).
-    """
-    cols = {}
-    for name in ['SPY', 'QQQ']:
-        s = None
-        try:
-            h = yf.Ticker(name).history(start='1998-01-01')
-            if not h.empty:
-                if h.index.tz is not None:
-                    h.index = h.index.tz_localize(None)
-                s = h['Close']
-        except Exception:
-            s = None
-        if s is None or len(s) == 0:
-            try:
-                d = fdr.DataReader(name, '1998-01-01')
-                if not d.empty:
-                    s = d['Close']
-            except Exception:
-                s = None
-        if s is not None and len(s) > 0:
-            s = pd.Series(pd.to_numeric(s.values, errors='coerce'), index=pd.to_datetime(s.index)).dropna()
-            m = s.resample('ME').last()
-            m.index = m.index.to_period('M')
-            cols[name] = m
-        else:
-            ss = _load_snowball_signal_series(name)   # Period 인덱스 월말 종가
-            if not ss.empty:
-                cols[name] = ss
-    if not cols:
+        # 이상치 제거: 빈 티커 / 지나치게 긴 티커(워런트·유닛 등) / 시총 0
+        out = out[out['종목코드'].str.fullmatch(r'[A-Z][A-Z0-9\-]{0,6}', na=False)]
+        return out
+    except Exception as e:
+        print(f"🚨 [{exchange}] 스크리너 실패: {e}")
         return pd.DataFrame()
-    px = pd.DataFrame(cols).sort_index()
-    ret = (px / px.shift(1) - 1.0) * 100.0
-    ret.index = ret.index.strftime('%Y-%m')
-    return ret
+
+def _company_key(name):
+    """복수 클래스(GOOGL/GOOG, BRK-A/BRK-B 등)를 한 회사로 묶기 위한 정규화 키."""
+    n = str(name)
+    for sep in [' Class ', ' Depositary Shares', ' Depository Shares',
+                ' Common Stock', ' Capital Stock', ' Ordinary Shares',
+                ' American Depositary', ' Sponsored ADR', ' ADR',
+                ' Registered', ' New York Registry', ' Subordinate Voting',
+                ' Preferred', ' Units', ' Warrant']:
+        i = n.find(sep)
+        if i != -1:
+            n = n[:i]
+    return n.strip().rstrip('.,').lower()
+
+def _drop_dupes_and_junk(all_us):
+    """
+    비보통주(채권/워런트/예탁증서 조각 등) 제외 + 회사당 1개(시총 최대 클래스)만 남김.
+    반환: 정제된 DataFrame(시총 내림차순). head(N)은 호출측에서.
+    """
+    name_lc = all_us['종목명'].astype(str).str.lower()
+    junk = (
+        name_lc.str.contains(r'\bnotes?\b', regex=True, na=False)          # 채권(Notes/Note)
+        | name_lc.str.contains('debenture', na=False)
+        | name_lc.str.contains('warrant', na=False)
+        | name_lc.str.contains('depositary shares representing', na=False)  # GOOGM/GOOGN 류
+        | name_lc.str.contains(r'\d\.\d+\s*%', regex=True, na=False)        # '5.350%' 쿠폰(채권·우선주)
+    )
+    kept = all_us[~junk].sort_values('시가총액_raw', ascending=False)
+    kept = kept.drop_duplicates(subset=['종목코드'], keep='first')
+    kept['_company'] = kept['종목명'].map(_company_key)
+    kept = kept.drop_duplicates(subset=['_company'], keep='first')          # 회사당 최고 시총 1개
+    return kept.drop(columns=['_company']), int(junk.sum())
+
+def generate_usa500(base_date, dates, start_date, base_date_str, invest_year, invest_month_str, invest_month_dash, top_n=500):
+    print(f"\n📌 [USA 500] 유니버스 추출 시작 (Nasdaq 스크리너, NASDAQ+NYSE 통합 시총 상위 {top_n})...")
+    parts = [p for p in [fetch_screener_exchange('NASDAQ'), fetch_screener_exchange('NYSE')] if not p.empty]
+    if not parts:
+        print("🚨 [USA 500] 유니버스 소스를 불러오지 못해 생성을 건너뜁니다(기존 파일 유지).")
+        return
+
+    all_us = pd.concat(parts, ignore_index=True)
+    all_us = all_us[all_us['시가총액_raw'] > 0]
+
+    # 🧹 비보통주 제외 + 회사당 1클래스(시총 최대)만 → 그러고도 top_n 채우도록 head는 마지막에
+    cleaned, n_junk = _drop_dupes_and_junk(all_us)
+    universe = cleaned.head(top_n).reset_index(drop=True)
+    if universe.empty:
+        print("🚨 [USA 500] 유효 시총 종목이 없어 건너뜁니다.")
+        return
+
+    n_nas = int((universe['시장'] == 'NASDAQ').sum()); n_nys = int((universe['시장'] == 'NYSE').sum())
+    print(f"   └ 정제 후 후보 {len(cleaned)}종목(비보통주 {n_junk}개 제외·복수클래스 통합) → 상위 {len(universe)} 선정")
+    print(f"   └ 유니버스 {len(universe)}종목 (NASDAQ {n_nas} / NYSE {n_nys})")
+    print(f"   └ 시총 1~5위: {universe['종목명'].head(5).tolist()}")
+    print(f"   └ TSM 포함? {'예' if (universe['종목코드']=='TSM').any() else '아니오'} / 중복확인 GOOG {(universe['종목코드']=='GOOG').any()} GOOGM {(universe['종목코드']=='GOOGM').any()}")
+
+    os.makedirs('archive_usa', exist_ok=True)
+    results = []
+    with ThreadPoolExecutor(max_workers=20) as executor:
+        futures = [executor.submit(process_monthly_ticker, row, start_date, base_date, dates, base_date_str, invest_year, invest_month_dash) for _, row in universe.iterrows()]
+        for future in as_completed(futures):
+            res = future.result()
+            if res: results.append(res)
+
+    if results:
+        out = pd.DataFrame(results).sort_values('시가총액', ascending=False).reset_index(drop=True)
+        out.insert(0, '순위', range(1, len(out) + 1))   # 시총 순위(월별·데일리 전체순위와 동일 기준)
+        output_file = f"archive_usa/only_usa500_{invest_month_str}.csv"
+        out.to_csv(output_file, index=False, encoding='utf-8-sig')
+        print(f"✅ [USA 500] 월간 데이터 ({len(out)}종목) 저장 완료: {output_file}")
+
+# ----------------- [전략 2] S&P 500 유니버스 추출 -----------------
+def generate_sp500(base_date, dates, start_date, base_date_str, invest_year, invest_month_str, invest_month_dash):
+    print("\n📌 [S&P 500] 유니버스 추출 시작...")
+    try:
+        df_sp500 = fdr.StockListing('S&P500')
+        df_sp500 = df_sp500.rename(columns={'Symbol': '종목코드', 'Name': '종목명'})
+        df_sp500['시장'] = 'US'
+        df_sp500['시가총액_raw'] = 0
+        df_sp500['종목코드'] = df_sp500['종목코드'].astype(str).str.replace('.', '-', regex=False)
+        universe = df_sp500[['종목코드', '종목명', '시장', '시가총액_raw']].drop_duplicates(subset=['종목코드'])
+    except: return
+
+    os.makedirs('archive_sp500', exist_ok=True)
+    results = []
+    with ThreadPoolExecutor(max_workers=20) as executor:
+        futures = [executor.submit(process_monthly_ticker, row, start_date, base_date, dates, base_date_str, invest_year, invest_month_dash) for _, row in universe.iterrows()]
+        for future in as_completed(futures):
+            res = future.result()
+            if res: results.append(res)
+            
+    if results:
+        # 💡 [한국 방식 동일] S&P500의 파일명 규칙(only_sp500_YYYY_MM.csv)도 '현재 월' 기준으로 저장
+        output_file = f"archive_sp500/only_sp500_{invest_month_str}.csv"
+        pd.DataFrame(results).to_csv(output_file, index=False, encoding='utf-8-sig')
+        print(f"✅ [S&P 500] 월간 데이터 저장 완료: {output_file}")
+
+def get_us_last_trading_day(today):
+    """🇺🇸 지난달 '실제 마지막 거래일'을 찾는다.
+    💡 데일리(update_daily_us.py)와 '동일한 소스'인 SPY(ETF) + 거래량 필터를 사용한다.
+    지수 US500은 FDR 소스 갱신이 하루 늦게 반영될 때가 있어(선정일이 6/30이 아닌 6/29로 밀리는 원인),
+    같은 시각에 도는 데일리(SPY)와 결과가 어긋난다. SPY로 통일해 이 지연을 제거한다.
+    실패 시 달력상 말일로 폴백."""
+    fallback = get_end_of_month(today, 1)  # 지난달 달력상 말일
+    try:
+        first_day_of_current = today.replace(day=1)
+        last_day_prev = first_day_of_current - pd.Timedelta(days=1)  # 지난달 말일(달력 기준)
+        # 종료일을 지정하지 않고 최신 거래일까지 받아온 뒤, 아래에서 '지난달 범위'로 자른다
+        df = fdr.DataReader('SPY', last_day_prev - pd.Timedelta(days=15))
+        if df.empty:
+            return fallback
+        if df.index.tz is not None:
+            df.index = df.index.tz_localize(None)
+        # 거래량이 실제로 찍힌 날만 남긴다(빈/부분 행 방지) — 데일리와 동일한 방어 로직
+        if 'Volume' in df.columns:
+            df = df[df['Volume'] > 1000]
+        # 💡 실행이 늦어 이번 달 거래일이 섞여 들어와도 '지난달 말일 이하'로만 제한 (월 경계 안전장치)
+        df = df[df.index <= pd.to_datetime(last_day_prev)]
+        if df.empty:
+            return fallback
+        return df.index[-1]
+    except:
+        return fallback
+
+def main():
+    today = datetime.today()
+
+    # 💡 [한국 방식 동일] 파일명/투자월은 '현재 월(이번 달)' 기준
+    invest_year = today.year
+    invest_month_str = today.strftime('%Y_%m')    # 파일명용 (예: 2026_06)
+    invest_month_dash = today.strftime('%Y-%m')   # 투자월 컬럼용 (예: 2026-06)
+
+    # 종목선정일(base_date)은 '지난달 마지막 실제 거래일'
+    base_date = get_us_last_trading_day(today)
+    base_date_str = base_date.strftime('%Y-%m-%d')
+
+    dates = {1: get_end_of_month(base_date, 1), 3: get_end_of_month(base_date, 3), 6: get_end_of_month(base_date, 6), 12: get_end_of_month(base_date, 12)}
+    start_date = get_end_of_month(base_date, 13)
+    
+    print(f"🚀 🇺🇸 월간 통합 업데이트 시작 (신규 투자월: {invest_month_dash}, 미국 기준 선정일: {base_date_str})")
+    generate_sp500(base_date, dates, start_date, base_date_str, invest_year, invest_month_str, invest_month_dash)
+    generate_usa500(base_date, dates, start_date, base_date_str, invest_year, invest_month_str, invest_month_dash, top_n=500)
+    print(f"\n🎉 🇺🇸 {invest_month_dash} 미국 월간 업데이트가 완료되었습니다!")
+
+if __name__ == "__main__":
+    main()
