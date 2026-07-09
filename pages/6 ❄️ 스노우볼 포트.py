@@ -1022,7 +1022,8 @@ def render_ko():
                     f"<b>최근 {KO_ABSMOM_WIN}M MA 이격도 ≥ 0</b>인 것만 동일가중 매수 (음수면 제외, 다 음수면 방어)</div>",
                     unsafe_allow_html=True)
         oabs = last.get('offense_absmom', {}) or {}
-        top_set = set(last.get('offense_top', []) or [])
+        _ot = last.get('offense_top', [])
+        top_set = set(_ot) if isinstance(_ot, (list, tuple, set)) else set()
         rows = []
         for code in off_ranked:
             v = off_scores[code]
