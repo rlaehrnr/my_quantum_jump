@@ -38,8 +38,14 @@ def preprocess_us_data(df, is_daily=False):
                 df = df.rename(columns={alt: '시장'})
                 break
     if '시장' not in df.columns: df['시장'] = 'US'
+    # 💡 옛 파일('거래소')과 신 파일('시장')을 함께 concat하면 두 컬럼이 공존 → 시장이 비었거나 'US'인 행을
+    #    거래소 등 대체 컬럼 값으로 채운다(그래야 옛 달도 NASDAQ:/NYSE: 로 구분 표시됨)
+    for alt in ['거래소', 'Market', 'market', 'MARKET', 'Exchange', 'exchange', 'EXCHANGE']:
+        if alt in df.columns and alt != '시장':
+            need = df['시장'].isna() | df['시장'].astype(str).str.strip().str.lower().isin(['nan', '', 'us'])
+            df.loc[need, '시장'] = df.loc[need, alt]
     df['시장'] = df['시장'].fillna('US')
-    df['시장'] = np.where(df['시장'].astype(str).str.lower().isin(['nan', '']), 'US', df['시장'])
+    df['시장'] = np.where(df['시장'].astype(str).str.strip().str.lower().isin(['nan', '']), 'US', df['시장'])
     
     df['통합티커'] = df['시장'] + ":" + df['종목코드']
 
@@ -467,10 +473,12 @@ def run_backtest_triple_us_m4(df, start_year, end_year, ma_months, apply_timing,
         df_m = df[df['투자월'] == m_str].copy()
         if df_m.empty: continue
 
-        base_date = pd.to_datetime(m_str + '-01') - pd.Timedelta(days=5)
+        # SPY 마켓타이밍 신호 = '투자월 시작 직전의 마지막 거래일'(=전월 말)의 종가 vs 240일선.
+        # (엉성한 '월초-5일' 근사치 대신 데이터에서 직접 월말을 잡음 → 라이브(종목선정일=월말)와 동일)
+        first_of_m = pd.to_datetime(m_str + '-01')
         is_below = False
         if not spx.empty:
-            past = spx[spx.index <= base_date]
+            past = spx[spx.index < first_of_m]
             if not past.empty: is_below = past['Is_Below'].iloc[-1]
         is_m4 = bool(cond1_map.get(m_str, False))
         defense = bool(apply_timing and (is_below or is_m4))
