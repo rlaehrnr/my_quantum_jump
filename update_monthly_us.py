@@ -95,6 +95,38 @@ def fetch_screener_exchange(exchange):
         print(f"🚨 [{exchange}] 스크리너 실패: {e}")
         return pd.DataFrame()
 
+def _company_key(name):
+    """복수 클래스(GOOGL/GOOG, BRK-A/BRK-B 등)를 한 회사로 묶기 위한 정규화 키."""
+    n = str(name)
+    for sep in [' Class ', ' Depositary Shares', ' Depository Shares',
+                ' Common Stock', ' Capital Stock', ' Ordinary Shares',
+                ' American Depositary', ' Sponsored ADR', ' ADR',
+                ' Registered', ' New York Registry', ' Subordinate Voting',
+                ' Preferred', ' Units', ' Warrant']:
+        i = n.find(sep)
+        if i != -1:
+            n = n[:i]
+    return n.strip().rstrip('.,').lower()
+
+def _drop_dupes_and_junk(all_us):
+    """
+    비보통주(채권/워런트/예탁증서 조각 등) 제외 + 회사당 1개(시총 최대 클래스)만 남김.
+    반환: 정제된 DataFrame(시총 내림차순). head(N)은 호출측에서.
+    """
+    name_lc = all_us['종목명'].astype(str).str.lower()
+    junk = (
+        name_lc.str.contains(r'\bnotes?\b', regex=True, na=False)          # 채권(Notes/Note)
+        | name_lc.str.contains('debenture', na=False)
+        | name_lc.str.contains('warrant', na=False)
+        | name_lc.str.contains('depositary shares representing', na=False)  # GOOGM/GOOGN 류
+        | name_lc.str.contains(r'\d\.\d+\s*%', regex=True, na=False)        # '5.350%' 쿠폰(채권·우선주)
+    )
+    kept = all_us[~junk].sort_values('시가총액_raw', ascending=False)
+    kept = kept.drop_duplicates(subset=['종목코드'], keep='first')
+    kept['_company'] = kept['종목명'].map(_company_key)
+    kept = kept.drop_duplicates(subset=['_company'], keep='first')          # 회사당 최고 시총 1개
+    return kept.drop(columns=['_company']), int(junk.sum())
+
 def generate_usa500(base_date, dates, start_date, base_date_str, invest_year, invest_month_str, invest_month_dash, top_n=500):
     print(f"\n📌 [USA 500] 유니버스 추출 시작 (Nasdaq 스크리너, NASDAQ+NYSE 통합 시총 상위 {top_n})...")
     parts = [p for p in [fetch_screener_exchange('NASDAQ'), fetch_screener_exchange('NYSE')] if not p.empty]
@@ -104,17 +136,19 @@ def generate_usa500(base_date, dates, start_date, base_date_str, invest_year, in
 
     all_us = pd.concat(parts, ignore_index=True)
     all_us = all_us[all_us['시가총액_raw'] > 0]
-    universe = (all_us.sort_values('시가총액_raw', ascending=False)
-                      .drop_duplicates(subset=['종목코드'], keep='first')
-                      .head(top_n).reset_index(drop=True))
+
+    # 🧹 비보통주 제외 + 회사당 1클래스(시총 최대)만 → 그러고도 top_n 채우도록 head는 마지막에
+    cleaned, n_junk = _drop_dupes_and_junk(all_us)
+    universe = cleaned.head(top_n).reset_index(drop=True)
     if universe.empty:
         print("🚨 [USA 500] 유효 시총 종목이 없어 건너뜁니다.")
         return
 
     n_nas = int((universe['시장'] == 'NASDAQ').sum()); n_nys = int((universe['시장'] == 'NYSE').sum())
+    print(f"   └ 정제 후 후보 {len(cleaned)}종목(비보통주 {n_junk}개 제외·복수클래스 통합) → 상위 {len(universe)} 선정")
     print(f"   └ 유니버스 {len(universe)}종목 (NASDAQ {n_nas} / NYSE {n_nys})")
     print(f"   └ 시총 1~5위: {universe['종목명'].head(5).tolist()}")
-    print(f"   └ TSM 포함? {'예' if (universe['종목코드']=='TSM').any() else '아니오'}")
+    print(f"   └ TSM 포함? {'예' if (universe['종목코드']=='TSM').any() else '아니오'} / 중복확인 GOOG {(universe['종목코드']=='GOOG').any()} GOOGM {(universe['종목코드']=='GOOGM').any()}")
 
     os.makedirs('archive_usa', exist_ok=True)
     results = []
