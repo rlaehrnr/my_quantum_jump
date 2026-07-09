@@ -351,7 +351,7 @@ def main():
     print("=" * 60)
     print(f"🚀 스노우볼 데이터 자동 업데이트 시작 — {datetime.now()}")
     print("=" * 60)
-    
+
     os.makedirs(MONTHLY_DIR, exist_ok=True)
     
     etf_ok, etf_fail = update_all_etfs()
