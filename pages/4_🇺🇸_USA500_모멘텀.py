@@ -318,39 +318,57 @@ with tab3:
             if not df_res_m.empty:
                 strat_col = [c for c in df_res_m.columns if c not in ['투자월', 'invested']][0]
 
-                # 벤치마크(SPY·QQQ) 월간수익률을 테스트 투자월에 정렬
+                # 벤치마크(SPY·QQQ) 바이앤홀드 + 필터적용(방어월=현금) 을 테스트 투자월에 정렬
                 bench = get_benchmark_monthly_returns()
+                base_idx = df_res_m.set_index('투자월').index
                 ret_all = df_res_m.set_index('투자월')[[strat_col]].copy()
-                bench_cols = []
+                invested_mask = df_res_m.set_index('투자월')['invested'].reindex(base_idx).fillna(False).astype(bool)
+
+                bench_cols, filt_cols = [], []
                 for b in ['SPY', 'QQQ']:
                     if not bench.empty and b in bench.columns:
-                        ret_all[b] = bench[b].reindex(ret_all.index)
+                        col_bh = bench[b].reindex(base_idx)
+                        ret_all[b] = col_bh
                         bench_cols.append(b)
-                all_cols = [strat_col] + bench_cols
+                        fname = f"{b}(필터)"
+                        ret_all[fname] = col_bh.where(invested_mask, 0.0)   # 방어(투자중지)월엔 현금(0%)
+                        filt_cols.append(fname)
+                all_cols = [strat_col] + bench_cols + filt_cols
 
                 df_cum_m = (1 + ret_all[all_cols].fillna(0.0) / 100).cumprod() * 100
                 df_cum_m.loc[(pd.to_datetime(df_res_m['투자월'].iloc[0]) - pd.DateOffset(months=1)).strftime('%Y-%m')] = 100
                 df_cum_m = df_cum_m.sort_index()
 
-                invested_mask = df_res_m.set_index('투자월')['invested'].reindex(ret_all.index).fillna(False).astype(bool)
                 years = len(df_res_m) / 12
 
-                def _stat_row(name, is_strat):
+                def _stat_row(name, invested_aware):
                     cum = df_cum_m[name]; final_val = cum.iloc[-1]
                     cagr = ((final_val/100)**(1/years)-1)*100 if final_val > 0 and years > 0 else -100
                     mdd = ((cum/cum.cummax())-1).min()*100
-                    r = ret_all[name]
-                    if is_strat and invested_mask.any():
-                        rr = r[invested_mask.values]
-                        win = (rr > 0).mean()*100; avg = rr.mean()
+                    r = ret_all[name].dropna()   # 실현 월수익률(%) — 방어월은 0 포함
+                    if len(r) > 1:
+                        ann = r.mean() * 12
+                        std = r.std() * (12 ** 0.5)
+                        downside = ((r.clip(upper=0) ** 2).mean() ** 0.5) * (12 ** 0.5)   # 하방편차(MAR=0)
+                        sharpe = ann / std if std > 0 else float('nan')
+                        sortino = ann / downside if downside > 0 else float('nan')
+                    else:
+                        sharpe = sortino = float('nan')
+                    if invested_aware and invested_mask.any():
+                        rr = ret_all[name][invested_mask.values].dropna()
+                        win = (rr > 0).mean()*100 if len(rr) else 0.0
                         inv_ratio = invested_mask.sum()/len(invested_mask)*100
                     else:
-                        rr = r.dropna()
-                        win = (rr > 0).mean()*100 if len(rr) else 0; avg = rr.mean() if len(rr) else 0
+                        win = (r > 0).mean()*100 if len(r) else 0.0
                         inv_ratio = 100.0
-                    return {"전략명": name, "CAGR (연평균)": f"{cagr:.1f}%", "총 누적수익률": f"{final_val-100:,.1f}%", "MDD (최대낙폭)": f"{mdd:.1f}%", "투자월 비율": f"{inv_ratio:.1f}%", "월별 승률": f"{win:.1f}%", "평균 수익률": f"{avg:.2f}%"}
+                    _f = lambda x: f"{x:.2f}" if pd.notna(x) else "-"
+                    return {"전략명": name, "CAGR (연평균)": f"{cagr:.1f}%", "총 누적수익률": f"{final_val-100:,.1f}%", "MDD (최대낙폭)": f"{mdd:.1f}%", "투자월 비율": f"{inv_ratio:.1f}%", "Sharpe": _f(sharpe), "Sortino": _f(sortino), "월별 승률": f"{win:.1f}%"}
 
-                stats_df_m = pd.DataFrame([_stat_row(strat_col, True)] + [_stat_row(b, False) for b in bench_cols])
+                stats_df_m = pd.DataFrame(
+                    [_stat_row(strat_col, True)]
+                    + [_stat_row(b, False) for b in bench_cols]      # 바이앤홀드
+                    + [_stat_row(f, True) for f in filt_cols]        # 필터적용(방어월 현금)
+                )
 
                 m4_defense_cnt = int((df_trades_m['전략'].isin(['멀티4', '마켓타이밍+멀티4'])).sum()) if not df_trades_m.empty else 0
                 settings_dict_m = {
@@ -362,12 +380,12 @@ with tab3:
                     '교집합 추출 기준': f"각 지표 상위 {top_n_t5}위",
                     '매수 순위 (12-1 정렬)': f"{rank_t5_s}위 ~ {rank_t5_e}위",
                     '멀티4 방어 발동 개월': f"{m4_defense_cnt}개월",
-                    '벤치마크': ", ".join(bench_cols) if bench_cols else "없음"
+                    '벤치마크': ", ".join(bench_cols + filt_cols) if (bench_cols or filt_cols) else "없음"
                 }
                 excel_data_m = generate_excel_report_cached(tuple(settings_dict_m.items()), stats_df_m, df_res_m, df_cum_m, df_trades_m)
 
                 col_tm, col_bm = st.columns([7.5, 2.5])
-                with col_tm: st.markdown("#### 📊 전략 핵심 통계 (초기 자본 100 기준 · SPY·QQQ 비교)")
+                with col_tm: st.markdown("#### 📊 전략 핵심 통계 (초기 자본 100 기준 · SPY·QQQ 및 필터적용 비교)")
                 with col_bm:
                     st.download_button("📥 종합 엑셀 리포트 다운로드", data=excel_data_m, file_name="USA500_전략백테스트.xlsx", mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", use_container_width=True)
 
@@ -379,7 +397,7 @@ with tab3:
                 with col_hm_m: st.dataframe(get_monthly_heatmap(df_res_m, analysis_strat_t5), use_container_width=True)
                 with col_mdd_m: st.dataframe(get_mdd_history(df_cum_m[analysis_strat_t5]), use_container_width=True, hide_index=True)
 
-                st.plotly_chart(px.line(df_cum_m.reset_index().melt(id_vars='투자월'), x='투자월', y='value', color='variable', log_y=True, title="누적 자산 성장 곡선 (Log Scale · 전략 vs SPY·QQQ)", labels={'variable': '', 'value': '누적자산'}), use_container_width=True)
+                st.plotly_chart(px.line(df_cum_m.reset_index().melt(id_vars='투자월'), x='투자월', y='value', color='variable', log_y=True, title="누적 자산 성장 곡선 (Log Scale · 전략 vs SPY·QQQ ±필터)", labels={'variable': '', 'value': '누적자산'}), use_container_width=True)
                 with st.expander("📝 월별 전체 상세 기록 보기 (전략·벤치마크)"): st.dataframe(ret_all.style.format("{:.2f}%", na_rep="-"), use_container_width=True)
             else:
                 st.warning("해당 조건에서 결과가 비어 있습니다. 교집합 기준(N위)이나 기간을 조정해 보세요.")
