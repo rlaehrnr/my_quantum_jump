@@ -24,6 +24,10 @@ from utils.us_helpers import (
     get_benchmark_monthly_returns
 )
 
+# ── 전략 공통 파라미터 (라이브 = 백테스트 기본값, 한 곳에서 관리하여 동일성 보장) ──
+STRAT_CUTOFF_N = 150   # 교집합 추출 기준: 3-1·6-1·12-1 각 지표 상위 N위
+STRAT_TOP_N = 10       # 매수 종목 수(12-1 정렬 상위 N)
+
 inject_custom_css()
 
 st.markdown('''
@@ -94,12 +98,11 @@ with tab1:
         df_monthly = add_naver_links(df_monthly)
         df_us_t1 = calc_us_momentum(df_monthly)
 
-        # 🎯 종합 모멘텀: 3-1·6-1·12-1 각 상위 30% 교집합 → 12-1 내림차순
-        df_combo_t1 = get_triple_momentum_us(df_monthly, cutoff=30, mode='pct')
+        # 🎯 종합 모멘텀: 3-1·6-1·12-1 각 상위 N위 교집합 → 12-1 내림차순 (백테스트와 동일)
+        df_combo_t1 = get_triple_momentum_us(df_monthly, cutoff=STRAT_CUTOFF_N, mode='rank')
         df_combo_t1['순위'] = range(1, len(df_combo_t1) + 1)
 
         # 🌐 전체 순위: 시가총액 내림차순
-        df_us_t1['커스텀스코어'] = (-0.1 * df_us_t1['1개월(%)']) + (0.7 * df_us_t1['3개월(%)']) + (0.4 * df_us_t1['6개월(%)'])
         df_us_t1 = df_us_t1.sort_values('시가총액', ascending=False).reset_index(drop=True)
         df_us_t1['순위'] = range(1, len(df_us_t1) + 1)
         
@@ -109,9 +112,15 @@ with tab1:
         cycle_year_t1 = get_cycle_year(safe_year)
         bad_m_str_t1 = ", ".join(f"{m}월" for m in PRESIDENTIAL_DANGEROUS_MONTHS.get(cycle_year_t1, [])) or "없음"
         
+        # 방어 판정: SPY 12개월선 이탈 OR 멀티4(cond1) — 백테스트와 동일 조건
         is_below_ma = (spx_curr > 0) and (spx_curr < (spx_mas.get(12) or 0))
-        status, box_c, text_c = ("🛑 투자 중지", "#FFEBEE", "#C62828") if is_below_ma else ("✅ 투자 진행", "#E8F5E9", "#2E7D32")
-        reason_desc = "S&P500 240일선 이탈" if is_below_ma else "안전"
+        is_m4 = bool(get_multi4_cond1_map().get(target_month_str, False))
+        defense_on = is_below_ma or is_m4
+        status, box_c, text_c = ("🛑 투자 중지", "#FFEBEE", "#C62828") if defense_on else ("✅ 투자 진행", "#E8F5E9", "#2E7D32")
+        if defense_on:
+            reason_desc = "240일선+멀티4" if (is_below_ma and is_m4) else ("멀티4 방어" if is_m4 else "S&P500 240일선 이탈")
+        else:
+            reason_desc = "안전"
 
         col1, col2, col3, col4, col5, col6 = st.columns([1.0, 1.0, 1.0, 1.0, 1.4, 1.6])
         with col1: st.metric("📈 S&P 500 1M", f"{spx_1m}%")
@@ -122,19 +131,19 @@ with tab1:
         with col6: st.markdown(f'<div style="background-color: {box_c}; padding: 10px; border-radius: 10px; text-align: center; border: 1px solid {text_c}; height: 95px; display: flex; flex-direction: column; justify-content: center;"><p style="margin: 0; font-size: 12px; color: {text_c}; font-weight: bold;">최종 판단 ({reason_desc})</p><div style="margin: 4px 0 0 0; font-size: 1.5rem; font-weight: 900; color: {text_c};">{status}</div></div>', unsafe_allow_html=True)
         st.markdown("<hr style='margin: 1rem 0;'>", unsafe_allow_html=True)
 
-        # ===== 🎯 종합 모멘텀 (3-1·6-1·12-1 각 상위 30% 교집합, 12-1 정렬) =====
+        # ===== 🎯 종합 모멘텀 (3-1·6-1·12-1 각 상위 N위 교집합, 12-1 정렬) =====
         col_c_t, col_c_i, col_c_r = st.columns([5.5, 2.5, 4.0])
         with col_c_t:
             st.markdown(f"<h4 style='margin:0;'>🎯 종합 모멘텀 <span style='font-size:13px; color:gray;'>(3·6·12 교집합 · {len(df_combo_t1)}개)</span></h4>", unsafe_allow_html=True)
         with col_c_i:
-            top_n_combo = st.number_input("몇 개 투자", 1, max(1, len(df_combo_t1)), min(10, max(1, len(df_combo_t1))), key="combo_n_usa", label_visibility="collapsed")
+            top_n_combo = st.number_input("몇 개 투자", 1, max(1, len(df_combo_t1)), min(STRAT_TOP_N, max(1, len(df_combo_t1))), key="combo_n_usa", label_visibility="collapsed")
         with col_c_r:
             avg_ret_combo = df_combo_t1.head(top_n_combo)['이번달수익률'].mean() if len(df_combo_t1) > 0 and '이번달수익률' in df_combo_t1.columns else 0
             if avg_ret_combo != 0:
                 st.markdown(f"<div style='margin-top:8px; font-size:0.95rem; font-weight:bold;'>상위 {top_n_combo}개 투자 평균: <span style='color:{'#D32F2F' if avg_ret_combo>0 else '#1976D2'};'>{avg_ret_combo:+.2f}%</span></div>", unsafe_allow_html=True)
             else:
                 st.markdown("<div style='margin-top:8px; font-size:0.85rem; font-weight:bold; color:gray;'>상위 N개 투자 시 종목명이 강조됩니다.</div>", unsafe_allow_html=True)
-        st.markdown('<p class="strategy-desc">3-1M · 6-1M · 12-1M 각각 상위 30%에 모두 든 교집합 종목을 12-1M 내림차순 정렬. 상위 N개 투자 가정.</p>', unsafe_allow_html=True)
+        st.markdown(f'<p class="strategy-desc">3-1M · 6-1M · 12-1M 각각 상위 {STRAT_CUTOFF_N}위에 모두 든 교집합 종목을 12-1M 내림차순 정렬. 상위 N개 투자 가정. (전략 백테스트와 동일 기준)</p>', unsafe_allow_html=True)
 
         top_codes_combo = df_combo_t1.head(top_n_combo)['종목코드'].tolist()
         col_order_combo = ['순위', '통합티커_L', '종목명_L', '3-1개월(%)', '6-1개월(%)', '12-1개월(%)', '이번달수익률']
@@ -190,21 +199,27 @@ with tab2:
         df_daily = add_naver_links(df_daily)
         df_us_d = calc_us_momentum(df_daily)
 
-        # 🎯 종합 모멘텀: 3-1·6-1·12-1 각 상위 30% 교집합 → 12-1 내림차순
-        df_combo_d = get_triple_momentum_us(df_daily, cutoff=30, mode='pct')
+        # 🎯 종합 모멘텀: 3-1·6-1·12-1 각 상위 N위 교집합 → 12-1 내림차순 (백테스트와 동일)
+        df_combo_d = get_triple_momentum_us(df_daily, cutoff=STRAT_CUTOFF_N, mode='rank')
         df_combo_d['순위'] = range(1, len(df_combo_d) + 1)
 
         # 🌐 전체 순위: 시가총액 내림차순
-        df_us_d['커스텀스코어'] = (-0.1 * df_us_d['1개월(%)']) + (0.7 * df_us_d['3개월(%)']) + (0.4 * df_us_d['6개월(%)'])
         df_us_d = df_us_d.sort_values('시가총액', ascending=False).reset_index(drop=True)
         df_us_d['순위'] = range(1, len(df_us_d) + 1)
         
         spx_1m_d, spx_3m_d = robust_get_us_idx_return(safe_date, '^GSPC')
         ndx_1m_d, ndx_3m_d = robust_get_us_idx_return(safe_date, '^IXIC')
 
+        # 방어 판정: SPY 12개월선 이탈 OR 멀티4(cond1) — 백테스트와 동일 조건
+        cur_month_d = pd.to_datetime(safe_date).strftime('%Y-%m')
         is_below_ma_d = (spx_curr_d > 0) and (spx_curr_d < (spx_mas_d.get(12) or 0))
-        status_d, box_d, text_d = ("🛑 투자 중지", "#FFEBEE", "#C62828") if is_below_ma_d else ("✅ 투자 진행", "#E8F5E9", "#2E7D32")
-        reason_desc_d = "S&P500 240일선 이탈" if is_below_ma_d else "안전"
+        is_m4_d = bool(get_multi4_cond1_map().get(cur_month_d, False))
+        defense_on_d = is_below_ma_d or is_m4_d
+        status_d, box_d, text_d = ("🛑 투자 중지", "#FFEBEE", "#C62828") if defense_on_d else ("✅ 투자 진행", "#E8F5E9", "#2E7D32")
+        if defense_on_d:
+            reason_desc_d = "240일선+멀티4" if (is_below_ma_d and is_m4_d) else ("멀티4 방어" if is_m4_d else "S&P500 240일선 이탈")
+        else:
+            reason_desc_d = "안전"
 
         col1d, col2d, col3d, col4d, col5d, col6d = st.columns([1.0, 1.0, 1.0, 1.0, 1.4, 1.6])
         with col1d: st.metric("📈 S&P 500 1M", f"{spx_1m_d}%")
@@ -220,14 +235,14 @@ with tab2:
         with col_cd_t:
             st.markdown(f"<h4 style='margin:0;'>🎯 종합 모멘텀 <span style='font-size:13px; color:gray;'>(3·6·12 교집합 · {len(df_combo_d)}개)</span></h4>", unsafe_allow_html=True)
         with col_cd_i:
-            top_n_combo_d = st.number_input("몇 개 투자", 1, max(1, len(df_combo_d)), min(10, max(1, len(df_combo_d))), key="combo_n_us_d", label_visibility="collapsed")
+            top_n_combo_d = st.number_input("몇 개 투자", 1, max(1, len(df_combo_d)), min(STRAT_TOP_N, max(1, len(df_combo_d))), key="combo_n_us_d", label_visibility="collapsed")
         with col_cd_r:
             avg_ret_combo_d = df_combo_d.head(top_n_combo_d)['이번달수익률'].mean() if len(df_combo_d) > 0 and '이번달수익률' in df_combo_d.columns else 0
             if avg_ret_combo_d != 0:
                 st.markdown(f"<div style='margin-top:8px; font-size:0.95rem; font-weight:bold;'>상위 {top_n_combo_d}개 투자 평균: <span style='color:{'#D32F2F' if avg_ret_combo_d>0 else '#1976D2'};'>{avg_ret_combo_d:+.2f}%</span></div>", unsafe_allow_html=True)
             else:
                 st.markdown("<div style='margin-top:8px; font-size:0.85rem; font-weight:bold; color:gray;'>상위 N개 투자 시 종목명이 강조됩니다.</div>", unsafe_allow_html=True)
-        st.markdown('<p class="strategy-desc">3-1M · 6-1M · 12-1M 각각 상위 30%에 모두 든 교집합 종목을 12-1M 내림차순 정렬. 상위 N개 투자 가정.</p>', unsafe_allow_html=True)
+        st.markdown(f'<p class="strategy-desc">3-1M · 6-1M · 12-1M 각각 상위 {STRAT_CUTOFF_N}위에 모두 든 교집합 종목을 12-1M 내림차순 정렬. 상위 N개 투자 가정. (전략 백테스트와 동일 기준)</p>', unsafe_allow_html=True)
 
         top_codes_combo_d = df_combo_d.head(top_n_combo_d)['종목코드'].tolist()
         col_order_combo_d = ['순위', '통합티커_L', '종목명_L', '3-1개월(%)', '6-1개월(%)', '12-1개월(%)']
@@ -277,9 +292,9 @@ with tab3:
         st.markdown("##### ✂️ 교집합 추출 및 매수 순위 설정")
         cm_e1, cm_e2, cm_e3 = st.columns([1.3, 1.5, 0.8])
         with cm_e1:
-            top_n_t5 = st.number_input("🎯 교집합 추출 기준 (각 지표 상위 N위)", min_value=1, max_value=500, value=150, key='t5_n_all_usa')
+            top_n_t5 = st.number_input("🎯 교집합 추출 기준 (각 지표 상위 N위)", min_value=1, max_value=500, value=STRAT_CUTOFF_N, key='t5_n_all_usa')
         with cm_e2:
-            rank_t5_s, rank_t5_e = st.slider("🛒 매수 순위 (12-1 정렬)", 1, 50, (1, 10), key='t5_rnk_usa')
+            rank_t5_s, rank_t5_e = st.slider("🛒 매수 순위 (12-1 정렬)", 1, 50, (1, STRAT_TOP_N), key='t5_rnk_usa')
         with cm_e3:
             st.markdown("<div style='margin-top: 28px;'></div>", unsafe_allow_html=True)
             run_bt_m4 = st.form_submit_button("✅ 백테스트 실행", use_container_width=True)
