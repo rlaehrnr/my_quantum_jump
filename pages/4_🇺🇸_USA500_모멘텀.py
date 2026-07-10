@@ -32,10 +32,10 @@ inject_custom_css()
 
 st.markdown('''
     <div style="margin-bottom: 20px;">
-        <a href="https://m.stock.naver.com/worldstock/" target="_blank" class="title-link" style="text-decoration: none; color: inherit;">
+        <a href="/" target="_self" class="title-link" style="text-decoration: none; color: inherit;">
             <div style="display: flex; align-items: center; flex-wrap: wrap; gap: 12px;">
                 <h1 style="margin: 0; padding: 0; font-size: 2.2rem; font-weight: 800; line-height: 1.2; word-break: keep-all;">🇺🇸 USA 500 통합 모멘텀 (Top 500)</h1>
-                <span style="font-size: 0.95rem; color: #10b981; background-color: #d1fae5; padding: 4px 10px; border-radius: 6px; border: 1px solid #6ee7b7; white-space: nowrap;">🔗 네이버 증권 이동</span>
+                <span style="font-size: 0.95rem; color: #10b981; background-color: #d1fae5; padding: 4px 10px; border-radius: 6px; border: 1px solid #6ee7b7; white-space: nowrap;">🏠 종합 대시보드</span>
             </div>
         </a>
     </div>
