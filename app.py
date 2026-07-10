@@ -23,7 +23,7 @@ st.markdown("""
 .strat-row { display:flex; align-items:center; padding:8px 4px; border-bottom:1px solid #1c212b;
              font-size:0.84rem; white-space:nowrap; }
 .strat-row:last-child { border-bottom:none; }
-.strat-name { flex:0 0 132px; } .strat-hold { flex:1; text-align:right; color:#9CA3AF; }
+.strat-name { flex:0 0 150px; } .strat-hold { flex:1; text-align:right; color:#9CA3AF; }
 [data-testid="stPageLink"] a { font-size:1.1rem !important; font-weight:800 !important;
     color:#E5E7EB !important; padding:2px 0 !important; }
 [data-testid="stPageLink"] a:hover { color:#93C5FD !important; }
@@ -139,13 +139,13 @@ def _snowball_status():
         return sig.iloc[-1] if len(sig) else None
 
     defs = [
-        ("또 메리츠", lambda: sb.compute_signals(prices, div), None),
-        ("맘 삼성", lambda: sb.compute_signals_samsung(prices), None),
-        ("쏘 삼성", lambda: sb.compute_signals_so(prices), None),
-        ("또 ISA", lambda: sb.compute_signals_ko(ko), sb.KO_TICKER_NAMES.get),
-        ("또 연금", lambda: sb.compute_signals_pension(pen), sb.PEN_TICKER_NAMES.get),
-        ("쏘 연금", lambda: sb.compute_signals_ssopen(sso, prices), sb.SSOPEN_TICKER_NAMES.get),
-        ("맘 비과세", lambda: sb.compute_signals_mamtax(mam, prices), sb.mamtax_live_name),
+        ("🇺🇸 또 메리츠", lambda: sb.compute_signals(prices, div), None),
+        ("🇺🇸 맘 삼성", lambda: sb.compute_signals_samsung(prices), None),
+        ("🇺🇸 쏘 삼성", lambda: sb.compute_signals_so(prices), None),
+        ("🇰🇷 또 ISA", lambda: sb.compute_signals_ko(ko), sb.KO_TICKER_NAMES.get),
+        ("🇰🇷 또 연금", lambda: sb.compute_signals_pension(pen), sb.PEN_TICKER_NAMES.get),
+        ("🇰🇷 쏘 연금", lambda: sb.compute_signals_ssopen(sso, prices), sb.SSOPEN_TICKER_NAMES.get),
+        ("🇰🇷 맘 비과세", lambda: sb.compute_signals_mamtax(mam, prices), sb.mamtax_live_name),
     ]
     out = []
     for nm, fn, name_fn in defs:
