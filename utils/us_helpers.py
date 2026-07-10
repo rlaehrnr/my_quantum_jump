@@ -479,12 +479,17 @@ def get_multi4_start_ym():
 
 
 @st.cache_data(show_spinner=False)
-def run_backtest_triple_us_m4(df, start_year, end_year, ma_months, apply_timing, use_multi4, top_n_cutoff, rank_s, rank_e, spx):
+def run_backtest_triple_us_m4(df, start_year, end_year, ma_months, apply_timing, use_multi4, top_n_cutoff, rank_s, rank_e, spx, universe_n=None):
     """
     3중 교집합 전략(12-1 정렬 → rank_s~rank_e 매수) + 방어 필터.
     방어 = apply_timing AND ( SPY (ma_months*20)일선 이탈  OR  멀티4 cond1 ).
     use_multi4=False면 SPY 필터만(= run_backtest_triple_us와 동일).
     멀티4는 VIXY 상장+6M 이후 투자월에만 작동(그 전은 SPY만).
+
+    universe_n: 매월 후보 종목을 '시가총액 상위 N종목'으로 제한(예: 200 → 시총 상위 200위까지만
+                모멘텀 교집합 후보). None 또는 데이터 종목수 이상이면 전량(=상위 500) 그대로 사용 →
+                기존 백테스트와 완전히 동일한 결과. 라이브(탭1·탭2, 상위 500)와의 정합성 유지를 위해
+                호출측 기본값을 500(=전량)으로 둘 것.
     """
     cond1_map = get_multi4_cond1_map() if use_multi4 else {}
     if not spx.empty:
@@ -499,6 +504,11 @@ def run_backtest_triple_us_m4(df, start_year, end_year, ma_months, apply_timing,
         if not (start_year <= m_yr <= end_year): continue
         df_m = df[df['투자월'] == m_str].copy()
         if df_m.empty: continue
+
+        # 🎯 종목수 유니버스 제한: 시가총액 상위 universe_n종목만 모멘텀 교집합 후보로 사용.
+        #    (None 또는 보유 종목수 이상이면 head가 전량을 그대로 반환 → 상위 500과 동일)
+        if universe_n is not None and '시가총액' in df_m.columns:
+            df_m = df_m.sort_values('시가총액', ascending=False).head(int(universe_n))
 
         # SPY 마켓타이밍 신호 = '투자월 시작 직전의 마지막 거래일'(=전월 말)의 종가 vs 240일선.
         # (엉성한 '월초-5일' 근사치 대신 데이터에서 직접 월말을 잡음 → 라이브(종목선정일=월말)와 동일)
