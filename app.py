@@ -7,7 +7,7 @@ st.set_page_config(page_title="퀀트 종합 대시보드", layout="wide", page_
 
 st.markdown("""
 <style>
-.block-container { padding-top: 3.2rem !important; padding-bottom: 1rem !important; }
+.block-container { padding-top: 1.4rem !important; padding-bottom: 1rem !important; }
 .badge-on  { background:#10352422; color:#34D399; border:1px solid #34D39955;
              padding:3px 12px; border-radius:6px; font-weight:900; font-size:0.9rem; }
 .badge-off { background:#3b101022; color:#F87171; border:1px solid #F8717155;
@@ -30,7 +30,7 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
-st.markdown("<h2 style='margin:0 0 22px 0;'>📊 퀀트 종합 대시보드 "
+st.markdown("<h2 style='margin:0 0 10px 0;'>📊 퀀트 종합 대시보드 "
             "<span style='font-size:0.9rem; color:#6B7280; font-weight:500;'>· 4개 전략 현재 상태 한눈에</span></h2>",
             unsafe_allow_html=True)
 
@@ -43,7 +43,7 @@ PAGE_SNOW = "pages/6 ❄️ 스노우볼 포트.py"
 def _fmt(v):
     try:
         v = float(v); cls = 'pos' if v > 0 else ('neg' if v < 0 else 'dim')
-        return f"<span class='{cls}'>{v:+.1f}%</span>"
+        return f"<span class='{cls}'>{v:+.2f}%</span>"
     except Exception:
         return "<span class='dim'>-</span>"
 
@@ -57,15 +57,16 @@ def _tbl(rows):
 
 
 def _header(path, title, badge=None, refdate=None):
-    c1, c2 = st.columns([3, 2])
+    c1, c2, c3 = st.columns([2.3, 2.0, 1.7])
     with c1:
         st.page_link(path, label=title)
-        if refdate:
-            st.markdown(f"<div style='font-size:0.75rem; color:#6B7280; margin-top:-10px; margin-bottom:6px;'>{refdate}</div>",
-                        unsafe_allow_html=True)
     with c2:
+        if refdate:
+            st.markdown(f"<div style='font-size:0.75rem; color:#6B7280; padding-top:13px; white-space:nowrap;'>{refdate}</div>",
+                        unsafe_allow_html=True)
+    with c3:
         if badge:
-            st.markdown(f"<div style='text-align:right; padding-top:4px;'>{badge}</div>", unsafe_allow_html=True)
+            st.markdown(f"<div style='text-align:right; padding-top:9px;'>{badge}</div>", unsafe_allow_html=True)
 
 
 def _badge(stop, reason):
@@ -95,8 +96,11 @@ def _kospi_status():
     rc = '이번달수익률' if '이번달수익률' in dp.columns else '1개월(%)'
     perf = [(r['종목코드'], r['종목명'], r.get(rc)) for _, r in dp.head(6).iterrows()]
     spec = [(r['종목코드'], r['종목명'], r.get(rc)) for _, r in ds.head(2).iterrows()]
-    allr = [x[2] for x in perf + spec if pd.notna(x[2])]
-    avg = float(np.mean(allr)) if allr else 0.0
+    perf_r = [x[2] for x in perf if pd.notna(x[2])]
+    spec_r = [x[2] for x in spec if pd.notna(x[2])]
+    avg_p = float(np.mean(perf_r)) if perf_r else 0.0
+    avg_s = float(np.mean(spec_r)) if spec_r else 0.0
+    avg = (avg_p + avg_s) / 2   # 앙상블(50:50): 퍼펙트평균·달리는말평균의 평균
     refdate = str(df_daily['기준일'].iloc[0]) if '기준일' in df_daily.columns else None
     return {'stop': stop, 'reason': reason, 'avg': avg, 'perf': perf, 'spec': spec, 'refdate': refdate}
 
