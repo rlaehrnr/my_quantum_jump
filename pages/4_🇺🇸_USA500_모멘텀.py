@@ -276,9 +276,10 @@ with tab3:
     with st.form("bt_m4_form_usa", border=False):
         st.markdown(f"<h4 style='margin:0;'>⚙️ 시뮬레이션 설정 <span style='font-size:12px; color:gray; font-weight:normal;'>&nbsp;&nbsp;{m4_note}</span></h4>", unsafe_allow_html=True)
         st.markdown('<p class="strategy-desc">3-1M · 6-1M · 12-1M 각 상위 N위 교집합 → 12-1M 정렬 → 매수 순위까지 매수. 방어 = SPY 개월선 이탈 OR 멀티4</p>', unsafe_allow_html=True)
-        cm1, cm_ma, cm_chk = st.columns([1.5, 1, 1.5])
+        cm1, cm_ma, cm_uni, cm_chk = st.columns([1.25, 0.85, 1.15, 1.4])
         with cm1: start_year_m, end_year_m = st.slider("📅 테스트 기간", min_y, max_y, (min_y, max_y), key='t5_yr_usa')
         with cm_ma: ma_months_t5 = st.slider("📉 마켓타이밍 (개월선)", 1, 12, 12, key='t5_ma_usa')
+        with cm_uni: universe_n_t5 = st.slider("🎯 종목수 (시총 상위 N위)", 50, 500, 500, step=50, key='t5_uni_usa')
         with cm_chk:
             st.markdown("<div style='margin-top: 12px;'></div>", unsafe_allow_html=True)
             apply_timing_m = st.checkbox("🛑 SPY 마켓타이밍 적용", value=True, key='t5_chk_spy')
@@ -295,6 +296,11 @@ with tab3:
             st.markdown("<div style='margin-top: 28px;'></div>", unsafe_allow_html=True)
             run_bt_m4 = st.form_submit_button("✅ 백테스트 실행", use_container_width=True)
 
+    if universe_n_t5 >= 500:
+        st.caption("🎯 종목 유니버스: **시총 상위 전체(≤500)** — 라이브(월별·데일리)와 동일 기준입니다.")
+    else:
+        st.caption(f"🎯 종목 유니버스: **시총 상위 {universe_n_t5}종목**으로 제한해 테스트 중입니다. (라이브 기준은 상위 500)")
+
     only_after = st.checkbox("📅 멀티4 유효구간만 테스트 (상장 이후로 시작 연도 자동 조정)", value=False, key='t5_only_after')
     eff_start_m = start_year_m
     if only_after and use_multi4 and m4_start:
@@ -309,7 +315,7 @@ with tab3:
         with st.spinner("멀티4 방어 백테스트 구동 중..."):
             df_res_m, df_trades_m = run_backtest_triple_us_m4(
                 df_master, eff_start_m, end_year_m, ma_months_t5, apply_timing_m, use_multi4,
-                top_n_t5, rank_t5_s, rank_t5_e, spx_hist_m
+                top_n_t5, rank_t5_s, rank_t5_e, spx_hist_m, universe_n_t5
             )
             if not df_res_m.empty:
                 strat_col = [c for c in df_res_m.columns if c not in ['투자월', 'invested']][0]
@@ -370,6 +376,7 @@ with tab3:
                 settings_dict_m = {
                     '테스트 시작 연도': f"{eff_start_m}년",
                     '테스트 종료 연도': f"{end_year_m}년",
+                    '종목 유니버스': ("시총 상위 전체(≤500)" if universe_n_t5 >= 500 else f"시총 상위 {universe_n_t5}종목"),
                     '마켓타이밍 (개월선)': f"{ma_months_t5}개월선",
                     'SPY 마켓타이밍': "적용(현금)" if apply_timing_m else "미적용",
                     '멀티4 위험회피': f"적용 (유효 {m4_start}~)" if (use_multi4 and m4_start) else "미적용",
@@ -381,7 +388,8 @@ with tab3:
                 excel_data_m = generate_excel_report_cached(tuple(settings_dict_m.items()), stats_df_m, df_res_m, df_cum_m, df_trades_m)
 
                 col_tm, col_bm = st.columns([7.5, 2.5])
-                with col_tm: st.markdown("#### 📊 전략 핵심 통계 (초기 자본 100 기준 · SPY·QQQ 및 필터적용 비교)")
+                _uni_label = "시총 상위 전체(≤500)" if universe_n_t5 >= 500 else f"시총 상위 {universe_n_t5}종목"
+                with col_tm: st.markdown(f"#### 📊 전략 핵심 통계 <span style='font-size:13px; color:gray;'>(초기 자본 100 · {_uni_label} · SPY·QQQ 및 필터적용 비교)</span>", unsafe_allow_html=True)
                 with col_bm:
                     st.download_button("📥 종합 엑셀 리포트 다운로드", data=excel_data_m, file_name="USA500_전략백테스트.xlsx", mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", use_container_width=True)
 
