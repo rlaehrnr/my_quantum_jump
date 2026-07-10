@@ -168,6 +168,44 @@ def get_spx_history_cached():
         return spx
     except: return pd.DataFrame()
 
+
+@st.cache_data(show_spinner=False)
+def get_spy_timing_map(ma_months):
+    """SPY 월봉 N개월선 이탈 신호 → {투자월'YYYY-MM': True(이탈=방어)}.
+
+    커밋된 스노우볼 SPY 월봉(raw URL, 1993~)을 사용 → 야후(^GSPC) 차단/실패와
+    무관하게 안정적. 신호는 '전월 말' 기준(투자월 m → 전월 종가 vs N개월선),
+    라이브 결정 시점(월말 선정)과 동일하게 1개월 시프트."""
+    import io as _io, urllib.request as _u, urllib.parse as _up
+    raw = ("https://raw.githubusercontent.com/rlaehrnr/my_quantum_jump/main/data/snowball/monthly/"
+           + _up.quote("SPY_과거_데이터.csv"))
+    try:
+        txt = _u.urlopen(raw, timeout=10).read().decode('utf-8-sig')
+        d = pd.read_csv(_io.StringIO(txt)); d.columns = [c.strip() for c in d.columns]
+        d['날짜'] = pd.to_datetime(d['날짜']); d = d.sort_values('날짜').set_index('날짜')
+        s = d['종가']; s.index = s.index.to_period('M')
+        below = (s < s.rolling(int(ma_months)).mean())
+        out = {}
+        for per in below.index:
+            if pd.notna(below.loc[per]):
+                out[(per + 1).strftime('%Y-%m')] = bool(below.loc[per])   # 전월 신호 → 다음 투자월
+        return out
+    except Exception:
+        return {}
+
+
+def _spy_is_below(m_str, ma_months, spx):
+    """SPY 마켓타이밍 이탈 여부. 월봉 맵(안정적) 우선, 없으면 일봉 spx 폴백."""
+    v = get_spy_timing_map(ma_months).get(m_str)
+    if v is not None:
+        return bool(v)
+    if spx is not None and not getattr(spx, 'empty', True):
+        first_of_m = pd.to_datetime(m_str + '-01')
+        past = spx[spx.index < first_of_m]
+        if not past.empty:
+            return bool(past['Is_Below'].iloc[-1])
+    return False
+
 @st.cache_data(show_spinner=False)
 def generate_excel_report_cached(settings_tuple, df_stats, df_monthly, df_cum_ret, df_trade):
     output = io.BytesIO()
@@ -249,11 +287,7 @@ def run_backtest_us_fast(df, start_year, end_year, ma_months, apply_timing, rank
         if df_calc.empty: continue
         
         base_date = pd.to_datetime(m_str + '-01') - pd.Timedelta(days=5)
-        is_below = False
-        if not spx.empty:
-            past_spx = spx[spx.index <= base_date]
-            if not past_spx.empty: is_below = past_spx['Is_Below'].iloc[-1]
-                
+        is_below = _spy_is_below(m_str, ma_months, spx)
         mult = 0.0 if (apply_timing and is_below) else 1.0
         
         _, s1_all, s2_all = get_strategy_stocks_us_custom(df_calc, top_n_12, top_n_6, top_n_3)
@@ -313,10 +347,7 @@ def run_backtest_triple_us(df, start_year, end_year, ma_months, apply_timing, to
         if df_m.empty: continue
 
         base_date = pd.to_datetime(m_str + '-01') - pd.Timedelta(days=5)
-        is_below = False
-        if not spx.empty:
-            past = spx[spx.index <= base_date]
-            if not past.empty: is_below = past['Is_Below'].iloc[-1]
+        is_below = _spy_is_below(m_str, ma_months, spx)
         mult = 0.0 if (apply_timing and is_below) else 1.0
 
         picks_all = get_triple_momentum_us(df_m, cutoff=top_n_cutoff, mode='rank')
@@ -353,11 +384,7 @@ def run_custom_backtest_us(df, start_year_c, end_year_c, ma_months_c, apply_timi
         if df_calc.empty: continue
         
         base_date = pd.to_datetime(m_str + '-01') - pd.Timedelta(days=5)
-        is_below = False
-        if not spx.empty:
-            past_spx = spx[spx.index <= base_date]
-            if not past_spx.empty: is_below = past_spx['Is_Below'].iloc[-1]
-                
+        is_below = _spy_is_below(m_str, ma_months_c, spx)
         mult = 0.0 if (apply_timing_c and is_below) else 1.0
         
         df_calc['스코어'] = (df_calc['1개월(%)']*w1) + (df_calc['3개월(%)']*w3) + (df_calc['6개월(%)']*w6) + (df_calc['12개월(%)']*w12)
@@ -476,10 +503,7 @@ def run_backtest_triple_us_m4(df, start_year, end_year, ma_months, apply_timing,
         # SPY 마켓타이밍 신호 = '투자월 시작 직전의 마지막 거래일'(=전월 말)의 종가 vs 240일선.
         # (엉성한 '월초-5일' 근사치 대신 데이터에서 직접 월말을 잡음 → 라이브(종목선정일=월말)와 동일)
         first_of_m = pd.to_datetime(m_str + '-01')
-        is_below = False
-        if not spx.empty:
-            past = spx[spx.index < first_of_m]
-            if not past.empty: is_below = past['Is_Below'].iloc[-1]
+        is_below = _spy_is_below(m_str, ma_months, spx)
         is_m4 = bool(cond1_map.get(m_str, False))
         defense = bool(apply_timing and (is_below or is_m4))
         mult = 0.0 if defense else 1.0
