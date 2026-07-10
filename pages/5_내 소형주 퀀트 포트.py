@@ -316,7 +316,7 @@ def render_portfolio_tab(port_name, port_key, prices):
                          })
 
 # --- [6. 메인 화면] ---
-st.markdown('<p class="main-title">💼 내 퀀트 포트폴리오 종합 대시보드</p>', unsafe_allow_html=True)
+st.markdown('<a href="/" target="_self" style="text-decoration:none; color:inherit;"><p class="main-title">💼 내 퀀트 포트폴리오 종합 대시보드 <span style="font-size:0.9rem; color:#3b82f6; background:#1e293b; padding:3px 10px; border-radius:6px; border:1px solid #3b82f6; vertical-align:middle; white-space:nowrap;">🏠 종합 대시보드</span></p></a>', unsafe_allow_html=True)
 tabs = st.tabs(["📊 종합 요약", "🌱 또", "🌿 쏘", "🍀 맘", "⚖️ 리밸런싱 계산기"])
 
 with tabs[0]:
