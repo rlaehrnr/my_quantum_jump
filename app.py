@@ -77,22 +77,36 @@ def _badge(stop, reason):
 # ══════════════ 계산부 (캐시로 재로딩 가속) ══════════════
 @st.cache_data(ttl=1800, show_spinner=False)
 def _kospi_status():
-    from utils.data_loader import load_daily_data
+    from utils.data_loader import load_daily_data, load_archive_data, get_folder_hash
     from utils.calculator import get_kospi_ma_all, get_strategy_stocks_korea
+
     df_daily = load_daily_data()
     if df_daily is None or df_daily.empty:
         return None
+    # (1) 투자/중지 판단 — 현재 시장상태(데일리)
     try:
         kc, kmas = get_kospi_ma_all(datetime.today().strftime('%Y-%m-%d'))
     except Exception:
         kc, kmas = 0, {}
-    dk, dp, ds = get_strategy_stocks_korea(df_daily)
-    n1 = int((dk['1개월(%)'] < 0).sum()) if '1개월(%)' in dk else 0
-    n3 = int((dk['3개월(%)'] < 0).sum()) if '3개월(%)' in dk else 0
+    dk_d, _, _ = get_strategy_stocks_korea(df_daily)
+    n1 = int((dk_d['1개월(%)'] < 0).sum()) if '1개월(%)' in dk_d else 0
+    n3 = int((dk_d['3개월(%)'] < 0).sum()) if '3개월(%)' in dk_d else 0
     is_bad = (n1 >= 100) and (n3 >= 100)
     is_below = (kc > 0) and (kc < kmas.get(6, 0))
     stop = is_bad or is_below
     reason = (("하락장 " if is_bad else "") + ("6개월선 이탈" if is_below else "")) or "안전"
+
+    # (2) 선정 종목 — 월간 아카이브 최신 투자월(지난달 말 선정 + 이번달수익률 데일리)
+    dm = load_archive_data("archive_kospi", get_folder_hash("archive_kospi"))
+    dm['종목코드'] = dm['종목코드'].astype(str).str.zfill(6)
+    dm = dm[dm['종목코드'].str.endswith('0')].copy()
+    for col in ['시가총액', '1개월(%)', '3개월(%)', '6개월(%)', '12개월(%)', '이번달수익률']:
+        if col in dm.columns:
+            dm[col] = pd.to_numeric(dm[col], errors='coerce').fillna(0)
+    latest_m = sorted(dm['투자월'].dropna().unique())[-1]
+    dmm = dm[dm['투자월'] == latest_m].copy()
+    _, dp, ds = get_strategy_stocks_korea(dmm)
+
     rc = '이번달수익률' if '이번달수익률' in dp.columns else '1개월(%)'
     perf = [(r['종목코드'], r['종목명'], r.get(rc)) for _, r in dp.head(6).iterrows()]
     spec = [(r['종목코드'], r['종목명'], r.get(rc)) for _, r in ds.head(2).iterrows()]
@@ -100,9 +114,10 @@ def _kospi_status():
     spec_r = [x[2] for x in spec if pd.notna(x[2])]
     avg_p = float(np.mean(perf_r)) if perf_r else 0.0
     avg_s = float(np.mean(spec_r)) if spec_r else 0.0
-    avg = (avg_p + avg_s) / 2   # 앙상블(50:50): 퍼펙트평균·달리는말평균의 평균
+    avg = (avg_p + avg_s) / 2   # 앙상블(50:50)
     refdate = str(df_daily['기준일'].iloc[0]) if '기준일' in df_daily.columns else None
-    return {'stop': stop, 'reason': reason, 'avg': avg, 'perf': perf, 'spec': spec, 'refdate': refdate}
+    return {'stop': stop, 'reason': reason, 'avg': avg, 'avg_p': avg_p, 'avg_s': avg_s,
+            'perf': perf, 'spec': spec, 'refdate': refdate, 'month': latest_m}
 
 
 @st.cache_data(ttl=1800, show_spinner=False)
@@ -254,15 +269,20 @@ def render_kospi():
         _header(PAGE_KOSPI, "🇰🇷 KOSPI200 모멘텀"); st.info("일별 데이터 없음"); return
     _rd = f"📅 수익률 기준일 {d['refdate']}" if d.get('refdate') else None
     _header(PAGE_KOSPI, "🇰🇷 KOSPI200 모멘텀", _badge(d['stop'], d['reason']), refdate=_rd)
+    ens = f"<span class='avg-chip'>앙상블 평균 {_fmt(d['avg'])}</span>"
     if d['stop']:
-        st.markdown("<div style='font-size:0.8rem; color:#F87171; padding:2px 0 5px 0;'>"
-                    "🛑 현재 방어(투자중지) — 공격이었다면 담았을 종목</div>", unsafe_allow_html=True)
+        st.markdown(f"<div style='font-size:0.8rem; color:#F87171; padding:2px 0 5px 0;'>"
+                    f"🛑 현재 방어(투자중지) — 공격이었다면 담았을 종목 {ens}</div>", unsafe_allow_html=True)
+    else:
+        st.markdown(f"<div style='font-size:0.8rem; color:#34D399; padding:2px 0 5px 0;'>"
+                    f"⚔️ 이번달 투자 종목 {ens}</div>", unsafe_allow_html=True)
     c1, c2 = st.columns(2)
     with c1:
         st.markdown(f"<div class='sect-h' style='color:#FCA5A5;'>🔥 퍼펙트 상승 (6)"
-                    f"<span class='avg-chip'>평균 {_fmt(d['avg'])}</span></div>" + _tbl(d['perf']), unsafe_allow_html=True)
+                    f"<span class='avg-chip'>평균 {_fmt(d['avg_p'])}</span></div>" + _tbl(d['perf']), unsafe_allow_html=True)
     with c2:
-        st.markdown("<div class='sect-h' style='color:#FCD34D;'>🐎 달리는 말 (2)</div>" + _tbl(d['spec']), unsafe_allow_html=True)
+        st.markdown(f"<div class='sect-h' style='color:#FCD34D;'>🐎 달리는 말 (2)"
+                    f"<span class='avg-chip'>평균 {_fmt(d['avg_s'])}</span></div>" + _tbl(d['spec']), unsafe_allow_html=True)
 
 
 def render_usa():
