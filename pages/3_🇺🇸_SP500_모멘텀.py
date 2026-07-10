@@ -30,16 +30,12 @@ STRAT_TOP_N = 10       # 매수 종목 수(12-1 정렬 상위 N)
 
 inject_custom_css()
 
-st.markdown('''
-    <div style="margin-bottom: 20px;">
-        <a href="/" target="_self" class="title-link" style="text-decoration: none; color: inherit;">
-            <div style="display: flex; align-items: center; flex-wrap: wrap; gap: 12px;">
-                <h1 style="margin: 0; padding: 0; font-size: 2.2rem; font-weight: 800; line-height: 1.2; word-break: keep-all;">🇺🇸 US S&P 500 모멘텀 터미널</h1>
-                <span style="font-size: 0.95rem; color: #10b981; background-color: #d1fae5; padding: 4px 10px; border-radius: 6px; border: 1px solid #6ee7b7; white-space: nowrap;">🏠 종합 대시보드</span>
-            </div>
-        </a>
-    </div>
-''', unsafe_allow_html=True)
+st.markdown('''<style>
+[data-testid="stPageLink-NavLink"] { padding:0 !important; margin:4px 0 20px 0 !important; }
+[data-testid="stPageLink-NavLink"] p { font-size:2.2rem !important; font-weight:800 !important; line-height:1.2 !important; margin:0 !important; word-break:keep-all; }
+[data-testid="stPageLink-NavLink"]:hover p { color:#93C5FD !important; }
+</style>''', unsafe_allow_html=True)
+st.page_link("app.py", label="🇺🇸 US S&P 500 모멘텀 터미널")
 
 archive_path = "archive_sp500"
 f_hash = get_folder_hash(archive_path) 
