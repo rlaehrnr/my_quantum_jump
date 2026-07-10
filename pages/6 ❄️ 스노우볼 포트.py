@@ -84,16 +84,12 @@ ASSET_COLORS = {
 # ==========================================
 # 페이지 헤더
 # ==========================================
-st.markdown('''
-    <div style="margin-bottom: 20px;">
-        <a href="/" target="_self" style="text-decoration: none; color: inherit;">
-        <div style="display: flex; align-items: center; flex-wrap: wrap; gap: 12px;">
-            <h1 style="margin: 0; padding: 0; font-size: 2.2rem; font-weight: 800; line-height: 1.2; word-break: keep-all;">❄️ 스노우볼 포트</h1>
-            <span style="font-size: 0.95rem; color: #3b82f6; background-color: #1e293b; padding: 4px 10px; border-radius: 6px; border: 1px solid #3b82f6; white-space: nowrap;">🏠 종합 대시보드</span>
-        </div>
-        </a>
-    </div>
-''', unsafe_allow_html=True)
+st.markdown('''<style>
+[data-testid="stPageLink-NavLink"] { padding:0 !important; margin:4px 0 20px 0 !important; }
+[data-testid="stPageLink-NavLink"] p { font-size:2.2rem !important; font-weight:800 !important; line-height:1.2 !important; margin:0 !important; word-break:keep-all; }
+[data-testid="stPageLink-NavLink"]:hover p { color:#93C5FD !important; }
+</style>''', unsafe_allow_html=True)
+st.page_link("app.py", label="❄️ 스노우볼 포트")
 
 
 # ==========================================
