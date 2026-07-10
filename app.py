@@ -277,12 +277,18 @@ def _safe(fn, title):
             st.caption(f"⚠️ 로드 실패: {type(e).__name__} — {str(e)[:80]}")
 
 
-left, right = st.columns(2, gap="medium")
-with left:
+# 위: KOSPI200 | USA500
+r1 = st.columns(2, gap="medium")
+with r1[0]:
     _safe(render_kospi, "🇰🇷 KOSPI200 모멘텀")
-    st.write("")
+with r1[1]:
     _safe(render_usa, "🇺🇸 USA500 모멘텀")
-with right:
+
+st.write("")
+
+# 아래: 스노우볼 | 소형주
+r2 = st.columns(2, gap="medium")
+with r2[0]:
     _safe(render_snowball, "❄️ 스노우볼 포트")
-    st.write("")
+with r2[1]:
     _safe(render_smallcap, "💼 내 소형주 퀀트 포트")
