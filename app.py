@@ -1,7 +1,7 @@
 import streamlit as st
 import pandas as pd
 import numpy as np
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
 st.set_page_config(page_title="퀀트 종합 대시보드", layout="wide", page_icon="📊")
 
@@ -57,16 +57,16 @@ def _tbl(rows):
 
 
 def _header(path, title, badge=None, refdate=None):
-    c1, c2, c3 = st.columns([2.3, 2.0, 1.7])
+    c1, c2, c3 = st.columns([2.3, 2.0, 1.7], vertical_alignment="center")
     with c1:
         st.page_link(path, label=title)
     with c2:
         if refdate:
-            st.markdown(f"<div style='font-size:0.75rem; color:#6B7280; padding-top:13px; white-space:nowrap;'>{refdate}</div>",
+            st.markdown(f"<div style='font-size:0.75rem; color:#6B7280; white-space:nowrap;'>{refdate}</div>",
                         unsafe_allow_html=True)
     with c3:
         if badge:
-            st.markdown(f"<div style='text-align:right; padding-top:9px;'>{badge}</div>", unsafe_allow_html=True)
+            st.markdown(f"<div style='text-align:right;'>{badge}</div>", unsafe_allow_html=True)
 
 
 def _badge(stop, reason):
@@ -224,9 +224,15 @@ def _smallcap_status():
 
     refdate = None
     try:
+        now = datetime.now(timezone(timedelta(hours=9)))
+        today = now.date()
         idx = fdr.DataReader('KS11', datetime.today() - timedelta(days=12))
-        if not idx.empty:
-            refdate = str(idx.index[-1].date())
+        last_dt = idx.index[-1].date() if not idx.empty else None
+        trading_now = (now.weekday() < 5) and (9 * 60 <= now.hour * 60 + now.minute <= 15 * 60 + 30)
+        if (last_dt is not None and last_dt >= today) or trading_now:
+            refdate = f"📊 실시간 {today}"          # 장중 등 → 오늘(실시간)
+        elif last_dt is not None:
+            refdate = f"📅 한국장 마감 {last_dt}"     # 장 마감/휴장 → 마지막 거래일
     except Exception:
         refdate = None
 
@@ -289,8 +295,7 @@ def render_snowball():
 
 def render_smallcap():
     data, refdate = _smallcap_status()
-    _rd = f"📅 한국장 마감 {refdate}" if refdate else None
-    _header(PAGE_SMALL, "💼 내 소형주 퀀트 포트", refdate=_rd)
+    _header(PAGE_SMALL, "💼 내 소형주 퀀트 포트", refdate=refdate)
     rows = ""
     for i, (nm, pct, prof) in enumerate(data):
         top = "border-top:2px solid #2a3140;" if nm == "합계" else ""
