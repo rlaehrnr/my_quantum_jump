@@ -128,60 +128,87 @@ def get_idx_kr(target_date_str):
 
 
 # ==========================================
-# 🥇 금(KRX 금시장, 환노출) 일별 가격 (원/g)
+# 🥇 금(KRX 금시장, 환노출) 일별 가격 (원/g 상당)
 #
 # 미래에셋 금현물계좌(KRX 금시장, 환노출)와 동일 성격.
-# 1순위: data/krx_gold_price.csv (실제 KRX 일별 종가, 가장 정확)
-#        + CSV 마지막일 이후는 FDR 일별로 자동 연장(레벨 비율보정)해 라이브 최신 유지
-# 2순위: CSV 없으면 FDR 일별(국제 금 GC=F × USD/KRW ÷ 31.1035)만 사용
-#
-# ⚠️ 반드시 '환노출' 금. 환헤지(H) 금 ETF(132030 등)는 성격이 다름.
-# 반환: pd.Series(index=DatetimeIndex, 원/g). 데이터 없으면 빈 Series.
+# 1순위: data/krx_gold_price.csv (실제 KRX 금현물 일별 종가, 원/g — 가장 정확한 과거 히스토리)
+# 연장(CSV 마지막일 이후) 우선순위 — 접합점 레벨 비율보정 후 이어붙임:
+#   (a) data/krx_gold_recent.csv = 411060(ACE KRX금현물, 환노출) 일별 종가.
+#       GitHub Actions(update_gold_kr.py)가 매일 갱신·커밋 → raw URL로 읽어 라이브 최신 유지.
+#       실제 KRX 금시장에 연동된 실물 ETF라, 아래 국제금 프록시보다 KRX 금값을 훨씬 정확히 추종.
+#   (b) 폴백: FDR 국제금 GC=F × USD/KRW ÷ 31.1035 (411060을 못 받을 때만).
+# ※ 전략은 '수익률'만 쓰므로 스팟(원/g) vs ETF(원/좌) 단위 차이는 접합 factor로 흡수됨(무영향).
+# ⚠️ 반드시 '환노출' 금. 환헤지(H) 금 ETF(132030 등)는 성격이 다름 → 411060(환노출) 사용.
+# 반환: pd.Series(index=DatetimeIndex). 데이터 없으면 빈 Series.
 # ==========================================
+_GOLD_RECENT_RAW = ("https://raw.githubusercontent.com/rlaehrnr/my_quantum_jump/main/"
+                    "data/krx_gold_recent.csv")
+
 @st.cache_data(ttl="6h", show_spinner=False)
 def get_gold_krw_daily():
-    """KRX 금(환노출) 일별 종가(원/g) Series 반환. KRX CSV + FDR 일별 연장."""
-    import os
+    """KRX 금(환노출) 일별 종가 Series. KRX 스팟 CSV(과거) + 411060(KRX 금현물 ETF) 연장."""
+    import os, io, urllib.request
 
-    # ── FDR 일별(국제 금 × 원달러) : 폴백 또는 CSV 이후 연장용 ──
-    fdr_daily = None
-    try:
-        import FinanceDataReader as fdr
-        gold = fdr.DataReader('GC=F', '2003-01-01')['Close'].dropna()   # USD/oz
-        fx = fdr.DataReader('USD/KRW', '2003-01-01')['Close'].dropna()  # 원/달러
-        if not gold.empty and not fx.empty:
-            gd = pd.DataFrame({'g': gold, 'fx': fx})
-            gd.index = pd.to_datetime(gd.index)
-            gd = gd.sort_index().ffill().dropna()
-            fdr_daily = (gd['g'] * gd['fx'] / 31.1035).dropna()
-    except Exception as e:
-        print(f"⚠️ get_gold_krw_daily FDR 오류: {e}")
+    def _read_gold_csv_text(text):
+        r = pd.read_csv(io.StringIO(text))
+        r['날짜'] = pd.to_datetime(r['날짜'])
+        s = r.set_index('날짜')['종가'].astype(float).sort_index()
+        return s[s > 0].dropna()
 
-    # ── KRX 실제 일별 CSV (가장 정확) ──
+    # ── KRX 실제 스팟 일별 CSV (과거 정확, 원/g) ──
     csv_daily = None
     try:
         path = 'data/krx_gold_price.csv'
         if os.path.exists(path):
-            raw = pd.read_csv(path, encoding='utf-8-sig')  # BOM 처리
-            raw['날짜'] = pd.to_datetime(raw['날짜'])
-            s = raw.set_index('날짜')['종가'].astype(float).sort_index()
-            csv_daily = s[s > 0].dropna()
+            with open(path, encoding='utf-8-sig') as f:
+                csv_daily = _read_gold_csv_text(f.read())
     except Exception as e:
-        print(f"⚠️ get_gold_krw_daily CSV 오류: {e}")
+        print(f"⚠️ get_gold_krw_daily 스팟 CSV 오류: {e}")
 
-    # ── 결합: CSV(과거 정확) + FDR(CSV 이후 연장, 비율보정) ──
+    # ── 연장 소스 1순위: 411060(ACE KRX금현물, 환노출) — raw URL(라이브) → 로컬 폴백 ──
+    ext = None
+    try:
+        txt = urllib.request.urlopen(_GOLD_RECENT_RAW, timeout=10).read().decode('utf-8-sig')
+        ext = _read_gold_csv_text(txt)
+    except Exception:
+        ext = None
+    if ext is None or ext.empty:
+        try:
+            p2 = 'data/krx_gold_recent.csv'
+            if os.path.exists(p2):
+                with open(p2, encoding='utf-8-sig') as f:
+                    ext = _read_gold_csv_text(f.read())
+        except Exception:
+            ext = None
+
+    # ── 연장 소스 2순위(폴백): FDR 국제금 × 원달러 프록시 (411060 못 받을 때만) ──
+    if ext is None or ext.empty:
+        try:
+            import FinanceDataReader as fdr
+            gold = fdr.DataReader('GC=F', '2003-01-01')['Close'].dropna()   # USD/oz
+            fx = fdr.DataReader('USD/KRW', '2003-01-01')['Close'].dropna()  # 원/달러
+            if not gold.empty and not fx.empty:
+                gd = pd.DataFrame({'g': gold, 'fx': fx})
+                gd.index = pd.to_datetime(gd.index)
+                gd = gd.sort_index().ffill().dropna()
+                ext = (gd['g'] * gd['fx'] / 31.1035).dropna()
+        except Exception as e:
+            print(f"⚠️ get_gold_krw_daily FDR 폴백 오류: {e}")
+            ext = None
+
+    # ── 결합: 스팟 CSV(과거) + 연장(접합점 레벨 비율보정) ──
     if csv_daily is not None and not csv_daily.empty:
-        if fdr_daily is not None and not fdr_daily.empty:
+        if ext is not None and not ext.empty:
             last = csv_daily.index.max()
-            ref = fdr_daily[fdr_daily.index <= last]
-            tail = fdr_daily[fdr_daily.index > last]
+            ref = ext[ext.index <= last]
+            tail = ext[ext.index > last]
             if not tail.empty and not ref.empty and ref.iloc[-1] > 0:
                 factor = csv_daily.iloc[-1] / ref.iloc[-1]  # 접합점 레벨 정합
                 csv_daily = pd.concat([csv_daily, tail * factor])
         return csv_daily.sort_index()
 
-    if fdr_daily is not None and not fdr_daily.empty:
-        return fdr_daily.sort_index()
+    if ext is not None and not ext.empty:
+        return ext.sort_index()
     return pd.Series(dtype=float)
 
 
