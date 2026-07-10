@@ -6,33 +6,43 @@ from datetime import datetime, timedelta
 st.set_page_config(page_title="퀀트 종합 대시보드", layout="wide", page_icon="📊")
 
 # ──────────────────────────────────────────────────────────
-# 공통 스타일 (한눈에 보이도록 컴팩트)
+# 공통 스타일 (여백 넉넉하게)
 # ──────────────────────────────────────────────────────────
 st.markdown("""
 <style>
-.block-container { padding-top: 1.2rem !important; padding-bottom: 0.5rem !important; }
-.dash-card { background:#161a23; border:1px solid #262c39; border-radius:12px;
-             padding:12px 14px; height:100%; }
-.dash-h { font-size:1.05rem; font-weight:800; margin:0 0 6px 0; color:#E5E7EB;
-          display:flex; align-items:center; gap:6px; }
-.badge-on  { background:#10352410; color:#34D399; border:1px solid #34D39955;
-             padding:2px 10px; border-radius:6px; font-weight:900; font-size:0.85rem; }
-.badge-off { background:#3b101010; color:#F87171; border:1px solid #F8717155;
-             padding:2px 10px; border-radius:6px; font-weight:900; font-size:0.85rem; }
-.mini table { width:100%; border-collapse:collapse; font-size:0.8rem; }
-.mini th { color:#9CA3AF; text-align:left; padding:2px 6px; font-weight:600;
-           border-bottom:1px solid #262c39; }
-.mini td { padding:2px 6px; border-bottom:1px solid #1c212b; color:#D1D5DB; }
+.block-container { padding-top: 3.2rem !important; padding-bottom: 1rem !important; }
+.dash-h { font-size:1.1rem; font-weight:800; margin:0; color:#E5E7EB; }
+.badge-on  { background:#10352422; color:#34D399; border:1px solid #34D39955;
+             padding:3px 12px; border-radius:6px; font-weight:900; font-size:0.9rem; }
+.badge-off { background:#3b101022; color:#F87171; border:1px solid #F8717155;
+             padding:3px 12px; border-radius:6px; font-weight:900; font-size:0.9rem; }
+.mini table { width:100%; border-collapse:collapse; font-size:0.83rem; }
+.mini th { color:#9CA3AF; text-align:left; padding:5px 8px; font-weight:600;
+           border-bottom:1px solid #2a3140; }
+.mini td { padding:5px 8px; border-bottom:1px solid #1c212b; color:#D1D5DB; }
 .pos { color:#F87171; font-weight:700; } .neg { color:#60A5FA; font-weight:700; }
 .dim { color:#6B7280; }
+.avg-chip { display:inline-block; background:#1c2430; border:1px solid #2a3547;
+            border-radius:6px; padding:3px 10px; font-size:0.85rem; margin:2px 0 8px 0; }
 .strat-row { display:flex; justify-content:space-between; align-items:center;
-             padding:3px 4px; border-bottom:1px solid #1c212b; font-size:0.82rem; }
+             padding:11px 4px; border-bottom:1px solid #1c212b; font-size:0.86rem; min-height:26px; }
+.strat-row:last-child { border-bottom:none; }
+/* 카드 제목(페이지 링크)을 헤더처럼 */
+[data-testid="stPageLink"] a { font-size:1.1rem !important; font-weight:800 !important;
+    color:#E5E7EB !important; padding:2px 0 !important; }
+[data-testid="stPageLink"] a:hover { color:#93C5FD !important; }
+[data-testid="stPageLink"] { margin-bottom:2px; }
 </style>
 """, unsafe_allow_html=True)
 
-st.markdown("<h2 style='margin:0 0 10px 0;'>📊 퀀트 종합 대시보드 "
+st.markdown("<h2 style='margin:0 0 22px 0;'>📊 퀀트 종합 대시보드 "
             "<span style='font-size:0.9rem; color:#6B7280; font-weight:500;'>· 4개 전략 현재 상태 한눈에</span></h2>",
             unsafe_allow_html=True)
+
+PAGE_KOSPI = "pages/1_🇰🇷_KOSPI200_모멘텀.py"
+PAGE_USA = "pages/4_🇺🇸_USA500_모멘텀.py"
+PAGE_SMALL = "pages/5_내 소형주 퀀트 포트.py"
+PAGE_SNOW = "pages/6 ❄️ 스노우볼 포트.py"
 
 
 def _fmt_pct(v):
@@ -45,16 +55,28 @@ def _fmt_pct(v):
 
 
 def _rows_html(df, code_col, name_col, ret_col, n):
-    out = "<div class='mini'><table><tr><th>티커</th><th>종목명</th><th>수익률</th></tr>"
+    out = "<div class='mini'><table><tr><th>티커</th><th>종목명</th><th style='text-align:right;'>수익률</th></tr>"
     for _, r in df.head(n).iterrows():
         out += (f"<tr><td class='dim'>{r.get(code_col,'')}</td>"
-                f"<td>{r.get(name_col,'')}</td><td>{_fmt_pct(r.get(ret_col))}</td></tr>")
+                f"<td>{r.get(name_col,'')}</td>"
+                f"<td style='text-align:right;'>{_fmt_pct(r.get(ret_col))}</td></tr>")
     out += "</table></div>"
     return out
 
 
+def _header(page_path, title, badge_html=None):
+    """카드 헤더: 좌측 페이지 링크(제목) + 우측 배지."""
+    c1, c2 = st.columns([3, 2])
+    with c1:
+        st.page_link(page_path, label=title)
+    with c2:
+        if badge_html:
+            st.markdown(f"<div style='text-align:right; padding-top:4px;'>{badge_html}</div>",
+                        unsafe_allow_html=True)
+
+
 # ══════════════════════════════════════════════════════════
-# ① KOSPI200 — 최종판단 + 퍼펙트상승 6 · 달리는말 2
+# ① KOSPI200
 # ══════════════════════════════════════════════════════════
 def render_kospi():
     from utils.data_loader import load_daily_data
@@ -62,7 +84,8 @@ def render_kospi():
 
     df_daily = load_daily_data()
     if df_daily is None or df_daily.empty:
-        st.info("KOSPI200 일별 데이터 없음")
+        _header(PAGE_KOSPI, "🇰🇷 KOSPI200 모멘텀")
+        st.info("일별 데이터 없음")
         return
     safe_date = datetime.today().strftime('%Y-%m-%d')
     try:
@@ -78,29 +101,30 @@ def render_kospi():
     reason = ("하락장 " if is_bad else "") + ("6개월선 이탈" if is_below else "")
     if not stop:
         reason = "안전"
-
     badge = (f"<span class='badge-off'>🛑 투자 중지</span>" if stop
-             else f"<span class='badge-on'>✅ 투자 진행</span>")
-    st.markdown(f"<div class='dash-h'>🇰🇷 KOSPI200 모멘텀 &nbsp; {badge} "
-                f"<span class='dim' style='font-size:0.78rem;'>({reason})</span></div>",
-                unsafe_allow_html=True)
+             else f"<span class='badge-on'>✅ 투자 진행</span>") + \
+            f" <span class='dim' style='font-size:0.78rem;'>({reason})</span>"
+    _header(PAGE_KOSPI, "🇰🇷 KOSPI200 모멘텀", badge)
 
     ret_col = '이번달수익률' if '이번달수익률' in df_perf.columns else '1개월(%)'
     if stop:
-        st.markdown("<div class='dim' style='font-size:0.85rem;'>방어 국면 — 현금(또는 금) 보유</div>",
+        st.markdown("<div class='dim' style='font-size:0.88rem; padding:6px 0;'>방어 국면 — 현금(또는 금) 보유</div>",
                     unsafe_allow_html=True)
-    else:
-        c1, c2 = st.columns(2)
-        with c1:
-            st.markdown("<div style='font-size:0.82rem; font-weight:700; color:#FCA5A5;'>🔥 퍼펙트 상승 (6)</div>"
-                        + _rows_html(df_perf, '종목코드', '종목명', ret_col, 6), unsafe_allow_html=True)
-        with c2:
-            st.markdown("<div style='font-size:0.82rem; font-weight:700; color:#FCD34D;'>🐎 달리는 말 (2)</div>"
-                        + _rows_html(df_spec, '종목코드', '종목명', ret_col, 2), unsafe_allow_html=True)
+        return
+    picks_all = pd.concat([df_perf.head(6), df_spec.head(2)])
+    avg = picks_all[ret_col].mean() if len(picks_all) and ret_col in picks_all else 0
+    st.markdown(f"<div class='avg-chip'>투자 8종목 평균 {_fmt_pct(avg)}</div>", unsafe_allow_html=True)
+    c1, c2 = st.columns(2)
+    with c1:
+        st.markdown("<div style='font-size:0.82rem; font-weight:700; color:#FCA5A5;'>🔥 퍼펙트 상승 (6)</div>"
+                    + _rows_html(df_perf, '종목코드', '종목명', ret_col, 6), unsafe_allow_html=True)
+    with c2:
+        st.markdown("<div style='font-size:0.82rem; font-weight:700; color:#FCD34D;'>🐎 달리는 말 (2)</div>"
+                    + _rows_html(df_spec, '종목코드', '종목명', ret_col, 2), unsafe_allow_html=True)
 
 
 # ══════════════════════════════════════════════════════════
-# ② USA500 — 최종판단 + 3중교집합 상위 10
+# ② USA500
 # ══════════════════════════════════════════════════════════
 def render_usa():
     from utils.data_loader import load_archive_data, get_folder_hash
@@ -109,14 +133,14 @@ def render_usa():
 
     df_raw = load_archive_data("archive_usa", get_folder_hash("archive_usa"))
     if df_raw is None or df_raw.empty:
-        st.info("USA500 데이터 없음")
+        _header(PAGE_USA, "🇺🇸 USA500 모멘텀")
+        st.info("데이터 없음")
         return
     df = preprocess_us_data(df_raw, is_daily=False)
     latest = sorted(df['투자월'].dropna().unique())[-1]
     df_m = df[df['투자월'] == latest].copy()
     picks = get_triple_momentum_us(df_m, cutoff=100, mode='rank')
 
-    # 현재(다음 투자월) 방어 판단: SPY 10개월선 이탈 OR 멀티4
     cur_ym = datetime.today().strftime('%Y-%m')
     try:
         spy_below = bool(get_spy_timing_map(10).get(cur_ym, False))
@@ -128,24 +152,24 @@ def render_usa():
         is_m4 = False
     stop = spy_below or is_m4
     reason = " · ".join([x for x in [("SPY 이탈" if spy_below else ""), ("멀티4" if is_m4 else "")] if x]) or "안전"
-
     badge = (f"<span class='badge-off'>🛑 투자 중지</span>" if stop
-             else f"<span class='badge-on'>✅ 투자 진행</span>")
-    st.markdown(f"<div class='dash-h'>🇺🇸 USA500 모멘텀 &nbsp; {badge} "
-                f"<span class='dim' style='font-size:0.78rem;'>({reason})</span></div>",
-                unsafe_allow_html=True)
+             else f"<span class='badge-on'>✅ 투자 진행</span>") + \
+            f" <span class='dim' style='font-size:0.78rem;'>({reason})</span>"
+    _header(PAGE_USA, "🇺🇸 USA500 모멘텀", badge)
 
     if stop:
-        st.markdown("<div class='dim' style='font-size:0.85rem;'>방어 국면 — 현금 보유</div>",
+        st.markdown("<div class='dim' style='font-size:0.88rem; padding:6px 0;'>방어 국면 — 현금 보유</div>",
                     unsafe_allow_html=True)
-    else:
-        ret_col = '이번달수익률' if '이번달수익률' in picks.columns else '12-1개월(%)'
-        st.markdown("<div style='font-size:0.82rem; font-weight:700; color:#93C5FD;'>🎯 3·6·12 교집합 상위 10</div>"
-                    + _rows_html(picks, '종목코드', '종목명', ret_col, 10), unsafe_allow_html=True)
+        return
+    ret_col = '이번달수익률' if '이번달수익률' in picks.columns else '12-1개월(%)'
+    avg = picks.head(10)[ret_col].mean() if len(picks) and ret_col in picks else 0
+    st.markdown(f"<div class='avg-chip'>투자 10종목 평균 {_fmt_pct(avg)}</div>", unsafe_allow_html=True)
+    st.markdown("<div style='font-size:0.82rem; font-weight:700; color:#93C5FD;'>🎯 3·6·12 교집합 상위 10</div>"
+                + _rows_html(picks, '종목코드', '종목명', ret_col, 10), unsafe_allow_html=True)
 
 
 # ══════════════════════════════════════════════════════════
-# ③ 내 소형주 퀀트 포트 — 성과 요약 (Google Sheets 연동)
+# ③ 내 소형주 퀀트 포트 (Google Sheets)
 # ══════════════════════════════════════════════════════════
 _SHEET_URL = "https://docs.google.com/spreadsheets/d/1XTroUdH7iKN40dQSrSjz3nsZ1l1k2mr5skXSzlEfl7Y/edit"
 
@@ -212,17 +236,12 @@ def _prices(tickers):
 
 
 def render_smallcap():
+    _header(PAGE_SMALL, "💼 내 소형주 퀀트 포트")
     ports = {"또": _load_port("ddo"), "쏘": _load_port("sso"), "맘": _load_port("mom")}
-    cfg = _load_config()
     all_t = tuple(sorted({t for d in ports.values() for t in d['종목코드'].tolist()}))
     px = _prices(all_t)
 
-    st.markdown("<div class='dash-h'>💼 내 소형주 퀀트 포트 "
-                "<span class='dim' style='font-size:0.78rem;'>(성과 요약)</span></div>",
-                unsafe_allow_html=True)
-
     rows, tot_buy, tot_val = "", 0, 0
-    key_map = {"또": "start_ddo", "쏘": "start_sso", "맘": "start_mom"}
     for nm, df in ports.items():
         buy = val = 0
         if not df.empty:
@@ -233,18 +252,21 @@ def render_smallcap():
         prof = val - buy
         pct = (prof / buy * 100) if buy else 0.0
         tot_buy += buy; tot_val += val
-        rows += (f"<tr><td><b>{nm}</b></td><td>{_fmt_pct(pct)}</td>"
-                 f"<td class='{'pos' if prof>0 else 'neg' if prof<0 else 'dim'}'>₩{int(prof):,}</td></tr>")
+        rows += (f"<tr><td><b>{nm}</b></td><td style='text-align:right;'>{_fmt_pct(pct)}</td>"
+                 f"<td style='text-align:right;' class='{'pos' if prof>0 else 'neg' if prof<0 else 'dim'}'>₩{int(prof):,}</td></tr>")
     tprof = tot_val - tot_buy
     tpct = (tprof / tot_buy * 100) if tot_buy else 0.0
-    rows += (f"<tr style='border-top:1px solid #333;'><td><b>합계</b></td><td>{_fmt_pct(tpct)}</td>"
-             f"<td class='{'pos' if tprof>0 else 'neg' if tprof<0 else 'dim'}'>₩{int(tprof):,}</td></tr>")
-    st.markdown("<div class='mini'><table><tr><th>포트폴리오</th><th>총수익률</th><th>현재수익</th></tr>"
+    rows += (f"<tr style='border-top:2px solid #2a3140;'><td><b>합계</b></td>"
+             f"<td style='text-align:right;'>{_fmt_pct(tpct)}</td>"
+             f"<td style='text-align:right;' class='{'pos' if tprof>0 else 'neg' if tprof<0 else 'dim'}'>₩{int(tprof):,}</td></tr>")
+    st.markdown("<div class='mini' style='margin-top:6px;'><table>"
+                "<tr><th>포트폴리오</th><th style='text-align:right;'>총수익률</th>"
+                "<th style='text-align:right;'>현재수익</th></tr>"
                 + rows + "</table></div>", unsafe_allow_html=True)
 
 
 # ══════════════════════════════════════════════════════════
-# ④ 스노우볼 포트 — 7개 전략 현재 모드 + 보유
+# ④ 스노우볼 포트 — 7전략 모드+보유
 # ══════════════════════════════════════════════════════════
 def render_snowball():
     from utils import snowball as sb
@@ -268,9 +290,7 @@ def render_snowball():
         ("맘 비과세", lambda: sb.compute_signals_mamtax(mam, prices), sb.mamtax_live_name),
     ]
 
-    st.markdown("<div class='dash-h'>❄️ 스노우볼 포트 "
-                "<span class='dim' style='font-size:0.78rem;'>(7전략 현재 모드·보유)</span></div>",
-                unsafe_allow_html=True)
+    _header(PAGE_SNOW, "❄️ 스노우볼 포트")
 
     html = ""
     for nm, fn, name_fn in strat_defs:
@@ -295,7 +315,7 @@ def render_snowball():
 
 
 # ──────────────────────────────────────────────────────────
-# 2×2 배치 (스크롤 없이 한눈에)
+# 2×2 배치
 # ──────────────────────────────────────────────────────────
 def _safe(fn, title):
     with st.container(border=True):
@@ -306,17 +326,15 @@ def _safe(fn, title):
             st.caption(f"⚠️ 로드 실패: {type(e).__name__} — {str(e)[:80]}")
 
 
-r1 = st.columns(2, gap="small")
+r1 = st.columns(2, gap="medium")
 with r1[0]:
     _safe(render_kospi, "🇰🇷 KOSPI200 모멘텀")
 with r1[1]:
     _safe(render_usa, "🇺🇸 USA500 모멘텀")
 
 st.write("")
-r2 = st.columns(2, gap="small")
+r2 = st.columns(2, gap="medium")
 with r2[0]:
     _safe(render_smallcap, "💼 내 소형주 퀀트 포트")
 with r2[1]:
     _safe(render_snowball, "❄️ 스노우볼 포트")
-
-st.caption("👈 좌측 메뉴에서 각 전략의 상세 페이지로 이동할 수 있어요.")
