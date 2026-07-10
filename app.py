@@ -56,10 +56,13 @@ def _tbl(rows):
     return out + "</table></div>"
 
 
-def _header(path, title, badge=None):
+def _header(path, title, badge=None, refdate=None):
     c1, c2 = st.columns([3, 2])
     with c1:
         st.page_link(path, label=title)
+        if refdate:
+            st.markdown(f"<div style='font-size:0.75rem; color:#6B7280; margin-top:-10px; margin-bottom:6px;'>{refdate}</div>",
+                        unsafe_allow_html=True)
     with c2:
         if badge:
             st.markdown(f"<div style='text-align:right; padding-top:4px;'>{badge}</div>", unsafe_allow_html=True)
@@ -94,7 +97,8 @@ def _kospi_status():
     spec = [(r['종목코드'], r['종목명'], r.get(rc)) for _, r in ds.head(2).iterrows()]
     allr = [x[2] for x in perf + spec if pd.notna(x[2])]
     avg = float(np.mean(allr)) if allr else 0.0
-    return {'stop': stop, 'reason': reason, 'avg': avg, 'perf': perf, 'spec': spec}
+    refdate = str(df_daily['기준일'].iloc[0]) if '기준일' in df_daily.columns else None
+    return {'stop': stop, 'reason': reason, 'avg': avg, 'perf': perf, 'spec': spec, 'refdate': refdate}
 
 
 @st.cache_data(ttl=1800, show_spinner=False)
@@ -123,7 +127,15 @@ def _usa_status():
     rows = [(r['종목코드'], r['종목명'], r.get(rc)) for _, r in picks.head(10).iterrows()]
     allr = [x[2] for x in rows if pd.notna(x[2])]
     avg = float(np.mean(allr)) if allr else 0.0
-    return {'stop': stop, 'reason': reason, 'avg': avg, 'rows': rows}
+    refdate = None
+    try:
+        from utils.data_loader import load_daily_data
+        dfd = load_daily_data('momentum_data_daily_usa500.csv')
+        if dfd is not None and not dfd.empty and '기준일' in dfd.columns:
+            refdate = str(dfd['기준일'].iloc[0])
+    except Exception:
+        refdate = None
+    return {'stop': stop, 'reason': reason, 'avg': avg, 'rows': rows, 'refdate': refdate}
 
 
 @st.cache_data(ttl=1800, show_spinner=False)
@@ -148,9 +160,12 @@ def _snowball_status():
         ("🇰🇷 맘 비과세", lambda: sb.compute_signals_mamtax(mam, prices), sb.mamtax_live_name),
     ]
     out = []
+    refmonth = None
     for nm, fn, name_fn in defs:
         try:
             l = last(fn())
+            if l is not None and refmonth is None:
+                refmonth = str(l.name)[:7]
             defensive = bool(l.get('defensive'))
             held = l.get('hold')
             if not isinstance(held, str) or not held.strip():
@@ -159,7 +174,7 @@ def _snowball_status():
         except Exception:
             defensive, held = None, '-'
         out.append((nm, defensive, held))
-    return out
+    return out, refmonth
 
 
 @st.cache_data(ttl=120, show_spinner=False)
@@ -203,6 +218,14 @@ def _smallcap_status():
         for f in as_completed([ex.submit(one, t) for t in tickers]):
             t, c = f.result(); px[t] = c
 
+    refdate = None
+    try:
+        idx = fdr.DataReader('KS11', datetime.today() - timedelta(days=12))
+        if not idx.empty:
+            refdate = str(idx.index[-1].date())
+    except Exception:
+        refdate = None
+
     res, tbuy, tval = [], 0, 0
     for nm, df in ports.items():
         buy = val = 0
@@ -211,7 +234,7 @@ def _smallcap_status():
             buy = float((df['매수단가'] * df['수량']).sum()); val = float((df['c'] * df['수량']).sum())
         res.append((nm, (val - buy) / buy * 100 if buy else 0.0, val - buy)); tbuy += buy; tval += val
     res.append(("합계", (tval - tbuy) / tbuy * 100 if tbuy else 0.0, tval - tbuy))
-    return res
+    return res, refdate
 
 
 # ══════════════ 렌더 ══════════════
@@ -219,7 +242,8 @@ def render_kospi():
     d = _kospi_status()
     if d is None:
         _header(PAGE_KOSPI, "🇰🇷 KOSPI200 모멘텀"); st.info("일별 데이터 없음"); return
-    _header(PAGE_KOSPI, "🇰🇷 KOSPI200 모멘텀", _badge(d['stop'], d['reason']))
+    _rd = f"📅 수익률 기준일 {d['refdate']}" if d.get('refdate') else None
+    _header(PAGE_KOSPI, "🇰🇷 KOSPI200 모멘텀", _badge(d['stop'], d['reason']), refdate=_rd)
     if d['stop']:
         st.markdown("<div class='dim' style='font-size:0.88rem; padding:6px 0;'>방어 국면 — 현금(또는 금) 보유</div>", unsafe_allow_html=True)
         return
@@ -235,7 +259,8 @@ def render_usa():
     d = _usa_status()
     if d is None:
         _header(PAGE_USA, "🇺🇸 USA500 모멘텀"); st.info("데이터 없음"); return
-    _header(PAGE_USA, "🇺🇸 USA500 모멘텀", _badge(d['stop'], d['reason']))
+    _rd = f"📅 수익률 기준일 {d['refdate']}" if d.get('refdate') else None
+    _header(PAGE_USA, "🇺🇸 USA500 모멘텀", _badge(d['stop'], d['reason']), refdate=_rd)
     if d['stop']:
         st.markdown("<div class='dim' style='font-size:0.88rem; padding:6px 0;'>방어 국면 — 현금 보유</div>", unsafe_allow_html=True)
         return
@@ -244,9 +269,11 @@ def render_usa():
 
 
 def render_snowball():
-    _header(PAGE_SNOW, "❄️ 스노우볼 포트")
+    rows, refmonth = _snowball_status()
+    _rd = f"📅 {refmonth} 월말 기준" if refmonth else None
+    _header(PAGE_SNOW, "❄️ 스노우볼 포트", refdate=_rd)
     html = ""
-    for nm, defensive, held in _snowball_status():
+    for nm, defensive, held in rows:
         if defensive is None:
             html += f"<div class='strat-row'><span class='strat-name'>{nm}</span><span class='strat-hold'>-</span></div>"; continue
         mode = ("<span style='color:#F87171;font-weight:800;'>🛡️방어</span>" if defensive
@@ -257,9 +284,11 @@ def render_snowball():
 
 
 def render_smallcap():
-    _header(PAGE_SMALL, "💼 내 소형주 퀀트 포트")
+    data, refdate = _smallcap_status()
+    _rd = f"📅 한국장 마감 {refdate}" if refdate else None
+    _header(PAGE_SMALL, "💼 내 소형주 퀀트 포트", refdate=_rd)
     rows = ""
-    for i, (nm, pct, prof) in enumerate(_smallcap_status()):
+    for i, (nm, pct, prof) in enumerate(data):
         top = "border-top:2px solid #2a3140;" if nm == "합계" else ""
         rows += (f"<tr style='{top}'><td><b>{nm}</b></td><td style='text-align:right;'>{_fmt(pct)}</td>"
                  f"<td style='text-align:right;' class='{'pos' if prof>0 else 'neg' if prof<0 else 'dim'}'>₩{int(prof):,}</td></tr>")
