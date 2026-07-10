@@ -255,8 +255,8 @@ def render_kospi():
     _rd = f"📅 수익률 기준일 {d['refdate']}" if d.get('refdate') else None
     _header(PAGE_KOSPI, "🇰🇷 KOSPI200 모멘텀", _badge(d['stop'], d['reason']), refdate=_rd)
     if d['stop']:
-        st.markdown("<div class='dim' style='font-size:0.88rem; padding:6px 0;'>방어 국면 — 현금(또는 금) 보유</div>", unsafe_allow_html=True)
-        return
+        st.markdown("<div style='font-size:0.8rem; color:#F87171; padding:2px 0 5px 0;'>"
+                    "🛑 현재 방어(투자중지) — 공격이었다면 담았을 종목</div>", unsafe_allow_html=True)
     c1, c2 = st.columns(2)
     with c1:
         st.markdown(f"<div class='sect-h' style='color:#FCA5A5;'>🔥 퍼펙트 상승 (6)"
