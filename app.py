@@ -2,6 +2,7 @@ import streamlit as st
 import pandas as pd
 import numpy as np
 from datetime import datetime, timedelta, timezone
+from concurrent.futures import ThreadPoolExecutor
 
 st.set_page_config(page_title="퀀트 종합 대시보드", layout="wide", page_icon="📊")
 
@@ -196,14 +197,21 @@ def _snowball_status():
     return out, refmonth
 
 
-@st.cache_data(ttl=120, show_spinner=False)
+@st.cache_resource(show_spinner=False)
+def _gspread_client():
+    # 인증 객체는 세션 내내 재사용 (매 새로고침마다 재인증하지 않도록 분리)
+    import json, gspread
+    from google.oauth2.service_account import Credentials
+    scopes = ['https://www.googleapis.com/auth/spreadsheets', 'https://www.googleapis.com/auth/drive']
+    return gspread.authorize(Credentials.from_service_account_info(json.loads(st.secrets["google_credentials"]), scopes=scopes))
+
+
+@st.cache_data(ttl=300, show_spinner=False)
 def _smallcap_status():
     _SHEET = "https://docs.google.com/spreadsheets/d/1XTroUdH7iKN40dQSrSjz3nsZ1l1k2mr5skXSzlEfl7Y/edit"
-    import json, gspread, FinanceDataReader as fdr
-    from google.oauth2.service_account import Credentials
+    import FinanceDataReader as fdr
     from concurrent.futures import ThreadPoolExecutor, as_completed
-    scopes = ['https://www.googleapis.com/auth/spreadsheets', 'https://www.googleapis.com/auth/drive']
-    client = gspread.authorize(Credentials.from_service_account_info(json.loads(st.secrets["google_credentials"]), scopes=scopes))
+    client = _gspread_client()
     sheet = client.open_by_url(_SHEET)
 
     def load(ws_name):
@@ -334,6 +342,22 @@ def _safe(fn, title):
             st.markdown(f"<div style='font-weight:800;'>{title}</div>", unsafe_allow_html=True)
             st.caption(f"⚠️ 로드 실패: {type(e).__name__} — {str(e)[:80]}")
 
+
+# ══════════════ 캐시 워밍 (4개를 동시에 백그라운드에서 로딩) ══════════════
+# 기존: 코스피→미국→스노우볼→소형주 순으로 하나씩 기다림 (합산 대기)
+# 변경: 4개를 동시에 미리 실행해 캐시를 채운 뒤 렌더 → 대기시간 = 가장 느린 1개 기준
+def _warm(fn):
+    try:
+        fn()
+    except Exception:
+        pass  # 렌더 단계에서 다시 시도되며, _safe()가 에러를 표시함
+
+
+with ThreadPoolExecutor(max_workers=4) as _ex:
+    _ex.submit(_warm, _kospi_status)
+    _ex.submit(_warm, _usa_status)
+    _ex.submit(_warm, _snowball_status)
+    _ex.submit(_warm, _smallcap_status)
 
 # 위: KOSPI200 | USA500
 r1 = st.columns(2, gap="medium")
