@@ -2,13 +2,12 @@ import streamlit as st
 import pandas as pd
 import numpy as np
 from datetime import datetime, timedelta, timezone
-from concurrent.futures import ThreadPoolExecutor
 
 st.set_page_config(page_title="퀀트 종합 대시보드", layout="wide", page_icon="📊")
 
 st.markdown("""
 <style>
-.block-container { padding-top: 1.4rem !important; padding-bottom: 1rem !important; }
+.block-container { padding-top: 2.6rem !important; padding-bottom: 1rem !important; }
 .badge-on  { background:#10352422; color:#34D399; border:1px solid #34D39955;
              padding:3px 12px; border-radius:6px; font-weight:900; font-size:0.9rem; }
 .badge-off { background:#3b101022; color:#F87171; border:1px solid #F8717155;
@@ -342,22 +341,6 @@ def _safe(fn, title):
             st.markdown(f"<div style='font-weight:800;'>{title}</div>", unsafe_allow_html=True)
             st.caption(f"⚠️ 로드 실패: {type(e).__name__} — {str(e)[:80]}")
 
-
-# ══════════════ 캐시 워밍 (4개를 동시에 백그라운드에서 로딩) ══════════════
-# 기존: 코스피→미국→스노우볼→소형주 순으로 하나씩 기다림 (합산 대기)
-# 변경: 4개를 동시에 미리 실행해 캐시를 채운 뒤 렌더 → 대기시간 = 가장 느린 1개 기준
-def _warm(fn):
-    try:
-        fn()
-    except Exception:
-        pass  # 렌더 단계에서 다시 시도되며, _safe()가 에러를 표시함
-
-
-with ThreadPoolExecutor(max_workers=4) as _ex:
-    _ex.submit(_warm, _kospi_status)
-    _ex.submit(_warm, _usa_status)
-    _ex.submit(_warm, _snowball_status)
-    _ex.submit(_warm, _smallcap_status)
 
 # 위: KOSPI200 | USA500
 r1 = st.columns(2, gap="medium")
