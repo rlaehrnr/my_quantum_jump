@@ -6,7 +6,7 @@ import io
 
 # 💡 [중복 제거] page1, page2에 각각 정의되어 있던 엑셀 리포트 생성기를 utils로 이동.
 @st.cache_data(show_spinner=False)
-def generate_excel_report_cached(settings_tuple, df_stats, df_monthly, df_cum_ret, df_trade):
+def generate_excel_report_cached(settings_tuple, df_stats, df_monthly, df_cum_ret, df_trade, df_counterfactual=None):
     """
     백테스트 결과를 종합 엑셀 리포트로 생성.
     
@@ -16,6 +16,8 @@ def generate_excel_report_cached(settings_tuple, df_stats, df_monthly, df_cum_re
         df_monthly: 월별 수익률 DataFrame (invested, 중지 사유 등 포함 가능)
         df_cum_ret: 누적 수익률 DataFrame (인덱스: 투자월)
         df_trade: 상세 매매 내역 DataFrame
+        df_counterfactual: (선택) 방어(금) 대신 공격했다면의 카운터팩추얼 월별 DataFrame.
+                            전략별 실제 수익률 / 공격시_수익률 / 공격-방어_차이 컬럼 포함.
     
     Returns:
         bytes: 엑셀 파일 바이트
@@ -33,6 +35,9 @@ def generate_excel_report_cached(settings_tuple, df_stats, df_monthly, df_cum_re
         
         if not df_trade.empty:
             df_trade.to_excel(writer, sheet_name='상세_매매내역', index=False)
+
+        if df_counterfactual is not None and not df_counterfactual.empty:
+            df_counterfactual.to_excel(writer, sheet_name='방어vs공격_카운터팩추얼', index=False)
     return output.getvalue()
 
 def inject_custom_css():
