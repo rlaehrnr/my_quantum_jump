@@ -128,6 +128,62 @@ def get_idx_kr(target_date_str):
 
 
 # ==========================================
+# 📊 KOSPI 지수 자체의 Buy & Hold 성과 (전략 백테스트 비교 기준용)
+#
+# 목적: '전략 조합 백테스트' 탭의 마켓타이밍/금투자 체크박스를 켜고 끄더라도
+# 백테스트 대상 '투자월' 범위(start_year~end_year) 자체는 바뀌지 않으므로,
+# 이 함수는 오직 그 투자월 범위(첫 달~마지막 달)만 인자로 받아 계산한다.
+# → 체크박스 상태와 무관하게 항상 동일한 기준(같은 기간의 KOSPI 지수 Buy&Hold)으로 비교 가능.
+#
+# start_month_str, end_month_str: 'YYYY-MM' (투자월 기준, 둘 다 포함)
+# 시작가: 첫 투자월 '직전' 월의 마지막 거래일 종가 (전략의 매수 시점과 동일한 기준)
+# 종료가: 마지막 투자월의 마지막 거래일 종가
+# ==========================================
+@st.cache_data(ttl="6h", show_spinner=False)
+def get_kospi_benchmark_stats(start_month_str, end_month_str):
+    """
+    KOSPI 지수 Buy&Hold 성과 (CAGR, 누적수익률, MDD).
+    반환: {'cagr': float|None, 'total_ret': float, 'mdd': float} 또는 데이터 없으면 None.
+    """
+    try:
+        df = _load_kospi_index().copy()
+        if df.empty:
+            return None
+
+        start_dt = pd.to_datetime(start_month_str + '-01')
+        end_dt = pd.to_datetime(end_month_str + '-01') + pd.offsets.MonthEnd(1)
+
+        # 시작가: 첫 투자월 직전의 마지막 거래일 종가 (그 달 초에 매수한다고 가정)
+        before = df[df.index < start_dt]
+        if before.empty:
+            return None
+        start_price = before['Close'].iloc[-1]
+
+        window = df[(df.index >= start_dt) & (df.index <= end_dt)]
+        if window.empty:
+            return None
+        end_price = window['Close'].iloc[-1]
+
+        if start_price <= 0 or end_price <= 0:
+            return None
+
+        total_ret = (end_price / start_price - 1) * 100
+
+        n_months = ((pd.to_datetime(end_month_str + '-01').year - pd.to_datetime(start_month_str + '-01').year) * 12
+                    + (pd.to_datetime(end_month_str + '-01').month - pd.to_datetime(start_month_str + '-01').month) + 1)
+        years = n_months / 12
+        cagr = ((end_price / start_price) ** (1 / years) - 1) * 100 if years > 0 else None
+
+        cummax = window['Close'].cummax()
+        mdd = ((window['Close'] / cummax) - 1).min() * 100
+
+        return {'cagr': cagr, 'total_ret': total_ret, 'mdd': mdd}
+    except Exception as e:
+        print(f"⚠️ get_kospi_benchmark_stats({start_month_str}~{end_month_str}) 오류: {e}")
+        return None
+
+
+# ==========================================
 # 🥇 금(KRX 금시장, 환노출) 일별 가격 (원/g 상당)
 #
 # 미래에셋 금현물계좌(KRX 금시장, 환노출)와 동일 성격.
@@ -377,9 +433,14 @@ def run_backtest_k200(df, start_year, end_year, ma_months, apply_timing,
         gold_returns: {'YYYY-MM': 월수익률(%)} get_gold_returns() 결과.
         use_gold: True면 '방어(투자중지)' 구간을 현금(0%) 대신 '무조건 금'으로 보유(필터 없음).
                   추가로, 직전 달이 '하락장' 포함 사유로 방어였으면 재개 첫 달도 금 1개월 연장.
+
+    Returns:
+        (df_res, df_trades, df_counterfactual)
+        df_counterfactual: 각 전략별로 '실제 수익률' 옆에 '방어 대신 공격했다면의 수익률'과
+                            '공격−방어 차이' 컬럼을 추가한 확장 월별 DataFrame (엑셀 리포트용).
     """
     timing_dict = get_kospi_timing_for_backtest(ma_months, df_korea=df) if apply_timing else {}
-    records, trade_logs = [], []
+    records, trade_logs, records_full = [], [], []
     
     # 거래비용: 매월 풀 리밸런싱 가정 → 왕복 = 편도 × 2
     cost_pct = trading_cost_pct * 2.0  # 매월 차감되는 비용 (%)
@@ -451,6 +512,26 @@ def run_backtest_k200(df, start_year, end_year, ma_months, apply_timing,
         if mult > 0:
             ret_total_dup -= cost_pct
 
+        # ===== 🆚 카운터팩추얼: "이 달에 방어(금/현금) 대신 무조건 공격했다면" 수익률 =====
+        # 종목 선정(target_p/target_s)은 mult와 무관하게 동일 → mult=1로 강제 대입해 원래 공식을 그대로 재사용.
+        # (원래 공식의 '거래비용은 mult>0이면 무조건 차감' 특성까지 동일하게 재현해야
+        #  실제 공격 달의 '공격시_수익률'이 실제값과 정확히 일치함 — 차이 0 검증에 필수)
+        atk_mult = 1.0
+        atk_ret_p = (target_p[ret_col].mean() * atk_mult) if not target_p.empty else 0.0
+        atk_ret_s = (target_s[ret_col].mean() * atk_mult) if not target_s.empty else 0.0
+        atk_ret_p -= cost_pct
+        atk_ret_s -= cost_pct
+
+        atk_ret_p_unique = (target_p_unique[ret_col].mean() * atk_mult) if not target_p_unique.empty else 0.0
+        atk_ret_p_unique -= cost_pct
+        atk_ret_ensemble_priority = (atk_ret_s + atk_ret_p_unique) / 2
+
+        atk_ret_total_unique = (m_data[m_data['종목코드'].isin(combined_codes_unique)][ret_col].mean() * atk_mult) if combined_codes_unique else 0.0
+        atk_ret_total_unique -= cost_pct
+
+        atk_ret_total_dup = (combined_series_dup.mean() * atk_mult) if not combined_series_dup.empty else 0.0
+        atk_ret_total_dup -= cost_pct
+
         # 💡 중지 사유 텍스트 생성 (엑셀 리포트용) — 금 오버레이 전의 '원시(raw)' 사유
         if not apply_timing:
             raw_reason = ""
@@ -479,6 +560,16 @@ def run_backtest_k200(df, start_year, end_year, ma_months, apply_timing,
             '앙상블 (달리는말 우선 50:50)': ret_ensemble_priority,
             '통합 전략 (중복 제외 1/N)': ret_total_unique,
             '통합 전략 (중복 인정 1/N)': ret_total_dup,
+        }
+
+        # 💡 카운터팩추얼 값 (gold 오버레이 전에 미리 스냅샷 — strat_vals는 아래서 gold로 덮어써질 수 있음)
+        atk_strat_vals = {
+            f'🔥 퍼펙트 상승 ({rank_p[0]}~{rank_p[1]}위)': atk_ret_p,
+            f'🐎 달리는 말 ({rank_s[0]}~{rank_s[1]}위)': atk_ret_s,
+            '앙상블 (50:50 전략)': (atk_ret_p + atk_ret_s) / 2,
+            '앙상블 (달리는말 우선 50:50)': atk_ret_ensemble_priority,
+            '통합 전략 (중복 제외 1/N)': atk_ret_total_unique,
+            '통합 전략 (중복 인정 1/N)': atk_ret_total_dup,
         }
 
         if is_gold:
@@ -514,6 +605,16 @@ def run_backtest_k200(df, start_year, end_year, ma_months, apply_timing,
         rec.update(strat_vals)
         records.append(rec)
 
+        # 💡 [카운터팩추얼] 엑셀 리포트용 확장 레코드: 전략명 실제 수익률 옆에
+        #    '공격시(방어 대신 공격했다면) 수익률'과 '공격−방어 차이'를 함께 기록.
+        #    방어(금)가 아니었던 달은 실제 = 공격시 값이라 차이는 자연스럽게 0이 됨.
+        rec_full = {'투자월': m, 'invested': record_invested, '중지 사유': rec_reason, '방어_금투자여부': is_gold}
+        for kc in strat_vals:
+            rec_full[kc] = strat_vals[kc]
+            rec_full[f'{kc} · 공격시_수익률(%)'] = atk_strat_vals[kc]
+            rec_full[f'{kc} · 공격-방어_차이(%)'] = atk_strat_vals[kc] - strat_vals[kc]
+        records_full.append(rec_full)
+
         # 거래 로그
         if is_gold:
             trade_logs.append({'투자월': m, '전략': '금 방어', '순위': '-',
@@ -533,7 +634,7 @@ def run_backtest_k200(df, start_year, end_year, ma_months, apply_timing,
         prev_raw_invested = raw_invested
         prev_raw_reason = raw_reason
 
-    return pd.DataFrame(records), pd.DataFrame(trade_logs)
+    return pd.DataFrame(records), pd.DataFrame(trade_logs), pd.DataFrame(records_full)
 
 
 # ==========================================
