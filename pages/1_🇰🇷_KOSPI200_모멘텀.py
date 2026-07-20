@@ -7,7 +7,7 @@ import os
 st.set_page_config(page_title="KOSPI 200 모멘텀", layout="wide")
 
 from utils.data_loader import load_archive_data, get_folder_hash
-from utils.calculator import get_cycle_year, PRESIDENTIAL_DANGEROUS_MONTHS, get_kospi_ma_all, get_kosdaq_ma_all, get_strategy_stocks_korea, run_backtest_k200, get_kospi_timing_for_backtest, get_idx_kr, get_gold_returns
+from utils.calculator import get_cycle_year, PRESIDENTIAL_DANGEROUS_MONTHS, get_kospi_ma_all, get_kosdaq_ma_all, get_strategy_stocks_korea, run_backtest_k200, get_kospi_timing_for_backtest, get_idx_kr, get_gold_returns, get_kospi_benchmark_stats
 from utils.ui_components import inject_custom_css, apply_korea_styling, style_kospi_ma, get_styled_stats, get_mdd_history, get_monthly_heatmap, ma_cfg, main_cfg, generate_excel_report_cached, render_vix_widget
 from utils.data_loader import load_archive_data, get_folder_hash, load_daily_data
 
@@ -277,7 +277,7 @@ with tab3:
         st.warning("⚠️ 금 데이터를 불러오지 못해 방어 구간이 현금(0%)으로 처리됩니다. `data/krx_gold_price.csv`(KRX 일별) 또는 FDR(GC=F·USD/KRW)를 확인하세요.")
 
     with st.spinner("엔진 구동 중..."):
-        df_res, df_trades = cached_run_backtest_korea(df_master, start_year, end_year, ma_months_t3, apply_timing, (rank_p_s, rank_p_e), (rank_s_s, rank_s_e), perf_pct_t3, spec_12m_pct_t3, trading_cost_pct=trading_cost_pct_t3, use_gold=use_gold_t3, _gold_returns=gold_returns_t3)
+        df_res, df_trades, df_cf_t3 = cached_run_backtest_korea(df_master, start_year, end_year, ma_months_t3, apply_timing, (rank_p_s, rank_p_e), (rank_s_s, rank_s_e), perf_pct_t3, spec_12m_pct_t3, trading_cost_pct=trading_cost_pct_t3, use_gold=use_gold_t3, _gold_returns=gold_returns_t3)
         if not df_res.empty:
             s_cols = [c for c in df_res.columns if c not in ['투자월', 'invested', '중지 사유']]
             df_cum = (1 + df_res.set_index('투자월')[s_cols] / 100).cumprod() * 100
@@ -316,6 +316,23 @@ with tab3:
                     "평균 수익률": avg_ret_str
                 })
             
+            # 💡 [업그레이드] KOSPI 지수 자체의 Buy&Hold 성과를 비교 기준으로 추가.
+            # 이 벤치마크는 '투자월' 범위(start_year~end_year)만으로 계산되며,
+            # 마켓타이밍/금투자 체크박스 상태와 무관하게 항상 동일한 기간·값으로 표시됨.
+            months_sorted_t3 = sorted(df_res['투자월'].unique())
+            kospi_bench_t3 = get_kospi_benchmark_stats(months_sorted_t3[0], months_sorted_t3[-1]) if months_sorted_t3 else None
+            if kospi_bench_t3:
+                stats.append({
+                    "전략명": "📊 KOSPI 지수 (Buy&Hold, 비교기준)",
+                    "CAGR (연평균)": f"{kospi_bench_t3['cagr']:.1f}%" if kospi_bench_t3['cagr'] is not None else "-",
+                    "총 누적수익률": f"{kospi_bench_t3['total_ret']:,.1f}%",
+                    "MDD (최대낙폭)": f"{kospi_bench_t3['mdd']:.1f}%",
+                    "투자월 비율": "100.0%",
+                    "투자월 승률": "-",
+                    "전체월 승률": "-",
+                    "평균 수익률": "-"
+                })
+
             stats_df_t3 = pd.DataFrame(stats)
             
             # 💡 [업그레이드] 전략 조합 백테스트 종합 엑셀 리포트 데이터 생성
@@ -331,7 +348,7 @@ with tab3:
                 '달리는말 매수 순위': f"{rank_s_s}위 ~ {rank_s_e}위"
             }
             
-            excel_data_t3 = generate_excel_report_cached(tuple(settings_dict_t3.items()), stats_df_t3, df_res, df_cum, df_trades)
+            excel_data_t3 = generate_excel_report_cached(tuple(settings_dict_t3.items()), stats_df_t3, df_res, df_cum, df_trades, df_counterfactual=df_cf_t3)
 
             col_t, col_b = st.columns([7.5, 2.5])
             with col_t: st.markdown("#### 📊 전략 핵심 통계 (초기 자본 100 기준)")
