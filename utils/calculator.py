@@ -307,6 +307,35 @@ def get_gold_returns():
 
 
 # ==========================================
+# 🥇 금 N개월 이동평균선 마켓타이밍 (백테스트용)
+#
+# 목적: 방어(투자중지) 구간에서 '무조건 금 보유' 대신,
+#       금이 N개월 이동평균선 아래이면 금 매수를 중지하고 현금(0%)을 보유.
+#
+# 정렬(미래참조 없음):
+#   투자월 m의 판단 기준 = 직전 월(m-1) 월말 종가 vs 그 시점까지의 N개월 이동평균.
+#   → m월 금수익률이 발생하기 '전', m-1월말 정보만으로 결정 (look-ahead 없음).
+#   ※ below를 shift(1) 하는 이유: below[m]은 m월말 종가로 계산되므로,
+#     m월 진입 판단에는 m-1월말 시점 값 below[m-1]을 써야 한다.
+# 반환: {'YYYY-MM': True/False}. True = 금이 MA 아래 → 금 대신 현금 보유 신호.
+# ==========================================
+@st.cache_data(ttl="6h", show_spinner=False)
+def get_gold_timing_for_backtest(gold_ma_months):
+    """금(KRX 환노출) N개월선 이탈 여부 dict. True면 금 대신 현금."""
+    gdf = get_gold_krw_monthly()  # index='YYYY-MM', columns=['price','ret']
+    if gdf is None or gdf.empty:
+        return {}
+    price = gdf['price'].astype(float)
+    ma = price.rolling(int(gold_ma_months)).mean()
+    below = price < ma  # 각 월말 종가가 그 시점 N개월 MA 아래인가 (MA=NaN이면 False)
+    below_shifted = below.shift(1)  # 투자월 m의 신호 = 직전 월(m-1) 시점 값
+    out = {}
+    for ym, v in below_shifted.items():
+        out[str(ym)] = (False if pd.isna(v) else bool(v))
+    return out
+
+
+# ==========================================
 # KOSPI 마켓타이밍 (백테스트용)
 # 
 # 핵심 수정 사항 (look-ahead bias 제거):
@@ -418,7 +447,8 @@ def get_strategy_stocks_korea(df):
 # ==========================================
 def run_backtest_k200(df, start_year, end_year, ma_months, apply_timing, 
                      rank_p, rank_s, perf_pct, spec_12m_pct,
-                     trading_cost_pct=0.25, gold_returns=None, use_gold=False):
+                     trading_cost_pct=0.25, gold_returns=None, use_gold=False,
+                     use_gold_ma=False, gold_ma_months=10):
     """
     Args:
         df: 한국 데이터프레임
@@ -431,8 +461,11 @@ def run_backtest_k200(df, start_year, end_year, ma_months, apply_timing,
         spec_12m_pct: 달리는말 12개월 컷오프 (%)
         trading_cost_pct: 편도 거래비용 (%). 기본 0.25%. 0이면 비용 무시.
         gold_returns: {'YYYY-MM': 월수익률(%)} get_gold_returns() 결과.
-        use_gold: True면 '방어(투자중지)' 구간을 현금(0%) 대신 '무조건 금'으로 보유(필터 없음).
+        use_gold: True면 '방어(투자중지)' 구간을 현금(0%) 대신 금으로 보유.
                   추가로, 직전 달이 '하락장' 포함 사유로 방어였으면 재개 첫 달도 금 1개월 연장.
+        use_gold_ma: True면(그리고 use_gold=True) 방어 구간이라도 금이 N개월 이동평균선
+                     아래이면 금 매수를 중지하고 현금(0%)을 보유.
+        gold_ma_months: 금 이동평균 기간(월). use_gold_ma=True일 때만 사용.
 
     Returns:
         (df_res, df_trades, df_counterfactual)
@@ -450,6 +483,9 @@ def run_backtest_k200(df, start_year, end_year, ma_months, apply_timing,
     gold_ret_map = gold_returns if isinstance(gold_returns, dict) else {}
     prev_raw_invested = None   # 직전 달 주식 투자 신호(True/False)
     prev_raw_reason = ""       # 직전 달 방어 사유(raw)
+
+    # 🥇 금 N개월선 이탈 신호 맵 (use_gold_ma=True일 때만). True면 방어 구간에서 금 대신 현금.
+    gold_below_map = get_gold_timing_for_backtest(gold_ma_months) if (use_gold and use_gold_ma) else {}
 
     for m in sorted(df['투자월'].dropna().unique()):
         m_yr = int(m.split('-')[0])
@@ -573,29 +609,43 @@ def run_backtest_k200(df, start_year, end_year, ma_months, apply_timing,
         }
 
         if is_gold:
-            gv = gold_ret_map.get(m)
-            g_ret = None if (gv is None or pd.isna(gv)) else float(gv)
+            # 🥇 금 N개월선 이탈 시 현금 보유 (use_gold_ma=True일 때만 판단)
+            gold_below = bool(gold_below_map.get(m, False)) if use_gold_ma else False
 
-            if g_ret is not None:
-                # 방어 = 무조건 금 보유 (필터 없음)
-                gold_ret = g_ret - cost_pct  # 금 매매도 동일 비용(편도 × 왕복) 차감
-                for kc in strat_vals:
-                    strat_vals[kc] = gold_ret
-                if is_extension:
-                    rec_reason = "하락장 연장 (금 투자)"
-                else:
-                    rec_reason = (raw_reason + " (금 투자)") if raw_reason else "방어 (금 투자)"
-                gold_log = ('금 보유(GOLD)', round(gold_ret, 2))
-            else:
-                # 금 데이터 없음(아주 초기 구간 등) → 현금(0%), 비용 없음
+            if gold_below:
+                # 금이 N개월선 아래 → 금 매수 중지, 현금(0%) 보유 (비용 없음)
                 for kc in strat_vals:
                     strat_vals[kc] = 0.0
+                _ma_tag = f"(금 {gold_ma_months}M선이탈→현금)"
                 if is_extension:
-                    rec_reason = "하락장 연장 (금 데이터없음)"
+                    rec_reason = f"하락장 연장 {_ma_tag}"
                 else:
-                    rec_reason = (raw_reason + " (금 데이터없음)") if raw_reason else "방어 (금 데이터없음)"
-                gold_log = ('현금(금데이터없음)', 0.0)
-            record_invested = False  # 방어(금) 달은 '주식 투자월'에서 제외
+                    rec_reason = (raw_reason + f" {_ma_tag}") if raw_reason else f"방어 {_ma_tag}"
+                gold_log = ('현금(금 MA이탈)', 0.0)
+            else:
+                gv = gold_ret_map.get(m)
+                g_ret = None if (gv is None or pd.isna(gv)) else float(gv)
+
+                if g_ret is not None:
+                    # 방어 = 금 보유 (금이 MA 위 또는 MA필터 미사용)
+                    gold_ret = g_ret - cost_pct  # 금 매매도 동일 비용(편도 × 왕복) 차감
+                    for kc in strat_vals:
+                        strat_vals[kc] = gold_ret
+                    if is_extension:
+                        rec_reason = "하락장 연장 (금 투자)"
+                    else:
+                        rec_reason = (raw_reason + " (금 투자)") if raw_reason else "방어 (금 투자)"
+                    gold_log = ('금 보유(GOLD)', round(gold_ret, 2))
+                else:
+                    # 금 데이터 없음(아주 초기 구간 등) → 현금(0%), 비용 없음
+                    for kc in strat_vals:
+                        strat_vals[kc] = 0.0
+                    if is_extension:
+                        rec_reason = "하락장 연장 (금 데이터없음)"
+                    else:
+                        rec_reason = (raw_reason + " (금 데이터없음)") if raw_reason else "방어 (금 데이터없음)"
+                    gold_log = ('현금(금데이터없음)', 0.0)
+            record_invested = False  # 방어(금/현금) 달은 '주식 투자월'에서 제외
         else:
             record_invested = raw_invested
             rec_reason = raw_reason
