@@ -143,9 +143,16 @@ def update_daily_momentum_kr():
                 price_cache[code] = df_hist
 
     k200_records = [daily_records_dict[c] for c in k200_df['Code'] if c in daily_records_dict]
-    pd.DataFrame(k200_records).to_csv('data/momentum_data_daily.csv', index=False, encoding='utf-8-sig')
-    
     korea300_records = [daily_records_dict[c] for c in korea300_df['Code'] if c in daily_records_dict]
+
+    MIN_ROWS = 50
+    if len(k200_records) < MIN_ROWS or len(korea300_records) < MIN_ROWS:
+        raise RuntimeError(
+            f"수집 비정상 (K200={len(k200_records)}, K300={len(korea300_records)}) "
+            f"→ 기존 CSV 유지하고 중단. KRX 차단 의심."
+        )
+
+    pd.DataFrame(k200_records).to_csv('data/momentum_data_daily.csv', index=False, encoding='utf-8-sig')
     pd.DataFrame(korea300_records).to_csv('data/momentum_data_daily_korea.csv', index=False, encoding='utf-8-sig')
 
     print("✅ 한국 데일리 모멘텀 저장 완료!")
