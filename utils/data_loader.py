@@ -134,6 +134,11 @@ def load_daily_data(filename="momentum_data_daily.csv"):
     # 로컬 폴백
     local_path = "data/" + filename
     if os.path.exists(local_path):
-        return pd.read_csv(local_path, dtype={'종목코드': str})
+        try:
+            df = pd.read_csv(local_path, dtype={'종목코드': str})
+            if not df.empty:
+                return df
+        except pd.errors.EmptyDataError:
+            print(f"⚠️ {local_path} 비어있음(EmptyDataError)")
 
     return pd.DataFrame()
