@@ -218,6 +218,36 @@ ma_cfg = {
     "base_price": None 
 }
 
+# 🥇 국내 금 행이 포함된 MA 표 전용 (금은 자연수, 지수는 소수 2자리).
+# NumberColumn은 컬럼 단위 포맷이라 '행별' 자릿수 차등이 불가 →
+# MA 컬럼을 '이미 포맷된 문자열'로 만들고 TextColumn으로 렌더링한다.
+# 색상은 base_price(숫자)와 각 셀(문자열→숫자 파싱) 비교로 유지.
+def style_ma_with_gold(df):
+    def apply_color(row):
+        price = row['base_price']
+        styles = [''] * len(row)
+        for i, col in enumerate(row.index):
+            if '개월선' in col:
+                try:
+                    val = float(str(row[col]).replace(',', ''))
+                except (ValueError, TypeError):
+                    continue
+                if pd.notna(price) and price > val: styles[i] = 'color: #EF4444; font-weight: bold;'
+                elif pd.notna(price) and price < val: styles[i] = 'color: #3B82F6; font-weight: bold;'
+        return styles
+    return df.style.apply(apply_color, axis=1)
+
+ma_cfg_gold = {
+    "지수_L": st.column_config.LinkColumn("지수", display_text=r"#(.+)"),
+    "현재가_L": st.column_config.LinkColumn("현재가", display_text=r"#(.+)"),
+    "4개월선": st.column_config.TextColumn("4개월선"),
+    "5개월선": st.column_config.TextColumn("5개월선"),
+    "6개월선": st.column_config.TextColumn("6개월선"),
+    "10개월선": st.column_config.TextColumn("10개월선"),
+    "12개월선": st.column_config.TextColumn("12개월선"),
+    "base_price": None
+}
+
 main_cfg = {
     "순위": st.column_config.NumberColumn("순위", format="%d위"),
     "통합티커_L": st.column_config.LinkColumn("티커", display_text=r"#(.+)"), 
