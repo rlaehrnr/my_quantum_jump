@@ -7,7 +7,7 @@ import os
 st.set_page_config(page_title="KOSPI 200 모멘텀", layout="wide")
 
 from utils.data_loader import load_archive_data, get_folder_hash
-from utils.calculator import get_cycle_year, PRESIDENTIAL_DANGEROUS_MONTHS, get_kospi_ma_all, get_kosdaq_ma_all, get_strategy_stocks_korea, run_backtest_k200, get_kospi_timing_for_backtest, get_idx_kr, get_gold_returns, get_kospi_benchmark_stats
+from utils.calculator import get_cycle_year, PRESIDENTIAL_DANGEROUS_MONTHS, get_kospi_ma_all, get_kosdaq_ma_all, get_strategy_stocks_korea, run_backtest_k200, get_idx_kr, get_gold_returns, get_kospi_benchmark_stats
 from utils.ui_components import inject_custom_css, apply_korea_styling, style_kospi_ma, get_styled_stats, get_mdd_history, get_monthly_heatmap, ma_cfg, main_cfg, generate_excel_report_cached, render_vix_widget
 from utils.data_loader import load_archive_data, get_folder_hash, load_daily_data
 
@@ -47,33 +47,10 @@ years_list = sorted(df_master['투자연도'].unique().astype(int))
 min_y, max_y = min(years_list), max(years_list)
 
 @st.cache_data(show_spinner=False)
-def cached_run_backtest_korea(df, start_year, end_year, ma_months, apply_timing, rank_p, rank_s, perf_pct, spec_12m_pct, trading_cost_pct=0.25, use_gold=False, _gold_returns=None):
-    return run_backtest_k200(df, start_year, end_year, ma_months, apply_timing, rank_p, rank_s, perf_pct, spec_12m_pct, trading_cost_pct=trading_cost_pct, gold_returns=_gold_returns, use_gold=use_gold)
+def cached_run_backtest_korea(df, start_year, end_year, ma_months, apply_timing, rank_p, rank_s, perf_pct, spec_12m_pct, trading_cost_pct=0.25, use_gold=False, use_gold_ma=False, gold_ma_months=10, _gold_returns=None):
+    return run_backtest_k200(df, start_year, end_year, ma_months, apply_timing, rank_p, rank_s, perf_pct, spec_12m_pct, trading_cost_pct=trading_cost_pct, gold_returns=_gold_returns, use_gold=use_gold, use_gold_ma=use_gold_ma, gold_ma_months=gold_ma_months)
 
-@st.cache_data(show_spinner=False)
-def cached_run_custom_backtest(df, start_year_c, end_year_c, ma_months_t4, apply_timing_c, w1, w3, w6, w12, custom_pct, rank_c_s, rank_c_e):
-    timing_dict = get_kospi_timing_for_backtest(ma_months_t4)
-    records_c, trade_logs_c = [], []
-    for m_str in sorted(df['투자월'].dropna().unique()):
-        m_yr = int(m_str.split('-')[0])
-        if not (start_year_c <= m_yr <= end_year_c): continue
-        df_calc = df[df['투자월'] == m_str].copy()
-        if df_calc.empty: continue
-        
-        # 💡 커스텀 백테스트는 MA 이탈만 마켓타이밍으로 사용 (1&3M 하락 100개 조건 미사용)
-        # MA 키는 전략조합과 동일하게 '투자월' 사용 (이전엔 종목선정일 기준으로 어긋남)
-        is_below_ma = timing_dict.get(m_str, False)
-        mult_c = 0.0 if (apply_timing_c and is_below_ma) else 1.0
-        
-        df_calc['스코어'] = (df_calc['1개월(%)']*w1) + (df_calc['3개월(%)']*w3) + (df_calc['6개월(%)']*w6) + (df_calc['12개월(%)']*w12)
-        q_limit = df_calc['스코어'].quantile(1 - (custom_pct / 100.0))
-        target = df_calc[df_calc['스코어']>=q_limit].sort_values('스코어', ascending=False).iloc[rank_c_s-1:rank_c_e]
-        
-        records_c.append({'투자월': m_str, 'invested': mult_c > 0, '커스텀 전략': (target['이번달수익률'].mean() * mult_c) if not target.empty else 0})
-        for i, (_, r) in enumerate(target.iterrows()): trade_logs_c.append({'투자월': m_str, '전략': '커스텀', '순위': f"{i+rank_c_s}위", '종목명': r['종목명'], '수익률(%)': r['이번달수익률']})
-    return pd.DataFrame(records_c), pd.DataFrame(trade_logs_c)
-
-tab1, tab2, tab3, tab4 = st.tabs(["📅 월별 상세 분석", "🕒 실시간 데일리 순위", "📈 전략 조합 백테스트", "🏅 스코어 커스텀 백테스트"])
+tab1, tab2, tab3 = st.tabs(["📅 월별 상세 분석", "🕒 실시간 데일리 순위", "📈 전략 조합 백테스트"])
 
 with tab1:
     avail_years = sorted(df_master['투자연도'].unique().astype(str), reverse=True)
@@ -255,13 +232,15 @@ with tab3:
     with head_c:
         st.markdown("<h4 style='margin:0; padding-top:6px;'>⚙️ 시뮬레이션 설정</h4>", unsafe_allow_html=True)
     with chk_c:
-        cca, ccb = st.columns(2)
+        cca, ccb, ccc = st.columns(3)
         with cca: apply_timing = st.checkbox("🛑 마켓타이밍 적용 (1&3M 하락 100개↑ & MA 이탈 시 현금)", value=True, key='t3_chk')
         with ccb: use_gold_t3 = st.checkbox("🥇 방어 시 금 투자 (하락장 1개월 연장)", value=True, key='t3_gold')
+        with ccc: use_gold_ma_t3 = st.checkbox("📉 금 N개월선 이탈 시 현금", value=False, key='t3_gold_ma')
 
-    c1, c_ma, c_cost = st.columns([1, 1, 1])
+    c1, c_ma, c_gma, c_cost = st.columns([1, 1, 1, 1])
     with c1: start_year, end_year = st.slider("📅 테스트 기간", min_y, max_y, (min_y, max_y), key='t3_yr')
     with c_ma: ma_months_t3 = st.slider("📉 마켓타이밍 (개월선)", 1, 12, 6, key='t3_ma')
+    with c_gma: gold_ma_months_t3 = st.slider("🥇 금 이동평균 (개월선)", 1, 12, 10, key='t3_gold_ma_n', disabled=not (use_gold_t3 and use_gold_ma_t3))
     with c_cost: trading_cost_pct_t3 = st.slider("💰 거래비용(편도%)", 0.0, 0.5, 0.25, 0.05, key='t3_cost')
 
     st.markdown("<hr style='margin: 10px 0px;'>", unsafe_allow_html=True)
@@ -277,7 +256,7 @@ with tab3:
         st.warning("⚠️ 금 데이터를 불러오지 못해 방어 구간이 현금(0%)으로 처리됩니다. `data/krx_gold_price.csv`(KRX 일별) 또는 FDR(GC=F·USD/KRW)를 확인하세요.")
 
     with st.spinner("엔진 구동 중..."):
-        df_res, df_trades, df_cf_t3 = cached_run_backtest_korea(df_master, start_year, end_year, ma_months_t3, apply_timing, (rank_p_s, rank_p_e), (rank_s_s, rank_s_e), perf_pct_t3, spec_12m_pct_t3, trading_cost_pct=trading_cost_pct_t3, use_gold=use_gold_t3, _gold_returns=gold_returns_t3)
+        df_res, df_trades, df_cf_t3 = cached_run_backtest_korea(df_master, start_year, end_year, ma_months_t3, apply_timing, (rank_p_s, rank_p_e), (rank_s_s, rank_s_e), perf_pct_t3, spec_12m_pct_t3, trading_cost_pct=trading_cost_pct_t3, use_gold=use_gold_t3, use_gold_ma=(use_gold_t3 and use_gold_ma_t3), gold_ma_months=gold_ma_months_t3, _gold_returns=gold_returns_t3)
         if not df_res.empty:
             s_cols = [c for c in df_res.columns if c not in ['투자월', 'invested', '중지 사유']]
             df_cum = (1 + df_res.set_index('투자월')[s_cols] / 100).cumprod() * 100
@@ -342,6 +321,7 @@ with tab3:
                 '마켓타이밍 (개월선)': f"{ma_months_t3}개월선",
                 '마켓타이밍 적용': "적용(현금)" if apply_timing else "미적용",
                 '방어 자산': ("금(KRX 환노출, 하락장 1개월 연장)" if use_gold_t3 else "현금"),
+                '금 N개월선 이탈 시 현금': (f"적용 ({gold_ma_months_t3}개월선 이탈 시 현금)" if (use_gold_t3 and use_gold_ma_t3) else "미적용"),
                 '퍼펙트 상위 %': f"상위 {perf_pct_t3}% 이내",
                 '퍼펙트 매수 순위': f"{rank_p_s}위 ~ {rank_p_e}위",
                 '달리는말 상위 %': f"상위 {spec_12m_pct_t3}% 이내",
@@ -368,93 +348,3 @@ with tab3:
                 # 수익률 컬럼만 % 포맷 (중지 사유는 문자열이라 제외)
                 fmt_cols = {c: "{:.2f}%" for c in df_show.columns if c != '중지 사유'}
                 st.dataframe(df_show.style.format(fmt_cols), use_container_width=True)
-
-# ==========================================
-# 탭 4. 스코어 커스텀 백테스트
-# ==========================================
-with tab4:
-    current_ma_c = st.session_state.get('t4_ma', 6)
-    col_title_c, col_check_c = st.columns([1, 4])
-    with col_title_c: st.markdown("<h4 style='margin:0;'>⚙️ 가중치 설정</h4>", unsafe_allow_html=True)
-    with col_check_c:
-        st.markdown("<div style='margin-top: 12px;'></div>", unsafe_allow_html=True)
-        apply_timing_c = st.checkbox("🛑 마켓타이밍 적용 (MA 이탈 시 현금)", value=True, key='t4_chk_main')
-    
-    with st.form("custom_form", border=False):
-        c1, c2, c3, c4, c5 = st.columns([1, 1, 1, 1, 0.8])
-        with c1: w1 = st.number_input("📉 1개월 가중치", value=0.2, step=0.1, format="%.1f")
-        with c2: w3 = st.number_input("📈 3개월 가중치", value=0.8, step=0.1, format="%.1f")
-        with c3: w6 = st.number_input("📈 6개월 가중치", value=0.0, step=0.1, format="%.1f")
-        with c4: w12 = st.number_input("📈 12개월 가중치", value=0.0, step=0.1, format="%.1f")
-        with c5:
-            st.markdown("<div style='margin-top: 28px;'></div>", unsafe_allow_html=True)
-            apply_weights = st.form_submit_button("✅ 실행", use_container_width=True)
-            
-    st.markdown("<hr style='margin: 15px 0px;'>", unsafe_allow_html=True)
-    c6, c_ma_c, c7, c8 = st.columns([1, 0.8, 1, 1])
-    with c6: start_year_c, end_year_c = st.slider("📅 테스트 기간", min_y, max_y, (min_y, max_y), key='t4_yr')
-    with c_ma_c: ma_months_t4 = st.slider("📉 마켓타이밍", 1, 12, 6, key='t4_ma')
-    with c7: custom_pct = st.slider("🏅 상위 %", 5, 50, 30, step=5)
-    with c8: rank_c_s, rank_c_e = st.slider("🏅 매수 순위", 1, 30, (1, 10), key='t4_rnk')
-
-    if apply_weights or 'custom_run' not in st.session_state: st.session_state['custom_run'] = True
-    if st.session_state.get('custom_run', False):
-        with st.spinner("커스텀 시뮬레이션 중..."):
-            df_res_c, df_trades_c = cached_run_custom_backtest(df_master, start_year_c, end_year_c, ma_months_t4, apply_timing_c, w1, w3, w6, w12, custom_pct, rank_c_s, rank_c_e)
-            if not df_res_c.empty:
-                df_cum_c = (1 + df_res_c.set_index('투자월')[['커스텀 전략']] / 100).cumprod() * 100
-                df_cum_c.loc[(pd.to_datetime(df_res_c['투자월'].iloc[0]) - pd.DateOffset(months=1)).strftime('%Y-%m')] = 100
-                df_cum_c = df_cum_c.sort_index()
-
-                final_val_c = df_cum_c['커스텀 전략'].iloc[-1]
-                years_c = len(df_res_c) / 12
-                cagr_c = ((final_val_c/100)**(1/years_c)-1)*100 if final_val_c > 0 else -100
-                mdd_c = ((df_cum_c['커스텀 전략']/df_cum_c['커스텀 전략'].cummax())-1).min()*100
-                # 💡 투자월 / 총개월 / 승월 카운트
-                total_months_c = len(df_res_c)
-                invested_months_c = int(df_res_c['invested'].sum())
-                if invested_months_c > 0:
-                    win_months_c = int((df_res_c.loc[df_res_c['invested'], '커스텀 전략'] > 0).sum())
-                    win_rate_c = win_months_c / invested_months_c * 100
-                    avg_ret_c_str = f"{df_res_c.loc[df_res_c['invested'], '커스텀 전략'].mean():.2f}%"
-                else:
-                    win_months_c, win_rate_c, avg_ret_c_str = 0, 0.0, "0.00%"
-                inv_ratio_c = invested_months_c / total_months_c * 100 if total_months_c > 0 else 0
-                
-                stats_c = [{
-                    "전략명": "커스텀 스코어",
-                    "CAGR (연평균)": f"{cagr_c:.1f}%",
-                    "총 누적수익률": f"{final_val_c-100:,.1f}%",
-                    "MDD (최대낙폭)": f"{mdd_c:.1f}%",
-                    "투자월 비율": f"{inv_ratio_c:.1f}% ({invested_months_c}/{total_months_c})",
-                    "월별 승률": f"{win_rate_c:.1f}% ({win_months_c}/{invested_months_c})",
-                    "평균 수익률": avg_ret_c_str
-                }]
-                
-                stats_df_t4 = pd.DataFrame(stats_c)
-                
-                # 💡 [업그레이드] 커스텀 백테스트 종합 엑셀 리포트 데이터 생성
-                settings_dict_t4 = {
-                    '테스트 시작 연도': f"{start_year_c}년",
-                    '테스트 종료 연도': f"{end_year_c}년",
-                    '마켓타이밍 (개월선)': f"{ma_months_t4}개월선",
-                    '마켓타이밍 적용': "적용(현금)" if apply_timing_c else "미적용",
-                    '가중치 설정 (1M, 3M, 6M, 12M)': f"{w1}, {w3}, {w6}, {w12}",
-                    '교집합 추출 기준': f"상위 {custom_pct}% 이내",
-                    '매수 순위': f"{rank_c_s}위 ~ {rank_c_e}위"
-                }
-                
-                excel_data_t4 = generate_excel_report_cached(tuple(settings_dict_t4.items()), stats_df_t4, df_res_c, df_cum_c, df_trades_c)
-
-                col_tc, col_bc = st.columns([7.5, 2.5])
-                with col_tc: st.markdown("#### 📊 전략 핵심 통계")
-                with col_bc: 
-                    st.download_button("📥 종합 엑셀 리포트 다운로드", data=excel_data_t4, file_name="KOSPI_커스텀_백테스트.xlsx", mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", use_container_width=True)
-
-                st.dataframe(get_styled_stats(stats_df_t4), use_container_width=True, hide_index=True)
-                
-                col_hm_c, col_mdd_c = st.columns([6, 4])
-                with col_hm_c: st.dataframe(get_monthly_heatmap(df_res_c, '커스텀 전략'), use_container_width=True)
-                with col_mdd_c: st.dataframe(get_mdd_history(df_cum_c['커스텀 전략']), use_container_width=True, hide_index=True)
-                st.plotly_chart(px.line(df_cum_c.reset_index(), x='투자월', y='커스텀 전략', log_y=True, title="커스텀 누적 성과"), use_container_width=True)
-                with st.expander("📝 월별 전체 상세 기록 보기"): st.dataframe(df_res_c.drop(columns=['invested']).set_index('투자월').style.format("{:.2f}%"), use_container_width=True)
