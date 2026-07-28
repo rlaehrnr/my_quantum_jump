@@ -336,6 +336,39 @@ def get_gold_timing_for_backtest(gold_ma_months):
 
 
 # ==========================================
+# 🥇 국내 금(KRX 환노출) 현재가·이동평균선 (실시간/월별 상세 표시용)
+#
+# get_kospi_ma_all / get_kosdaq_ma_all과 동일한 구조·거래일 기준.
+#   4개월=80, 5=100, 6=120, 10=200, 12=240 거래일 rolling.
+# 데이터는 get_gold_krw_daily()(KRX 스팟 CSV + 411060 연장, 원/g 상당) 사용.
+# 반환: (현재가, {4,5,6,10,12: MA값}). 에러/무데이터 시 (0, {}).
+# ==========================================
+@st.cache_data(ttl=3600, show_spinner=False)
+def get_gold_ma_all(target_date_str):
+    """특정 날짜 기준 국내 금(환노출) 현재가와 이동평균선 값들."""
+    try:
+        daily = get_gold_krw_daily()  # pd.Series(index=DatetimeIndex)
+        if daily is None or daily.empty:
+            return 0, {}
+        target_date = pd.to_datetime(target_date_str)
+        s = daily[daily.index <= target_date]
+        if s.empty:
+            return 0, {}
+        curr_p = float(s.iloc[-1])
+        mas = {
+            4: round(s.rolling(80).mean().iloc[-1], 2),
+            5: round(s.rolling(100).mean().iloc[-1], 2),
+            6: round(s.rolling(120).mean().iloc[-1], 2),
+            10: round(s.rolling(200).mean().iloc[-1], 2),
+            12: round(s.rolling(240).mean().iloc[-1], 2),
+        }
+        return curr_p, mas
+    except Exception as e:
+        print(f"⚠️ get_gold_ma_all({target_date_str}) 오류: {e}")
+        return 0, {}
+
+
+# ==========================================
 # KOSPI 마켓타이밍 (백테스트용)
 # 
 # 핵심 수정 사항 (look-ahead bias 제거):
