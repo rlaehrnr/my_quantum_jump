@@ -5,6 +5,51 @@ import io
 
 
 # 💡 [중복 제거] page1, page2에 각각 정의되어 있던 엑셀 리포트 생성기를 utils로 이동.
+def _ensemble_offense_defense_summary(df_cf, ens_col='앙상블 (50:50 전략)'):
+    """
+    카운터팩추얼 월별 레코드(df_cf)에서 '앙상블 (50:50 전략)'을 기준으로
+    공격/방어 성과 요약을 만든다.
+      - 공격: invested==True (실제 주식 앙상블 투자 달)
+      - 방어: invested==False → 방어자산('금'/'현금')으로 세분
+    각 구간별 횟수 · 승률(수익>0 비율) · 평균수익률 · 누적수익률(복리).
+    """
+    if df_cf is None or df_cf.empty or ens_col not in df_cf.columns:
+        return None
+    d = df_cf.copy()
+    d[ens_col] = pd.to_numeric(d[ens_col], errors='coerce')
+
+    def _stats(sub):
+        n = int(len(sub))
+        if n == 0:
+            return [0, 0.0, 0.0, 0.0]
+        e = sub[ens_col].dropna()
+        if len(e) == 0:
+            return [n, 0.0, 0.0, 0.0]
+        win = float((e > 0).mean() * 100)
+        avg = float(e.mean())
+        cum = float(((1 + e / 100.0).prod() - 1) * 100)
+        return [n, round(win, 1), round(avg, 2), round(cum, 2)]
+
+    inv = d['invested'] == True if 'invested' in d.columns else pd.Series(False, index=d.index)
+    offense = d[inv]
+    defense = d[~inv]
+    if '방어자산' in d.columns:
+        d_gold = defense[defense['방어자산'] == '금']
+        d_cash = defense[defense['방어자산'] == '현금']
+    else:
+        d_gold = defense.iloc[0:0]
+        d_cash = defense.iloc[0:0]
+
+    rows = [
+        ['공격 (주식 앙상블 50:50)'] + _stats(offense),
+        ['방어 - 금'] + _stats(d_gold),
+        ['방어 - 현금'] + _stats(d_cash),
+        ['방어 합계 (금+현금)'] + _stats(defense),
+        ['전체 (공격+방어)'] + _stats(d),
+    ]
+    return pd.DataFrame(rows, columns=['구분', '횟수', '승률(%)', '평균수익률(%)', '누적수익률(%)'])
+
+
 @st.cache_data(show_spinner=False)
 def generate_excel_report_cached(settings_tuple, df_stats, df_monthly, df_cum_ret, df_trade, df_counterfactual=None):
     """
@@ -38,6 +83,11 @@ def generate_excel_report_cached(settings_tuple, df_stats, df_monthly, df_cum_re
 
         if df_counterfactual is not None and not df_counterfactual.empty:
             df_counterfactual.to_excel(writer, sheet_name='방어vs공격_카운터팩추얼', index=False)
+
+            # 🥇 앙상블(50:50) 기준 공격/방어(금·현금) 성과 요약 시트
+            df_ens = _ensemble_offense_defense_summary(df_counterfactual)
+            if df_ens is not None:
+                df_ens.to_excel(writer, sheet_name='앙상블_공격vs방어_요약', index=False)
     return output.getvalue()
 
 def inject_custom_css():
