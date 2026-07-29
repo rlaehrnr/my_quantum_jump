@@ -83,7 +83,7 @@ with tab1:
         ma_df = pd.DataFrame([
             {'지수_L': "https://m.stock.naver.com/domestic/index/KOSPI/total#KOSPI", '현재가_L': f"https://m.stock.naver.com/fchart/domestic/index/KOSPI#{kospi_curr:,.2f}", 'base_price': round(kospi_curr, 2), '4개월선': _fmt_ma(kospi_mas.get(4, 0)), '5개월선': _fmt_ma(kospi_mas.get(5, 0)), '6개월선': _fmt_ma(kospi_mas.get(6, 0)), '10개월선': _fmt_ma(kospi_mas.get(10, 0)), '12개월선': _fmt_ma(kospi_mas.get(12, 0))},
             {'지수_L': "https://m.stock.naver.com/domestic/index/KOSDAQ/total#KOSDAQ", '현재가_L': f"https://m.stock.naver.com/fchart/domestic/index/KOSDAQ#{kosdaq_curr:,.2f}", 'base_price': round(kosdaq_curr, 2), '4개월선': _fmt_ma(kosdaq_mas.get(4, 0)), '5개월선': _fmt_ma(kosdaq_mas.get(5, 0)), '6개월선': _fmt_ma(kosdaq_mas.get(6, 0)), '10개월선': _fmt_ma(kosdaq_mas.get(10, 0)), '12개월선': _fmt_ma(kosdaq_mas.get(12, 0))},
-            {'지수_L': "https://m.stock.naver.com/marketindex/metals/M04020000#국내 금(KRX)", '현재가_L': f"https://m.stock.naver.com/fchart/marketindex/metals/M04020000#{gold_curr:,.0f}", 'base_price': round(gold_curr, 0), '4개월선': _fmt_ma(gold_mas.get(4, 0), True), '5개월선': _fmt_ma(gold_mas.get(5, 0), True), '6개월선': _fmt_ma(gold_mas.get(6, 0), True), '10개월선': _fmt_ma(gold_mas.get(10, 0), True), '12개월선': _fmt_ma(gold_mas.get(12, 0), True)}
+            {'지수_L': "https://m.stock.naver.com/marketindex/metals/M04020000#국내 금(KRX)", '현재가_L': f"https://m.stock.naver.com/marketindex/metals/M04020000#{gold_curr:,.0f}", 'base_price': round(gold_curr, 0), '4개월선': _fmt_ma(gold_mas.get(4, 0), True), '5개월선': _fmt_ma(gold_mas.get(5, 0), True), '6개월선': _fmt_ma(gold_mas.get(6, 0), True), '10개월선': _fmt_ma(gold_mas.get(10, 0), True), '12개월선': _fmt_ma(gold_mas.get(12, 0), True)}
         ])
         st.dataframe(style_ma_with_gold(ma_df), use_container_width=True, hide_index=True, column_config=ma_cfg_gold)
         
@@ -103,7 +103,11 @@ with tab1:
         
         is_bad_market = (neg_1m_cnt >= 100) and (neg_3m_cnt >= 100)
         is_below_ma = (kospi_curr > 0) and (kospi_curr < kospi_mas.get(6, 0))
-        status, box_c, text_c = ("🛑 투자 중지 (금 투자)", "#FFEBEE", "#C62828") if (is_bad_market or is_below_ma) else ("✅ 투자 진행", "#E8F5E9", "#2E7D32")
+        # 🥇 방어 시 금 배분: 금이 6개월선 위→금100 / 6M~12M→금50:현금50 / 12M 아래→현금100
+        gold_below_6 = (gold_curr > 0) and (gold_curr < gold_mas.get(6, 0))
+        gold_below_12 = (gold_curr > 0) and (gold_curr < gold_mas.get(12, 0))
+        defense_alloc = "현금 100" if gold_below_12 else ("금 50 : 현금 50" if gold_below_6 else "금 100")
+        status, box_c, text_c = (f"🛑 투자 중지 ({defense_alloc})", "#FFEBEE", "#C62828") if (is_bad_market or is_below_ma) else ("✅ 투자 진행", "#E8F5E9", "#2E7D32")
         reason_desc = ("하락장" if is_bad_market else "") + (" + " if is_bad_market and is_below_ma else "") + ("6개월선 이탈" if is_below_ma else "")
         if not is_bad_market and not is_below_ma: reason_desc = "안전"
 
@@ -198,7 +202,11 @@ with tab2:
 
         is_below_ma_d = (kospi_curr_d > 0) and (kospi_curr_d < kospi_mas_d.get(6, 0))
         is_bad_market_d = (neg_1m_d >= 100) and (neg_3m_d >= 100)
-        status_d, box_d, text_d = ("🛑 투자 중지 (금 투자)", "#FFEBEE", "#C62828") if (is_bad_market_d or is_below_ma_d) else ("✅ 투자 진행", "#E8F5E9", "#2E7D32")
+        # 🥇 방어 시 금 배분: 금이 6개월선 위→금100 / 6M~12M→금50:현금50 / 12M 아래→현금100
+        gold_below_6_d = (gold_curr_d > 0) and (gold_curr_d < gold_mas_d.get(6, 0))
+        gold_below_12_d = (gold_curr_d > 0) and (gold_curr_d < gold_mas_d.get(12, 0))
+        defense_alloc_d = "현금 100" if gold_below_12_d else ("금 50 : 현금 50" if gold_below_6_d else "금 100")
+        status_d, box_d, text_d = (f"🛑 투자 중지 ({defense_alloc_d})", "#FFEBEE", "#C62828") if (is_bad_market_d or is_below_ma_d) else ("✅ 투자 진행", "#E8F5E9", "#2E7D32")
         reason_desc_d = ("하락장" if is_bad_market_d else "") + (" + " if is_bad_market_d and is_below_ma_d else "") + ("6개월선 이탈" if is_below_ma_d else "")
         if not is_bad_market_d and not is_below_ma_d: reason_desc_d = "안전"
 
@@ -245,12 +253,12 @@ with tab3:
         cca, ccb, ccc = st.columns(3)
         with cca: apply_timing = st.checkbox("🛑 마켓타이밍 적용 (1&3M 하락 100개↑ & MA 이탈 시 현금)", value=True, key='t3_chk')
         with ccb: use_gold_t3 = st.checkbox("🥇 방어 시 금 투자 (하락장 1개월 연장)", value=True, key='t3_gold')
-        with ccc: use_gold_ma_t3 = st.checkbox("📉 금 N개월선 이탈 시 현금", value=False, key='t3_gold_ma')
+        with ccc: use_gold_ma_t3 = st.checkbox("📉 금 N개월선 이탈 시 현금", value=True, key='t3_gold_ma')
 
     c1, c_ma, c_gma, c_cost = st.columns([1, 1, 1, 1])
     with c1: start_year, end_year = st.slider("📅 테스트 기간", min_y, max_y, (min_y, max_y), key='t3_yr')
     with c_ma: ma_months_t3 = st.slider("📉 마켓타이밍 (개월선)", 1, 12, 6, key='t3_ma')
-    with c_gma: gold_ma_months_t3 = st.slider("🥇 금 이동평균 (개월선)", 1, 12, 10, key='t3_gold_ma_n', disabled=not (use_gold_t3 and use_gold_ma_t3))
+    with c_gma: gold_ma_months_t3 = st.slider("🥇 금 이동평균 (개월선)", 1, 12, 6, key='t3_gold_ma_n', disabled=not (use_gold_t3 and use_gold_ma_t3))
     with c_cost: trading_cost_pct_t3 = st.slider("💰 거래비용(편도%)", 0.0, 0.5, 0.25, 0.05, key='t3_cost')
 
     st.markdown("<hr style='margin: 10px 0px;'>", unsafe_allow_html=True)
