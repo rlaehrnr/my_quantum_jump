@@ -649,6 +649,7 @@ def run_backtest_k200(df, start_year, end_year, ma_months, apply_timing,
                 # 금이 N개월선 아래 → 금 매수 중지, 현금(0%) 보유 (비용 없음)
                 for kc in strat_vals:
                     strat_vals[kc] = 0.0
+                defense_asset = '현금'
                 _ma_tag = f"(금 {gold_ma_months}M선이탈→현금)"
                 if is_extension:
                     rec_reason = f"하락장 연장 {_ma_tag}"
@@ -664,6 +665,7 @@ def run_backtest_k200(df, start_year, end_year, ma_months, apply_timing,
                     gold_ret = g_ret - cost_pct  # 금 매매도 동일 비용(편도 × 왕복) 차감
                     for kc in strat_vals:
                         strat_vals[kc] = gold_ret
+                    defense_asset = '금'
                     if is_extension:
                         rec_reason = "하락장 연장 (금 투자)"
                     else:
@@ -673,6 +675,7 @@ def run_backtest_k200(df, start_year, end_year, ma_months, apply_timing,
                     # 금 데이터 없음(아주 초기 구간 등) → 현금(0%), 비용 없음
                     for kc in strat_vals:
                         strat_vals[kc] = 0.0
+                    defense_asset = '현금'
                     if is_extension:
                         rec_reason = "하락장 연장 (금 데이터없음)"
                     else:
@@ -683,6 +686,8 @@ def run_backtest_k200(df, start_year, end_year, ma_months, apply_timing,
             record_invested = raw_invested
             rec_reason = raw_reason
             gold_log = None
+            # 금 미사용(use_gold=False)인데 방어 달이면 현금 방어, 아니면 공격
+            defense_asset = '현금' if is_defense else None
 
         rec = {'투자월': m, 'invested': record_invested, '중지 사유': rec_reason}
         rec.update(strat_vals)
@@ -691,7 +696,7 @@ def run_backtest_k200(df, start_year, end_year, ma_months, apply_timing,
         # 💡 [카운터팩추얼] 엑셀 리포트용 확장 레코드: 전략명 실제 수익률 옆에
         #    '공격시(방어 대신 공격했다면) 수익률'과 '공격−방어 차이'를 함께 기록.
         #    방어(금)가 아니었던 달은 실제 = 공격시 값이라 차이는 자연스럽게 0이 됨.
-        rec_full = {'투자월': m, 'invested': record_invested, '중지 사유': rec_reason, '방어_금투자여부': is_gold}
+        rec_full = {'투자월': m, 'invested': record_invested, '중지 사유': rec_reason, '방어_금투자여부': is_gold, '방어자산': defense_asset}
         for kc in strat_vals:
             rec_full[kc] = strat_vals[kc]
             rec_full[f'{kc} · 공격시_수익률(%)'] = atk_strat_vals[kc]
