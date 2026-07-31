@@ -2,6 +2,7 @@ import streamlit as st
 import pandas as pd
 import numpy as np
 import os
+from datetime import date
 
 st.set_page_config(page_title="계절성 · 사이클 분석", layout="wide")
 
@@ -16,6 +17,15 @@ st.markdown('''<style>
 [data-testid="stPageLink-NavLink"]:hover p { color:#93C5FD !important; }
 .sec-title { font-size:1.05rem; font-weight:800; margin:18px 0 6px 0; }
 .sec-note  { font-size:0.78rem; color:#6B7280; margin:0 0 6px 0; }
+.yr-count  { font-size:0.82rem; color:#9CA3AF; text-align:right; padding-top:6px; }
+.now-card  { background:#161b25; border:1px solid #2a3140; border-radius:10px;
+             padding:10px 16px; margin:6px 0 4px 0; display:flex; align-items:center;
+             gap:26px; flex-wrap:wrap; }
+.now-head  { font-size:0.95rem; font-weight:800; color:#E5E7EB; white-space:nowrap; }
+.now-head .sub { font-size:0.78rem; font-weight:500; color:#6B7280; margin-left:6px; }
+.now-item  { display:flex; align-items:baseline; gap:7px; white-space:nowrap; }
+.now-lab   { font-size:0.78rem; color:#9CA3AF; }
+.now-val   { font-size:1.15rem; font-weight:800; }
 </style>''', unsafe_allow_html=True)
 st.page_link("app.py", label="📅 계절성 · 사이클 분석")
 
@@ -41,7 +51,6 @@ def load_seasonality():
         df[c] = pd.to_numeric(df[c], errors="coerce")
     # 그 해 누적 수익률 = 존재하는 달만 복리로 곱함 (엑셀 '합계'와 동일)
     df["합계"] = df[MONTHS].add(1).prod(axis=1, min_count=1) - 1
-    df["개월수"] = df[MONTHS].notna().sum(axis=1)
     return df
 
 
@@ -78,6 +87,16 @@ def _sty_win(v):
     return "color:#F59E0B; font-weight:700;" if v < 0.4999 else ""
 
 
+def _col_ret(v):
+    """평균·중간값 표와 같은 색 규칙."""
+    return "#60A5FA" if (pd.notna(v) and v < -0.0001) else "#E5E7EB"
+
+
+def _col_win(v):
+    """승률 표와 같은 색 규칙."""
+    return "#F59E0B" if (pd.notna(v) and v < 0.4999) else "#E5E7EB"
+
+
 def show(table, fmt, styler):
     st.dataframe(
         table.style.map(styler).format(fmt, na_rep="-"),
@@ -91,12 +110,7 @@ if not os.path.exists(CSV_PATH):
     st.stop()
 
 data = load_seasonality()
-
-st.markdown(
-    "<div class='strategy-desc'>지수별 <b>월간 수익률</b>을 대통령 임기 사이클 연차로 묶어 "
-    "평균·중간값·승률을 봅니다. 🗳 표시는 선거해입니다.</div>",
-    unsafe_allow_html=True,
-)
+TODAY = date.today()
 
 tabs = st.tabs([label for _, label in INDEXES])
 
@@ -115,28 +129,46 @@ for tab, (code, label) in zip(tabs, INDEXES):
             )
         cyc = "사이클8" if pick.startswith("8") else "사이클4"
 
-        # 미완성 연도(12개월 미만)는 '합계'만 제외할지 선택
-        partial = df[df["개월수"] < 12]["연도"].tolist()
-        with c2:
-            drop_partial = False
-            if partial:
-                drop_partial = st.checkbox(
-                    f"미완성 연도({', '.join(str(y) for y in partial)}) 합계에서 제외",
-                    key=f"dp_{code}",
-                )
-
-        view = df.copy()
-        if drop_partial:
-            view.loc[view["개월수"] < 12, "합계"] = np.nan
-
+        view = df
         y0, y1 = int(view["연도"].min()), int(view["연도"].max())
+        with c2:
+            st.markdown(
+                f"<div class='yr-count'>{y0}~{y1} · 총 <b>{len(view)}개</b> 연도</div>",
+                unsafe_allow_html=True,
+            )
+
         avg, med, win, n = build_tables(view, cyc)
 
-        st.markdown(
-            f"<div class='sec-note'>{y0}~{y1} · {len(view)}개 연도 · "
-            f"연차별 표본 {', '.join(f'{i}={v}' for i, v in n.items())}</div>",
-            unsafe_allow_html=True,
-        )
+        # ── 이번 달이 몇 년차의 몇 월인지 + 그 달의 과거 성적 ──────────
+        here = view[view["연도"] == TODAY.year]
+        if here.empty:
+            st.markdown(
+                f"<div class='now-card'><div class='now-head'>🗓 {TODAY.year}년 {TODAY.month}월"
+                f"<span class='sub'>· {TODAY.year}년 연차 정보가 아직 없습니다</span></div></div>",
+                unsafe_allow_html=True,
+            )
+        else:
+            cy = int(here.iloc[0][cyc])
+            mcol = f"{TODAY.month}월"
+            s = view[view[cyc] == cy][mcol]
+            a, m, w = s.mean(), s.median(), _winrate(s)
+            vote = " 🗳" if cy in ELECTION[cyc] else ""
+            items = [("평균 수익률", a, "{:+.2%}", _col_ret),
+                     ("중간값", m, "{:+.2%}", _col_ret),
+                     ("승률", w, "{:.1%}", _col_win)]
+            body = "".join(
+                f"<div class='now-item'><span class='now-lab'>{lab}</span>"
+                f"<span class='now-val' style='color:{col(v)};'>"
+                f"{'-' if pd.isna(v) else f.format(v)}</span></div>"
+                for lab, v, f, col in items
+            )
+            st.markdown(
+                f"<div class='now-card'>"
+                f"<div class='now-head'>🗓 {TODAY.year}년 {TODAY.month}월 · {cy}년차{vote}"
+                f"<span class='sub'>· 같은 조건 과거 {int(s.notna().sum())}회</span></div>"
+                f"{body}</div>",
+                unsafe_allow_html=True,
+            )
 
         st.markdown("<div class='sec-title'>■ 연차별 평균 수익률</div>", unsafe_allow_html=True)
         show(avg, "{:+.2%}", _sty_ret)
