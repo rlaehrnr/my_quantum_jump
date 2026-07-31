@@ -191,14 +191,14 @@ for tab, (code, label) in zip(tabs, INDEXES):
         show(win, "{:.1%}", _sty_win)
 
         with st.expander(f"📋 {label} 연도별 원본 월수익률"):
-            opts = sorted(view[cyc].dropna().unique().astype(int).tolist())
-            sel = st.multiselect(
-                "연차 선택", opts, default=opts, key=f"pick_{code}_{cyc}",
-                format_func=lambda x: f"{x}년차" + (" 🗳" if x in ELECTION[cyc] else ""),
+            opts = [0] + sorted(view[cyc].dropna().unique().astype(int).tolist())
+            sel = st.radio(
+                "연차 선택", opts, horizontal=True, key=f"pick_{code}_{cyc}",
+                format_func=lambda x: "전체" if x == 0 else
+                f"{x}년차" + (" 🗳" if x in ELECTION[cyc] else ""),
             )
-            picked = view[view[cyc].isin(sel)] if sel else view
-            st.caption(f"{len(picked)}개 연도 표시 중"
-                       + ("" if sel else " · 연차를 하나도 안 고르면 전체를 보여줍니다"))
+            picked = view if sel == 0 else view[view[cyc] == sel]
+            st.caption(f"{len(picked)}개 연도 표시 중")
             raw = picked.set_index("연도")[[cyc] + COLS].copy()
             raw = raw.rename(columns={cyc: "연차"})
             st.dataframe(
