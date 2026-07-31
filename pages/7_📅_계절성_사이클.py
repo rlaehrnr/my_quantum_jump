@@ -81,7 +81,7 @@ def _sty_win(v):
 def show(table, fmt, styler):
     st.dataframe(
         table.style.map(styler).format(fmt, na_rep="-"),
-        use_container_width=True,
+        width="stretch",
     )
 
 
@@ -155,7 +155,7 @@ for tab, (code, label) in zip(tabs, INDEXES):
                 .map(lambda v: "background-color:#7f1d1d55;" if pd.notna(v) and v > 0.10 else "",
                      subset=COLS)
                 .format({**{c: "{:+.2%}" for c in COLS}, "연차": "{:.0f}"}, na_rep=""),
-                use_container_width=True,
+                width="stretch",
                 height=max(150, min(640, 38 + 35 * len(raw))),
             )
 
