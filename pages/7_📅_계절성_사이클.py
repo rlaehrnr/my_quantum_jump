@@ -78,11 +78,10 @@ def _sty_win(v):
     return "color:#F59E0B; font-weight:700;" if v < 0.4999 else ""
 
 
-def show(table, fmt, styler, height=None):
+def show(table, fmt, styler):
     st.dataframe(
         table.style.map(styler).format(fmt, na_rep="-"),
         use_container_width=True,
-        height=height,
     )
 
 
@@ -157,7 +156,7 @@ for tab, (code, label) in zip(tabs, INDEXES):
                      subset=COLS)
                 .format({**{c: "{:+.2%}" for c in COLS}, "연차": "{:.0f}"}, na_rep=""),
                 use_container_width=True,
-                height=min(640, 38 + 35 * len(raw)),
+                height=max(150, min(640, 38 + 35 * len(raw))),
             )
 
 st.caption(
