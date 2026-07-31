@@ -19,8 +19,11 @@ st.markdown('''<style>
 .sec-note  { font-size:0.78rem; color:#6B7280; margin:0 0 6px 0; }
 .yr-count  { font-size:0.82rem; color:#9CA3AF; text-align:right; padding-top:6px; }
 .now-card  { background:#161b25; border:1px solid #2a3140; border-radius:10px;
-             padding:10px 16px; margin:6px 0 4px 0; display:flex; align-items:center;
-             gap:26px; flex-wrap:wrap; }
+             padding:10px 16px; margin:6px 0 4px 0; }
+.now-row   { display:flex; align-items:center; gap:26px; flex-wrap:wrap; }
+.now-hist  { font-size:0.72rem; color:#6B7280; margin-top:8px; line-height:1.7;
+             border-top:1px solid #232a36; padding-top:7px; }
+.now-hist b { color:#9CA3AF; font-weight:600; }
 .now-head  { font-size:0.95rem; font-weight:800; color:#E5E7EB; white-space:nowrap; }
 .now-head .sub { font-size:0.78rem; font-weight:500; color:#6B7280; margin-left:6px; }
 .now-item  { display:flex; align-items:baseline; gap:7px; white-space:nowrap; }
@@ -143,14 +146,17 @@ for tab, (code, label) in zip(tabs, INDEXES):
         here = view[view["연도"] == TODAY.year]
         if here.empty:
             st.markdown(
-                f"<div class='now-card'><div class='now-head'>🗓 {TODAY.year}년 {TODAY.month}월"
-                f"<span class='sub'>· {TODAY.year}년 연차 정보가 아직 없습니다</span></div></div>",
+                f"<div class='now-card'><div class='now-row'><div class='now-head'>"
+                f"🗓 {TODAY.year}년 {TODAY.month}월"
+                f"<span class='sub'>· {TODAY.year}년 연차 정보가 아직 없습니다</span>"
+                f"</div></div></div>",
                 unsafe_allow_html=True,
             )
         else:
             cy = int(here.iloc[0][cyc])
             mcol = f"{TODAY.month}월"
-            s = view[view[cyc] == cy][mcol]
+            hit = view[view[cyc] == cy][["연도", mcol]].dropna(subset=[mcol])
+            s = hit[mcol]
             a, m, w = s.mean(), s.median(), _winrate(s)
             vote = " 🗳" if cy in ELECTION[cyc] else ""
             items = [("평균 수익률", a, "{:+.2%}", _col_ret),
@@ -162,11 +168,16 @@ for tab, (code, label) in zip(tabs, INDEXES):
                 f"{'-' if pd.isna(v) else f.format(v)}</span></div>"
                 for lab, v, f, col in items
             )
+            hist = " &nbsp;·&nbsp; ".join(
+                f"<b>{int(y)}</b> <span style='color:{_col_ret(r)};'>{r:+.2%}</span>"
+                for y, r in hit.itertuples(index=False)
+            )
             st.markdown(
-                f"<div class='now-card'>"
+                f"<div class='now-card'><div class='now-row'>"
                 f"<div class='now-head'>🗓 {TODAY.year}년 {TODAY.month}월 · {cy}년차{vote}"
-                f"<span class='sub'>· 같은 조건 과거 {int(s.notna().sum())}회</span></div>"
-                f"{body}</div>",
+                f"<span class='sub'>· 같은 조건 과거 {len(hit)}회</span></div>"
+                f"{body}</div>"
+                f"<div class='now-hist'>{TODAY.month}월 개별 성적 &nbsp; {hist}</div></div>",
                 unsafe_allow_html=True,
             )
 
@@ -180,7 +191,15 @@ for tab, (code, label) in zip(tabs, INDEXES):
         show(win, "{:.1%}", _sty_win)
 
         with st.expander(f"📋 {label} 연도별 원본 월수익률"):
-            raw = view.set_index("연도")[[cyc] + COLS].copy()
+            opts = sorted(view[cyc].dropna().unique().astype(int).tolist())
+            sel = st.multiselect(
+                "연차 선택", opts, default=opts, key=f"pick_{code}_{cyc}",
+                format_func=lambda x: f"{x}년차" + (" 🗳" if x in ELECTION[cyc] else ""),
+            )
+            picked = view[view[cyc].isin(sel)] if sel else view
+            st.caption(f"{len(picked)}개 연도 표시 중"
+                       + ("" if sel else " · 연차를 하나도 안 고르면 전체를 보여줍니다"))
+            raw = picked.set_index("연도")[[cyc] + COLS].copy()
             raw = raw.rename(columns={cyc: "연차"})
             st.dataframe(
                 raw.style
