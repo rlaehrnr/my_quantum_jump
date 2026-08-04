@@ -18,6 +18,10 @@ CSV 형식 (investing.com KR 다운로드 형식):
 
 import os
 import re
+import time
+import threading
+from concurrent.futures import ThreadPoolExecutor
+
 import pandas as pd
 import numpy as np
 import streamlit as st
@@ -108,17 +112,77 @@ def _read_csv_any_encoding(path_or_url):
         return pd.read_csv(path_or_url, encoding='cp949')
 
 
-def _fetch_raw_csv(filename):
-    """GitHub raw에서 CSV 로드 시도. 실패하면 None (조용히 폴백)."""
+# ------------------------------------------------------------------
+# 원격 CSV 메모 + 병렬 선반입
+# ------------------------------------------------------------------
+# 원래는 티커마다 순차로 HTTP를 한 번씩 쐈다. 미국 24종 + 국내 28종이라
+# 콜드 로드가 12초 넘게 걸렸고, 국내 로더 4개(ko/pen/ssopen/mamtax)가
+# 겹치는 파일을 각자 다시 받고 있었다.
+#   · 메모: 같은 파일은 프로세스 안에서 한 번만 받는다 (로더 간 공유).
+#   · 선반입: 표준 파일명들을 스레드풀로 한꺼번에 받아 메모를 채운다.
+# 워커 스레드에서는 st.cache_data를 쓰지 않는다 (ScriptRunContext가 없어
+# 캐시를 우회하고 경고를 뱉는다). 그래서 평범한 dict + Lock을 쓴다.
+_RAW_TTL = 3600.0
+_RAW_MEMO = {}
+_RAW_LOCK = threading.Lock()
+
+
+def _memo_get(key):
+    with _RAW_LOCK:
+        hit = _RAW_MEMO.get(key)
+    if hit is None:
+        return None
+    ts, df = hit
+    if time.time() - ts > _RAW_TTL:
+        with _RAW_LOCK:
+            _RAW_MEMO.pop(key, None)
+        return None
+    # 호출부가 df.columns 등을 수정하므로 사본을 준다 (메모 오염 방지)
+    return None if df is None else df.copy()
+
+
+def _memo_put(key, df):
+    with _RAW_LOCK:
+        _RAW_MEMO[key] = (time.time(), df)
+
+
+def _http_csv(base, filename):
+    """실제 네트워크 호출 (메모 미사용). 실패 시 None."""
     from urllib.parse import quote
-    url = SNOWBALL_RAW_BASE + quote(filename)
     try:
-        df = _read_csv_any_encoding(url)
+        df = _read_csv_any_encoding(base + quote(filename))
         if df is not None and not df.empty:
             return df
     except Exception:
         pass
     return None
+
+
+def _prefetch(base, filenames, workers=16):
+    """표준 파일명들을 병렬로 받아 메모에 채운다.
+
+    실패(404 등)도 None으로 기록해 둔다 — 그래야 뒤이은 순차 루프가
+    같은 요청을 다시 쏘지 않고 바로 다음 파일명 변형으로 넘어간다.
+    """
+    todo = [f for f in dict.fromkeys(filenames) if _memo_get(base + f) is None
+            and (base + f) not in _RAW_MEMO]
+    if not todo:
+        return
+    with ThreadPoolExecutor(max_workers=min(workers, len(todo))) as ex:
+        for fn, df in zip(todo, ex.map(lambda f: _http_csv(base, f), todo)):
+            _memo_put(base + fn, df)
+
+
+def _fetch_raw_csv(filename):
+    """GitHub raw에서 CSV 로드 시도. 실패하면 None (조용히 폴백)."""
+    key = SNOWBALL_RAW_BASE + filename
+    with _RAW_LOCK:
+        cached = key in _RAW_MEMO
+    if cached:
+        return _memo_get(key)
+    df = _http_csv(SNOWBALL_RAW_BASE, filename)
+    _memo_put(key, df)
+    return None if df is None else df.copy()
 
 
 # 파일명 변형 후보: 자동 업데이트 스크립트 형식 / investing.com 원본(공백) / 단순형
@@ -186,9 +250,12 @@ def load_monthly_prices(monthly_dir='data/snowball/monthly'):
                 print(f"⚠️ {ticker} 로컬 파일 읽기 오류: {e}")
         return None
     
+    # 표준 파일명을 병렬로 미리 받아둔다 (아래 루프는 메모 히트로 즉시 진행).
+    _prefetch(SNOWBALL_RAW_BASE, [_RAW_NAME_VARIANTS[0].format(t=t) for t in LOAD_TICKERS])
+
     frames = []
     missing = []
-    
+
     for ticker in LOAD_TICKERS:
         df = _load_ticker_df(ticker)
         
@@ -1190,15 +1257,24 @@ def _ko_filename_variants(code):
 
 
 def _fetch_ko_raw_csv(filename):
-    """snowball_kr 폴더의 GitHub raw CSV 로드 시도. 실패하면 None."""
-    from urllib.parse import quote
-    try:
-        df = _read_csv_any_encoding(KO_RAW_BASE + quote(filename))
-        if df is not None and not df.empty:
-            return df
-    except Exception:
-        pass
-    return None
+    """snowball_kr 폴더의 GitHub raw CSV 로드 시도. 실패하면 None.
+
+    메모를 공유하므로 ko/pen/ssopen/mamtax 로더가 같은 종목을 겹쳐 써도
+    실제 네트워크 요청은 한 번만 나간다.
+    """
+    key = KO_RAW_BASE + filename
+    with _RAW_LOCK:
+        cached = key in _RAW_MEMO
+    if cached:
+        return _memo_get(key)
+    df = _http_csv(KO_RAW_BASE, filename)
+    _memo_put(key, df)
+    return None if df is None else df.copy()
+
+
+def _prefetch_ko(codes):
+    """국내 종목의 표준 파일명(1순위 변형)을 병렬 선반입."""
+    _prefetch(KO_RAW_BASE, [_ko_filename_variants(c)[0] for c in codes])
 
 
 def _series_from_csv(df):
@@ -1227,6 +1303,8 @@ def load_ko_prices(kr_dir='data/snowball_kr/monthly', us_dir='data/snowball/mont
     Returns: DataFrame(index=YearMonth, columns=[코드..., 'TIP'])  (빈 DF면 로드 실패)
     """
     series = {}
+    _prefetch_ko(KO_ALL)
+    _prefetch(SNOWBALL_RAW_BASE, list(_RAW_NAME_VARIANTS_TIP[:1]))
 
     def _load_one(code, raw_variants, local_dir):
         # raw 우선
@@ -1455,6 +1533,7 @@ def load_pen_prices(kr_dir='data/snowball_kr/monthly'):
         return (f"{code}_{nm}_과거_데이터.csv", f"{code}_과거_데이터.csv", f"{code}.csv")
 
     series = {}
+    _prefetch(KO_RAW_BASE, [_pen_variants(c)[0] for c in PEN_ALL])
     for code in PEN_ALL:
         variants = _pen_variants(code)  # {code}_{name}_과거_데이터.csv 등
         s = None
@@ -1632,6 +1711,7 @@ def load_ssopen_prices(kr_dir='data/snowball_kr/monthly'):
         return (f"{code}_{nm}_과거_데이터.csv", f"{code}_과거_데이터.csv", f"{code}.csv")
 
     series = {}
+    _prefetch(KO_RAW_BASE, [_variants(c)[0] for c in SSOPEN_ALL])
     for code in SSOPEN_ALL:
         variants = _variants(code)
         s = None
@@ -1875,6 +1955,7 @@ def load_mamtax_prices(kr_dir='data/snowball_kr/monthly'):
         return (f"{code}_{nm}_과거_데이터.csv", f"{code}_과거_데이터.csv", f"{code}.csv")
 
     series = {}
+    _prefetch(KO_RAW_BASE, [_variants(c)[0] for c in MAMTAX_ALL])
     for code in MAMTAX_ALL:
         variants = _variants(code)
         s = None

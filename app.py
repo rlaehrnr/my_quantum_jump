@@ -169,10 +169,11 @@ def _snowball_status():
             sig = sig[sig['defensive'].notna()]
         return sig.iloc[-1] if len(sig) else None
 
+    # ※ 맘 삼성은 2026-08 폐지 (레버리지 ETF의 변동성 끌림으로 지배당하는 전략).
+    #   삼성증권 계좌는 쏘 삼성 하나로 합쳐 '맘·쏘 삼성'으로 운용한다.
     defs = [
         ("🇺🇸 또 메리츠", lambda: sb.compute_signals(prices, div), None),
-        ("🇺🇸 맘 삼성", lambda: sb.compute_signals_samsung(prices), None),
-        ("🇺🇸 쏘 삼성", lambda: sb.compute_signals_so(prices), None),
+        ("🇺🇸 맘·쏘 삼성", lambda: sb.compute_signals_so(prices), None),
         ("🇰🇷 또 ISA", lambda: sb.compute_signals_ko(ko), sb.KO_TICKER_NAMES.get),
         ("🇰🇷 또 연금", lambda: sb.compute_signals_pension(pen), sb.PEN_TICKER_NAMES.get),
         ("🇰🇷 쏘 연금", lambda: sb.compute_signals_ssopen(sso, prices), sb.SSOPEN_TICKER_NAMES.get),

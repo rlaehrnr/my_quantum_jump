@@ -454,6 +454,21 @@ def build_report_excel(settings_dict, stats_df, detail_df, df_res, cum_df, mdd_d
     return out.getvalue()
 
 
+def render_bt_title(col, rule_active):
+    """'📈 백테스트 성과' 제목 + 가동기간 주석을 같은 줄에 렌더.
+
+    bt가 있어야 개월 수를 알 수 있으므로, 호출부는 컬럼을 먼저 만들어 두고
+    백테스트를 돌린 뒤 이 함수로 제목을 채운다(Streamlit 컬럼은 나중에 써도 된다).
+    """
+    with col:
+        note = ''
+        if rule_active:
+            _, n_active, n_total = rule_active
+            note = (f" <span style='font-size:12px; font-weight:500; color:#9CA3AF;'>"
+                    f"(실제가동 {n_active}개월 / 표시 {n_total}개월)</span>")
+        st.markdown(f"### 📈 백테스트 성과{note}", unsafe_allow_html=True)
+
+
 def render_backtest_section(bt, perf, cost_rate, key_prefix, strat_color, strat_name,
                            detail_df, settings_dict, excel_detail_df=None,
                            rule_active=None):
@@ -464,12 +479,6 @@ def render_backtest_section(bt, perf, cost_rate, key_prefix, strat_color, strat_
     """
     bms = perf.get('benchmarks', {})
     qqq = bms.get('QQQ')
-
-    # 제목 바로 아래 한 줄로만. (경고 박스는 과했다 — 숫자를 바꾸는 사안이 아니라
-    #  해석 주석이므로 조용히 붙여 둔다. 자세한 설명은 설정표·엑셀 리포트에 있다.)
-    if rule_active:
-        _, n_active, n_total = rule_active
-        st.caption(f"실제가동 {n_active}개월 / 표시 {n_total}개월")
 
     c1, c2, c3, c4, c5, c6 = st.columns(6)
     c1.metric("CAGR", f"{perf['cagr']*100:.1f}%",
@@ -686,8 +695,6 @@ def render_meritz():
     # 백테스트
     st.markdown("---")
     t_col, s_col = st.columns([2.2, 1])
-    with t_col:
-        st.markdown("### 📈 백테스트 성과")
     with s_col:
         cost_pct = st.slider("거래비용 %/교체", 0.0, 1.0, 0.25, 0.05, format="%.2f%%",
                              key="meritz_cost",
@@ -710,6 +717,7 @@ def render_meritz():
         '방어 자산': ', '.join(DEFENSE_ASSETS),
         '벤치마크': ', '.join(BENCHMARKS),
     }
+    render_bt_title(t_col, rule_act)
     render_backtest_section(bt, perf, cost_rate, key_prefix="meritz",
                             strat_color='#10B981', strat_name='또 메리츠 전략',
                             detail_df=detail_df, settings_dict=settings_dict,
@@ -718,8 +726,19 @@ def render_meritz():
 
 
 # ==========================================
-# 탭 2: 맘 삼성 (레버리지 모멘텀)
+# [폐지] 맘 삼성 (레버리지 모멘텀) — 2026-08 운용 중단
 # ==========================================
+# 탭에서 내렸고 통합 포트 후보에서도 뺐다. 되돌릴 수 있게 코드는 남겨 둔다.
+#
+# 폐지 사유 — 레버리지 ETF를 보유 자산으로 쓰는 발상 자체가 문제였다.
+#   · 같은 기간 같은 CAGR(36.77%)로 맞추면 쏘 삼성 × 1.28배가 MDD -25.51%인데
+#     맘 삼성은 -38.60%였다. 수익은 같고 낙폭만 13%p 큰, 지배당하는 전략.
+#   · 일일 재조정의 변동성 끌림 때문에 배수가 올라갈수록 Sharpe가 떨어진다.
+#     나스닥100 1x/2x/3x = 1.08/0.95/0.89, 반도체 1x/2x/3x = 1.00/0.93/0.80.
+#     반도체는 3배(SOXL)가 2배(USD)보다 변동성 1.6배인데 CAGR이 오히려 낮았다.
+#   · 7개 균등 통합 포트에서 이 전략만 빼면 CAGR 45.15%→45.49%,
+#     MDD -17.28%→-13.72%, Sharpe 2.01→2.19로 전 지표가 좋아진다.
+# 실제 운용은 삼성증권 계좌를 쏘 삼성 하나로 합쳐 '맘·쏘 삼성'으로 굴린다.
 def render_samsung():
     need = SS_FILTER_ASSETS + SS_OFFENSE_ASSETS + SS_DEFENSE_ASSETS
     missing = [t for t in need if t not in prices.columns]
@@ -819,8 +838,6 @@ def render_samsung():
     # 백테스트
     st.markdown("---")
     t_col, s_col = st.columns([2.2, 1])
-    with t_col:
-        st.markdown("### 📈 백테스트 성과")
     with s_col:
         cost_pct = st.slider("거래비용 %/교체", 0.0, 1.0, 0.25, 0.05, format="%.2f%%",
                              key="ss_cost",
@@ -844,6 +861,7 @@ def render_samsung():
         '방어': 'IEF 50% · GLD 50% 고정',
         '벤치마크': ', '.join(BENCHMARKS),
     }
+    render_bt_title(t_col, rule_act)
     render_backtest_section(bt, perf, cost_rate, key_prefix="ss",
                             strat_color='#06B6D4', strat_name='맘 삼성 전략',
                             detail_df=detail_df, settings_dict=settings_dict,
@@ -975,8 +993,6 @@ def render_so():
     # 백테스트
     st.markdown("---")
     t_col, s_col = st.columns([2.2, 1])
-    with t_col:
-        st.markdown("### 📈 백테스트 성과")
     with s_col:
         cost_pct = st.slider("거래비용 %/교체", 0.0, 1.0, 0.25, 0.05, format="%.2f%%",
                              key="so_cost",
@@ -991,7 +1007,7 @@ def render_so():
     rule_act = rule_active_note(bt, prices,
                                 [SO_FILTER_ASSET] + SO_OFFENSE_ASSETS + SO_DEFENSE_ASSETS)
     settings_dict = {
-        '전략': '쏘 삼성',
+        '전략': '맘·쏘 삼성 (맘 삼성 폐지 후 삼성증권 계좌 통합 운용)',
         '회피 필터': 'SPY 1+3+6+12M 수익률 합 > 0 → 공격'
                     + (' · 리스크오프(cond1) ON' if use_riskoff else ' · 리스크오프 OFF'),
         '거래비용/교체': f"{cost_pct:.2f}%",
@@ -1001,8 +1017,9 @@ def render_so():
         '방어': 'GLD 50% · IEF 50% 고정',
         '벤치마크': ', '.join(BENCHMARKS),
     }
+    render_bt_title(t_col, rule_act)
     render_backtest_section(bt, perf, cost_rate, key_prefix="so",
-                            strat_color='#F59E0B', strat_name='쏘 삼성 전략',
+                            strat_color='#F59E0B', strat_name='맘·쏘 삼성 전략',
                             detail_df=detail_df, settings_dict=settings_dict,
                             excel_detail_df=_build_cf_excel(detail_df, signals, bt, prices, _cf_so, lambda t: t),
                             rule_active=rule_act)
@@ -1148,8 +1165,6 @@ def render_ko():
     # 백테스트
     st.markdown("---")
     t_col, s_col = st.columns([2.2, 1])
-    with t_col:
-        st.markdown("### 📈 백테스트 성과")
     with s_col:
         cost_pct = st.slider("거래비용 %/교체", 0.0, 1.0, 0.25, 0.05, format="%.2f%%",
                              key="ko_cost",
@@ -1191,6 +1206,7 @@ def render_ko():
         '벤치마크': f"{bench_code}({KO_TICKER_NAMES.get(bench_code,'')})",
         '주의': '종목별 상장시점이 달라 초기 구간은 가용 종목만으로 순위(동적 유니버스). ISA/연금 매매용.',
     }
+    render_bt_title(t_col, rule_act)
     render_backtest_section(bt, perf, cost_rate, key_prefix="ko",
                             strat_color='#0EA5E9', strat_name='또 ISA 전략',
                             detail_df=detail_df, settings_dict=settings_dict,
@@ -1320,8 +1336,6 @@ def render_pension():
     # 백테스트
     st.markdown("---")
     t_col, s_col = st.columns([2.2, 1])
-    with t_col:
-        st.markdown("### 📈 백테스트 성과")
     with s_col:
         cost_pct = st.slider("거래비용 %/교체", 0.0, 1.0, 0.25, 0.05, format="%.2f%%",
                              key="pen_cost", help="새로 매수하는 비중만큼 차감(턴오버).")
@@ -1357,6 +1371,7 @@ def render_pension():
         '벤치마크': '나스닥100 · KOSPI200 매수후보유',
         '주의': '단일 종목 보유(집중형). 방어자산 상장시점이 달라 초기는 가용분만 선택. 연금/ISA 매매용.',
     }
+    render_bt_title(t_col, rule_act)
     render_backtest_section(bt, perf, cost_rate, key_prefix="pen",
                             strat_color='#8B5CF6', strat_name='또 연금 전략',
                             detail_df=detail_df, settings_dict=settings_dict,
@@ -1490,8 +1505,6 @@ def render_ssopen():
     # 백테스트
     st.markdown("---")
     t_col, s_col = st.columns([2.2, 1])
-    with t_col:
-        st.markdown("### 📈 백테스트 성과")
     with s_col:
         cost_pct = st.slider("거래비용 %/교체", 0.0, 1.0, 0.25, 0.05, format="%.2f%%",
                              key="ssopen_cost", help="새로 매수하는 비중만큼 차감(턴오버).")
@@ -1527,6 +1540,7 @@ def render_ssopen():
         '벤치마크': '나스닥100 매수후보유',
         '주의': '단일 종목 보유(집중형). 방어자산 상장시점이 달라 초기는 가용분만 선택. 연금/ISA 매매용.',
     }
+    render_bt_title(t_col, rule_act)
     render_backtest_section(bt, perf, cost_rate, key_prefix="ssopen",
                             strat_color='#EC4899', strat_name='쏘 연금 전략',
                             detail_df=detail_df, settings_dict=settings_dict,
@@ -1675,8 +1689,6 @@ def render_mamtax():
     # 백테스트
     st.markdown("---")
     t_col, s_col = st.columns([2.2, 1])
-    with t_col:
-        st.markdown("### 📈 백테스트 성과")
     with s_col:
         cost_pct = st.slider("거래비용 %/교체", 0.0, 1.0, 0.25, 0.05, format="%.2f%%",
                              key="mamtax_cost", help="새로 매수하는 비중만큼 차감(턴오버).")
@@ -1712,6 +1724,7 @@ def render_mamtax():
         '티커': '신호·백테스트=133690·102110·192090(장수), 실운용=379810·278530·192090',
         '주의': '공격 자산 상장시점이 달라 초기는 부분 유니버스(4→10종). 비과세계좌 매매용.',
     }
+    render_bt_title(t_col, rule_act)
     render_backtest_section(bt, perf, cost_rate, key_prefix="mamtax",
                             strat_color='#F97316', strat_name='맘 비과세 전략',
                             detail_df=detail_df, settings_dict=settings_dict,
@@ -1728,14 +1741,13 @@ def render_mamtax():
 # (예: 2026-07은 맘 삼성 탭에 -38.6%가 찍히지만 균등 배분이면 전체는 -17.9%다.)
 
 STRAT_META = [
-    # (키, 표시명, 색)
-    ('meritz',  '또 메리츠',  '#10B981'),
-    ('samsung', '맘 삼성',   '#06B6D4'),
-    ('so',      '쏘 삼성',   '#F59E0B'),
-    ('ko',      '또 ISA',   '#0EA5E9'),
-    ('pen',     '또 연금',   '#8B5CF6'),
-    ('ssopen',  '쏘 연금',   '#EC4899'),
-    ('mamtax',  '맘 비과세', '#F97316'),
+    # (키, 표시명, 색)  ※ 맘 삼성은 2026-08 폐지 (아래 사유)
+    ('meritz',  '또 메리츠',   '#10B981'),
+    ('so',      '맘·쏘 삼성', '#F59E0B'),
+    ('ko',      '또 ISA',    '#0EA5E9'),
+    ('pen',     '또 연금',    '#8B5CF6'),
+    ('ssopen',  '쏘 연금',    '#EC4899'),
+    ('mamtax',  '맘 비과세',  '#F97316'),
 ]
 
 
@@ -1757,7 +1769,6 @@ def build_all_strategy_returns(cost_rate):
             out[key] = bt.set_index('hold_month')['ret_strategy']
 
     _put('meritz',  run_backtest(prices, compute_signals(prices, div_yield), cost=cost_rate))
-    _put('samsung', run_backtest_samsung(prices, compute_signals_samsung(prices), cost=cost_rate))
     _put('so',      run_backtest_so(prices, compute_signals_so(prices), cost=cost_rate))
     if not ko_p.empty:
         _put('ko', run_backtest_ko(ko_p, compute_signals_ko(ko_p), cost=cost_rate))
@@ -1823,7 +1834,7 @@ def render_combined():
     st.markdown("#### 1️⃣ 계좌 비중 입력")
     st.caption("금액 비율(%)을 넣으세요. 합이 100이 아니어도 자동으로 정규화합니다. "
                "0을 넣으면 그 전략은 제외됩니다.")
-    cols = st.columns(7)
+    cols = st.columns(len(STRAT_META))
     raw = {}
     for (key, name, _), c in zip(STRAT_META, cols):
         if key not in R.columns:
@@ -1960,22 +1971,20 @@ def render_combined():
 # ==========================================
 # 탭 배치
 # ==========================================
-tab1, tab2, tab3, tab4, tab5, tab6, tab7, tab8 = st.tabs(
-    ["🇺🇸 또 메리츠", "🇺🇸 맘 삼성", "🇺🇸 쏘 삼성", "🇰🇷 또 ISA", "🇰🇷 또 연금", "🇰🇷 쏘 연금",
+tab1, tab2, tab3, tab4, tab5, tab6, tab7 = st.tabs(
+    ["🇺🇸 또 메리츠", "🇺🇸 맘·쏘 삼성", "🇰🇷 또 ISA", "🇰🇷 또 연금", "🇰🇷 쏘 연금",
      "🇰🇷 맘 비과세", "📊 통합 포트"])
 with tab1:
     render_meritz()
 with tab2:
-    render_samsung()
-with tab3:
     render_so()
-with tab4:
+with tab3:
     render_ko()
-with tab5:
+with tab4:
     render_pension()
-with tab6:
+with tab5:
     render_ssopen()
-with tab7:
+with tab6:
     render_mamtax()
-with tab8:
+with tab7:
     render_combined()
