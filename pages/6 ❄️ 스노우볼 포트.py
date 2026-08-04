@@ -22,7 +22,7 @@ import re
 from utils.snowball import (
     load_monthly_prices, load_dividend_yield,
     # 또 메리츠
-    compute_signals, run_backtest, compute_performance,
+    compute_signals, run_backtest, compute_performance, rule_active_note,
     SIGNAL_ASSETS, OFFENSE_ASSETS, DEFENSE_ASSETS, BENCHMARKS, VIXY_SPIKE,
     # 맘 삼성
     compute_signals_samsung, run_backtest_samsung,
@@ -455,10 +455,20 @@ def build_report_excel(settings_dict, stats_df, detail_df, df_res, cum_df, mdd_d
 
 
 def render_backtest_section(bt, perf, cost_rate, key_prefix, strat_color, strat_name,
-                           detail_df, settings_dict, excel_detail_df=None):
-    """백테스트 카드 + 자산곡선 + 월별 로그 (탭 공용)."""
+                           detail_df, settings_dict, excel_detail_df=None,
+                           rule_active=None):
+    """백테스트 카드 + 자산곡선 + 월별 로그 (탭 공용).
+
+    rule_active: snowball.rule_active_note() 반환값 (note, n_active, n_total) 또는 None.
+                 후보 자산 상장이 늦어 앞 구간이 '더 작은 유니버스'였던 전략에만 붙는다.
+    """
     bms = perf.get('benchmarks', {})
     qqq = bms.get('QQQ')
+
+    # 성과 숫자 바로 위에 붙여야 오해 없이 읽힌다 (숫자는 그대로, 해석만 정직하게)
+    if rule_active:
+        note, n_active, n_total = rule_active
+        st.warning(f"⏳ **규칙 실제 가동 {n_active}개월** / 표시 성과 {n_total}개월 — {note}")
 
     c1, c2, c3, c4, c5, c6 = st.columns(6)
     c1.metric("CAGR", f"{perf['cagr']*100:.1f}%",
@@ -688,10 +698,13 @@ def render_meritz():
         return
     perf = compute_performance(bt)
     detail_df = build_meritz_detail(signals, bt)
+    rule_act = rule_active_note(bt, prices,
+                                SIGNAL_ASSETS + OFFENSE_ASSETS + DEFENSE_ASSETS)
     settings_dict = {
         '전략': '또 메리츠',
         '거래비용/교체': f"{cost_pct:.2f}%",
         '기간': f"{perf['n_months']}개월 ({bt['hold_month'].iloc[0]} ~ {bt['hold_month'].iloc[-1]})",
+        '규칙 실제 가동': f"{rule_act[1]}개월" if rule_act else "전 기간 (후보 전종목 상장 완료 상태로 시작)",
         '공격 자산': ', '.join(OFFENSE_ASSETS),
         '방어 자산': ', '.join(DEFENSE_ASSETS),
         '벤치마크': ', '.join(BENCHMARKS),
@@ -699,7 +712,8 @@ def render_meritz():
     render_backtest_section(bt, perf, cost_rate, key_prefix="meritz",
                             strat_color='#10B981', strat_name='또 메리츠 전략',
                             detail_df=detail_df, settings_dict=settings_dict,
-                            excel_detail_df=build_meritz_detail_excel(signals, bt, prices))
+                            excel_detail_df=build_meritz_detail_excel(signals, bt, prices),
+                            rule_active=rule_act)
 
 
 # ==========================================
@@ -817,11 +831,14 @@ def render_samsung():
         return
     perf = compute_performance(bt)
     detail_df = build_samsung_detail(signals, bt)
+    rule_act = rule_active_note(bt, prices,
+                                SS_FILTER_ASSETS + SS_OFFENSE_ASSETS + SS_DEFENSE_ASSETS)
     settings_dict = {
         '전략': '맘 삼성',
         '진입 필터': f"{'사용' if use_filter else '미사용(OFF)'} · TIP·SPY {filter_win}M MA",
         '거래비용/교체': f"{cost_pct:.2f}%",
         '기간': f"{perf['n_months']}개월 ({bt['hold_month'].iloc[0]} ~ {bt['hold_month'].iloc[-1]})",
+        '규칙 실제 가동': f"{rule_act[1]}개월" if rule_act else "전 기간 (후보 전종목 상장 완료 상태로 시작)",
         '공격': ', '.join(SS_OFFENSE_ASSETS) + ' (12M MA 이격도 > 0, 동일가중)',
         '방어': 'IEF 50% · GLD 50% 고정',
         '벤치마크': ', '.join(BENCHMARKS),
@@ -829,7 +846,8 @@ def render_samsung():
     render_backtest_section(bt, perf, cost_rate, key_prefix="ss",
                             strat_color='#06B6D4', strat_name='맘 삼성 전략',
                             detail_df=detail_df, settings_dict=settings_dict,
-                            excel_detail_df=_build_cf_excel(detail_df, signals, bt, prices, _cf_samsung, lambda t: t))
+                            excel_detail_df=_build_cf_excel(detail_df, signals, bt, prices, _cf_samsung, lambda t: t),
+                            rule_active=rule_act)
 
 
 def render_so():
@@ -969,12 +987,15 @@ def render_so():
         return
     perf = compute_performance(bt)
     detail_df = build_so_detail(signals, bt)
+    rule_act = rule_active_note(bt, prices,
+                                [SO_FILTER_ASSET] + SO_OFFENSE_ASSETS + SO_DEFENSE_ASSETS)
     settings_dict = {
         '전략': '쏘 삼성',
         '회피 필터': 'SPY 1+3+6+12M 수익률 합 > 0 → 공격'
                     + (' · 리스크오프(cond1) ON' if use_riskoff else ' · 리스크오프 OFF'),
         '거래비용/교체': f"{cost_pct:.2f}%",
         '기간': f"{perf['n_months']}개월 ({bt['hold_month'].iloc[0]} ~ {bt['hold_month'].iloc[-1]})",
+        '규칙 실제 가동': f"{rule_act[1]}개월" if rule_act else "전 기간 (후보 전종목 상장 완료 상태로 시작)",
         '공격': ', '.join(SO_OFFENSE_ASSETS) + f' 중 모멘텀 상위 {SO_TOPK} (4M MA>0인 것만, 50:50)',
         '방어': 'GLD 50% · IEF 50% 고정',
         '벤치마크': ', '.join(BENCHMARKS),
@@ -982,7 +1003,8 @@ def render_so():
     render_backtest_section(bt, perf, cost_rate, key_prefix="so",
                             strat_color='#F59E0B', strat_name='쏘 삼성 전략',
                             detail_df=detail_df, settings_dict=settings_dict,
-                            excel_detail_df=_build_cf_excel(detail_df, signals, bt, prices, _cf_so, lambda t: t))
+                            excel_detail_df=_build_cf_excel(detail_df, signals, bt, prices, _cf_so, lambda t: t),
+                            rule_active=rule_act)
 
 
 # ==========================================
@@ -1153,6 +1175,7 @@ def render_ko():
                    f"→ 전략이 수익↑·낙폭↓")
 
     detail_df = build_ko_detail(signals, bt)
+    rule_act = rule_active_note(bt, ko_prices, KO_OFFENSE + KO_DEFENSE)
     off_list = ', '.join(f"{c}" for c in KO_OFFENSE)
     def_list = ', '.join(f"{c}" for c in KO_DEFENSE)
     settings_dict = {
@@ -1163,13 +1186,15 @@ def render_ko():
         '공격': f'[{off_list}] 중 {"+".join(str(w) for w in KO_MOM_WINDOWS)}M 수익률 합 상위 {KO_TOPK}종 '
                 f'(최근 {KO_ABSMOM_WIN}M 수익률 ≥ 0인 것만) 동일가중',
         '방어': f'[{def_list}] 중 {KO_DEF_WIN}M MA 이격도 상위 {KO_DEF_TOPK}종 동일가중(50:50)',
+        '규칙 실제 가동': f"{rule_act[1]}개월" if rule_act else "전 기간 (후보 전종목 상장 완료 상태로 시작)",
         '벤치마크': f"{bench_code}({KO_TICKER_NAMES.get(bench_code,'')})",
         '주의': '종목별 상장시점이 달라 초기 구간은 가용 종목만으로 순위(동적 유니버스). ISA/연금 매매용.',
     }
     render_backtest_section(bt, perf, cost_rate, key_prefix="ko",
                             strat_color='#0EA5E9', strat_name='또 ISA 전략',
                             detail_df=detail_df, settings_dict=settings_dict,
-                            excel_detail_df=_build_cf_excel(detail_df, signals, bt, ko_prices, _cf_ko, lambda t: KO_TICKER_NAMES.get(t, t)))
+                            excel_detail_df=_build_cf_excel(detail_df, signals, bt, ko_prices, _cf_ko, lambda t: KO_TICKER_NAMES.get(t, t)),
+                            rule_active=rule_act)
 
 
 # ==========================================
@@ -1319,11 +1344,13 @@ def render_pension():
         st.caption("📊 참고 벤치마크 — " + " / ".join(bench_bits) + "  → 전략이 수익↑·낙폭↓")
 
     detail_df = build_pen_detail(signals, bt)
+    rule_act = rule_active_note(bt, pen_prices, PEN_OFFENSE + PEN_DEFENSE)
     settings_dict = {
         '전략': '또 연금 (국내 듀얼모멘텀)',
         '위험회피 필터': f'나스닥·KOSPI {PEN_FILTER_WIN}M MA 이격도 하나라도 < 0 → 방어',
         '거래비용/교체': f"{cost_pct:.2f}%",
         '기간': f"{perf['n_months']}개월 ({bt['hold_month'].iloc[0]} ~ {bt['hold_month'].iloc[-1]})",
+        '규칙 실제 가동': f"{rule_act[1]}개월" if rule_act else "전 기간 (후보 전종목 상장 완료 상태로 시작)",
         '공격': f'{PEN_NASDAQ}(나스닥100) vs {PEN_KOSPI}(KOSPI200) 중 {PEN_OFF_WIN}M 수익률 높은 1종',
         '방어': f'[{", ".join(PEN_DEFENSE)}] 중 {PEN_DEF_WIN}M MA 이격도 1위 1종',
         '벤치마크': '나스닥100 · KOSPI200 매수후보유',
@@ -1332,7 +1359,8 @@ def render_pension():
     render_backtest_section(bt, perf, cost_rate, key_prefix="pen",
                             strat_color='#8B5CF6', strat_name='또 연금 전략',
                             detail_df=detail_df, settings_dict=settings_dict,
-                            excel_detail_df=_build_cf_excel(detail_df, signals, bt, pen_prices, _cf_pension, lambda t: PEN_TICKER_NAMES.get(t, t)))
+                            excel_detail_df=_build_cf_excel(detail_df, signals, bt, pen_prices, _cf_pension, lambda t: PEN_TICKER_NAMES.get(t, t)),
+                            rule_active=rule_act)
 
 
 # ==========================================
@@ -1486,11 +1514,13 @@ def render_ssopen():
         st.caption("📊 참고 벤치마크 — " + " / ".join(bench_bits) + "  → 전략이 수익↑·낙폭↓")
 
     detail_df = build_ssopen_detail(signals, bt)
+    rule_act = rule_active_note(bt, ss_prices, [SSOPEN_NASDAQ] + SSOPEN_DEFENSE)
     settings_dict = {
         '전략': '쏘 연금 (국내 나스닥 단일 + cond1)',
         '위험회피 필터': f'cond1: TIP·VWO·VEA 6M 음수 AND (VIXY 6M 음수 또는 ≥ +{int(VIXY_SPIKE*100)}%) → 방어',
         '거래비용/교체': f"{cost_pct:.2f}%",
         '기간': f"{perf['n_months']}개월 ({bt['hold_month'].iloc[0]} ~ {bt['hold_month'].iloc[-1]})",
+        '규칙 실제 가동': f"{rule_act[1]}개월" if rule_act else "전 기간 (후보 전종목 상장 완료 상태로 시작)",
         '공격': f'{SSOPEN_NASDAQ}(미국나스닥100) 단일 100%',
         '방어': f'[{", ".join(SSOPEN_DEFENSE)}] 중 1+3+6+12M 수익률 합 1위 1종',
         '벤치마크': '나스닥100 매수후보유',
@@ -1499,7 +1529,8 @@ def render_ssopen():
     render_backtest_section(bt, perf, cost_rate, key_prefix="ssopen",
                             strat_color='#EC4899', strat_name='쏘 연금 전략',
                             detail_df=detail_df, settings_dict=settings_dict,
-                            excel_detail_df=_build_cf_excel(detail_df, signals, bt, ss_prices, _cf_ssopen, lambda t: SSOPEN_TICKER_NAMES.get(t, t)))
+                            excel_detail_df=_build_cf_excel(detail_df, signals, bt, ss_prices, _cf_ssopen, lambda t: SSOPEN_TICKER_NAMES.get(t, t)),
+                            rule_active=rule_act)
 
 
 # ==========================================
@@ -1666,6 +1697,7 @@ def render_mamtax():
         st.caption("📊 참고 벤치마크 — " + " / ".join(bench_bits) + "  → 전략이 수익↑·낙폭↓")
 
     detail_df = build_mamtax_detail(signals, bt)
+    rule_act = rule_active_note(bt, mp, MAMTAX_OFFENSE + MAMTAX_DEFENSE)
     settings_dict = {
         '전략': '맘 비과세 (글로벌 듀얼모멘텀 + cond1)',
         '공격': '10종 중 12M 수익률 상위4 → 12M 음수 제외 → 승자 균등(듀얼모멘텀)',
@@ -1673,6 +1705,7 @@ def render_mamtax():
         '위험회피 필터': f'cond1: TIP·VWO·VEA 6M 음수 AND (VIXY 6M 음수 또는 ≥ +{int(VIXY_SPIKE*100)}%)',
         '거래비용/교체': f"{cost_pct:.2f}%",
         '기간': f"{perf['n_months']}개월 ({bt['hold_month'].iloc[0]} ~ {bt['hold_month'].iloc[-1]})",
+        '규칙 실제 가동': f"{rule_act[1]}개월" if rule_act else "전 기간 (후보 전종목 상장 완료 상태로 시작)",
         '벤치마크': '나스닥100·KOSPI200 매수후보유',
         '티커': '신호·백테스트=133690·102110·192090(장수), 실운용=379810·278530·192090',
         '주의': '공격 자산 상장시점이 달라 초기는 부분 유니버스(4→10종). 비과세계좌 매매용.',
@@ -1680,7 +1713,8 @@ def render_mamtax():
     render_backtest_section(bt, perf, cost_rate, key_prefix="mamtax",
                             strat_color='#F97316', strat_name='맘 비과세 전략',
                             detail_df=detail_df, settings_dict=settings_dict,
-                            excel_detail_df=_build_cf_excel(detail_df, signals, bt, mp, _cf_mamtax, mamtax_live_name))
+                            excel_detail_df=_build_cf_excel(detail_df, signals, bt, mp, _cf_mamtax, mamtax_live_name),
+                            rule_active=rule_act)
 
 
 # ==========================================

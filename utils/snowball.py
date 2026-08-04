@@ -777,6 +777,54 @@ def compute_performance(bt):
     }
 
 
+def universe_ready_month(prices, candidates):
+    """후보 자산이 전부 상장(=데이터 존재)돼 규칙이 설계대로 돌기 시작한 달.
+
+    후보가 아직 다 상장되지 않은 구간에서는 '상위 N 선택'이 선택이 아니다.
+    예: 맘 비과세는 공격 후보 10종 중 상위 4종을 고르는데, 2015년엔 상장된
+    후보가 4종뿐이라 사실상 전량 매수였다. 즉 백테스트 앞부분은 지금 화면에
+    적힌 규칙이 아니라 '더 작은 유니버스의 다른 전략' 기록이다.
+
+    Returns:
+        Period | None — 전 후보가 갖춰진 첫 달. 끝내 안 갖춰지면 None.
+    """
+    if prices is None or prices.empty or not candidates:
+        return None
+    cands = list(dict.fromkeys(candidates))
+    cols = [c for c in cands if c in prices.columns]
+    if len(cols) < len(cands):
+        return None            # 아예 없는 후보가 있으면 완비 시점 판정 불가
+    avail = prices[cols].notna().sum(axis=1)
+    full = avail[avail == len(cands)]
+    return full.index[0] if len(full) else None
+
+
+def rule_active_note(bt, prices, candidates):
+    """'규칙이 설계대로 돌아간 기간' 안내 문구. 전 기간 정상이면 None.
+
+    표시된 장기 CAGR·MDD가 실은 더 짧은 기간의 규칙 성과임을 숨기지 않기 위한
+    것. 수치 자체는 바꾸지 않고 해석만 정직하게 만든다.
+
+    Returns:
+        (note, n_active, n_total) 또는 None
+    """
+    if bt is None or bt.empty:
+        return None
+    ready = universe_ready_month(prices, candidates)
+    if ready is None:
+        return None
+    n_total = len(bt)
+    n_active = int((bt['hold_month'] >= str(ready)).sum())
+    # 백테스트 시작 시점에 이미 완비 → 알릴 것 없음
+    if n_active >= n_total:
+        return None
+    note = (f"후보 자산이 전부 상장된 건 {ready}부터입니다. "
+            f"위 성과 {n_total}개월 중 규칙이 설계대로 돌아간 건 {n_active}개월이고, "
+            f"그 이전 {n_total - n_active}개월은 후보가 덜 상장돼 사실상 더 작은 "
+            f"유니버스로 돌린 결과입니다.")
+    return note, n_active, n_total
+
+
 # ==========================================
 # 맘 삼성 전략 엔진 (탭 2)
 # ==========================================
