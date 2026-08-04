@@ -465,10 +465,11 @@ def render_backtest_section(bt, perf, cost_rate, key_prefix, strat_color, strat_
     bms = perf.get('benchmarks', {})
     qqq = bms.get('QQQ')
 
-    # 성과 숫자 바로 위에 붙여야 오해 없이 읽힌다 (숫자는 그대로, 해석만 정직하게)
+    # 제목 바로 아래 한 줄로만. (경고 박스는 과했다 — 숫자를 바꾸는 사안이 아니라
+    #  해석 주석이므로 조용히 붙여 둔다. 자세한 설명은 설정표·엑셀 리포트에 있다.)
     if rule_active:
-        note, n_active, n_total = rule_active
-        st.warning(f"⏳ **규칙 실제 가동 {n_active}개월** / 표시 성과 {n_total}개월 — {note}")
+        _, n_active, n_total = rule_active
+        st.caption(f"실제가동 {n_active}개월 / 표시 {n_total}개월")
 
     c1, c2, c3, c4, c5, c6 = st.columns(6)
     c1.metric("CAGR", f"{perf['cagr']*100:.1f}%",
