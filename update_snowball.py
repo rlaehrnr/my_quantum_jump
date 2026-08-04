@@ -31,9 +31,14 @@ SAMSUNG_TICKERS = ['FAS', 'SOXL', 'TMF', 'IEF', 'TBT']
 # 쏘 삼성 공격 유니버스 (SPY는 CORE와 공유). QQQ는 벤치마크로 이미 저장소에 있으나
 # 쏘 삼성 공격 후보이기도 하므로, 자동 갱신 대상에 포함해 최신 조정종가로 관리한다.
 SO_TICKERS      = ['EWY', 'FDN', 'IBB', 'LIT', 'SMH', 'XLE', 'XLF', 'QQQ']
+# 벤치마크 전용 (전략이 보유하진 않지만 snowball.BENCHMARKS가 읽어 차트·성과표에 쓴다).
+# ⚠️ 여기 빠지면 파일이 영원히 안 갱신돼 벤치마크 선만 조용히 과거에 멈춘다.
+#    (실제로 SOXX가 누락돼 2026-06 이후 멈춰 있었다 — 2026-08 수정)
+BENCHMARK_TICKERS = ['SOXX']
 
 # 중복 제거하며 순서 유지한 전체 수집 대상
-ALL_TICKERS = list(dict.fromkeys(CORE_TICKERS + SAMSUNG_TICKERS + SO_TICKERS))
+ALL_TICKERS = list(dict.fromkeys(
+    CORE_TICKERS + SAMSUNG_TICKERS + SO_TICKERS + BENCHMARK_TICKERS))
 
 # 💡 수정주가(배당·분할 반영 종가)로 받을 티커.
 #    수정주가는 배당/분할 발생 시 과거 전체가 소급 재계산되므로 append가 아닌
