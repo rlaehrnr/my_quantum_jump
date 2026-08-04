@@ -1834,10 +1834,14 @@ def _port_stats(r):
     cum = (1 + r).cumprod()
     dd = cum / cum.cummax().clip(lower=1.0) - 1.0
     sd = r.std(ddof=0)
+    # Sortino: 하락 편차만 위험으로 본다. 상승 급등(2026-05 +54% 같은 달)을
+    # 벌주지 않아 비대칭 수익 분포를 가진 이 전략들에 Sharpe보다 공정하다.
+    downside = np.sqrt((np.minimum(r, 0.0) ** 2).mean())
     n = len(r)
     return {
         'n': n, 'cum': cum.iloc[-1] - 1.0, 'cagr': cum.iloc[-1] ** (12.0 / n) - 1.0,
         'mdd': dd.min(), 'sharpe': (r.mean() / sd * np.sqrt(12)) if sd > 0 else 0.0,
+        'sortino': (r.mean() / downside * np.sqrt(12)) if downside > 0 else 0.0,
         'win': (r > 0).mean(), 'equity': cum, 'dd': dd, 'ret': r,
     }
 
@@ -1857,23 +1861,28 @@ def _round_to_step(wdict, step=10):
     return base
 
 
-def recommend_weights(R, states, step=10, wmax=40):
+def recommend_weights(R, states, step=10, wmax=40, aggr=0.5):
     """이번달 추천 비중과 그 근거표.
 
-    골격은 역변동성(리스크 패리티)이다 — 수익률을 예측하지 않는 배분이라
-    과최적화 여지가 가장 적다. 여기에 완만한 기울기 셋만 얹는다:
-      · 품질   : 장기 Sharpe가 높은 전략에 소폭 가중
-      · 계절성 : 다음 보유월의 과거 같은 달 평균 수익률
-      · 국면   : 이번 달 방어 모드면 실제 부담하는 위험이 작으므로 소폭 가중
-    각 기울기는 ±30%로 잘라 한 요소가 배분을 지배하지 못하게 한다.
+    두 극단을 기하평균으로 섞는다 (aggr = 수익 반영 강도, 0~1):
+      · aggr=0 → 순수 역변동성(리스크 패리티). 수익률을 아예 안 보므로
+                 과최적화 여지가 가장 적지만, 잘 버는 전략도 눌러 버린다.
+      · aggr=1 → 순수 Sortino 비례. 잘 버는 쪽에 확실히 실어 준다.
+    Sortino를 쓰는 이유: 하락 편차만 위험으로 봐서, 상승 급등(2026-05 +54%)을
+    벌주지 않는다. 이 전략들처럼 수익 분포가 비대칭이면 Sharpe보다 공정하다.
 
-    ⚠️ 이건 최적해가 아니라 '출발점'이다. 근거표를 같이 보여주는 이유.
+    그 위에 완만한 기울기 둘을 더 얹는다:
+      · 계절성 : 다음 보유월의 과거 같은 달 평균 (±15%, 표본이 얇아 약하게)
+      · 국면   : 이번 달 방어 모드면 부담 위험이 작으므로 ×1.15
+
+    ⚠️ 최적해가 아니라 출발점이다. 근거표와 '이 비중의 과거 성과'를 같이
+       보여주는 이유 — 숫자를 그대로 믿지 말고 직접 비교하라는 뜻.
     """
     rows, score = [], {}
     nmap = dict((k, n) for k, n, _ in STRAT_META)
     hold_month = (int(str(R.index[-1])[-2:]) % 12) + 1     # 다음 보유월
 
-    sh, vol, sea = {}, {}, {}
+    sor, vol, sea, sh = {}, {}, {}, {}
     for k in R.columns:
         r = R[k].dropna()
         if len(r) < 24:
@@ -1881,8 +1890,9 @@ def recommend_weights(R, states, step=10, wmax=40):
         tail = r.tail(36)
         sd = tail.std(ddof=0)
         vol[k] = sd * np.sqrt(12) if sd > 0 else np.nan
-        s = r.std(ddof=0)
-        sh[k] = (r.mean() / s * np.sqrt(12)) if s > 0 else 0.0
+        st_ = _port_stats(r)
+        sor[k] = st_['sortino']
+        sh[k] = st_['sharpe']
         same = r[[int(str(i)[-2:]) == hold_month for i in r.index]]
         sea[k] = same.mean() if len(same) >= 3 else 0.0
 
@@ -1890,7 +1900,11 @@ def recommend_weights(R, states, step=10, wmax=40):
     if not keys:
         return {}, pd.DataFrame()
 
-    def _tilt(vals, lam=0.30):
+    def _norm(d):
+        t = sum(d.values())
+        return {k: v / t for k, v in d.items()} if t > 0 else {k: 1 / len(d) for k in d}
+
+    def _tilt(vals, lam=0.15):
         """값 → 평균 대비 ±lam 배율. 표준편차가 0이면 전부 1.0."""
         a = pd.Series(vals, dtype=float)
         sd = a.std(ddof=0)
@@ -1899,17 +1913,21 @@ def recommend_weights(R, states, step=10, wmax=40):
         z = ((a - a.mean()) / sd).clip(-1.5, 1.5)
         return (1 + lam * z / 1.5).to_dict()
 
-    t_q = _tilt({k: sh[k] for k in keys})
-    t_s = _tilt({k: sea[k] for k in keys}, lam=0.15)   # 계절성은 더 약하게
+    w_risk = _norm({k: 1.0 / vol[k] for k in keys})            # 역변동성
+    w_perf = _norm({k: max(sor[k], 0.05) for k in keys})       # Sortino 비례
+    a = min(max(float(aggr), 0.0), 1.0)
+    t_s = _tilt({k: sea[k] for k in keys})
     for k in keys:
-        inv = 1.0 / vol[k]
         defensive = states.get(k, {}).get('defensive')
         t_r = 1.15 if defensive is True else 1.0
-        score[k] = inv * t_q[k] * t_s[k] * t_r
+        # 기하평균 혼합 — 두 배분 사이를 매끄럽게 오가고 항상 양수를 유지한다
+        score[k] = (w_risk[k] ** (1 - a)) * (w_perf[k] ** a) * t_s[k] * t_r
         rows.append({'전략': nmap.get(k, k),
                      '국면': ('🛡️ 방어' if defensive is True
                               else '⚔️ 공격' if defensive is False else '—'),
-                     '연변동성': vol[k] * 100, 'Sharpe': sh[k],
+                     'CAGR': _port_stats(R[k])['cagr'] * 100,
+                     '연변동성': vol[k] * 100,
+                     'Sortino': sor[k], 'Sharpe': sh[k],
                      f'{hold_month}월 평균': sea[k] * 100,
                      'MDD': _port_stats(R[k])['mdd'] * 100})
 
@@ -1932,8 +1950,11 @@ def recommend_weights(R, states, step=10, wmax=40):
 
     rec = _round_to_step(w, step)
     df = pd.DataFrame(rows)
+    # 반올림 전 값도 같이 보여준다 — 10% 단위로 자르면 슬라이더를 움직여도
+    # 추천이 그대로인 구간이 생기는데, 그때 실제로는 무엇이 움직였는지 보이게.
+    df['계산값'] = [w.get(k, 0) * 100 for k in keys]
     df['추천'] = [rec.get(k, 0) for k in keys]
-    return rec, df.sort_values('추천', ascending=False)
+    return rec, df.sort_values('계산값', ascending=False)
 
 
 def render_combined():
@@ -2046,27 +2067,65 @@ def render_combined():
     # ---- 이번달 추천 비중 ----
     with st.expander("🎯 이번달 추천 비중 (10% 단위)", expanded=True):
         states = build_current_states()
-        rec, rdf = recommend_weights(R, states, step=10)
+        aggr = st.slider(
+            "수익 반영 강도", 0.0, 1.0, 0.5, 0.1, key="comb_aggr",
+            help="0 = 순수 역변동성(위험 균등, 잘 버는 전략도 눌림) / "
+                 "1 = 순수 Sortino 비례(잘 버는 쪽에 확실히 실음)")
+        rec, rdf = recommend_weights(R, states, step=10, aggr=aggr)
         if rec:
             st.markdown("**추천 — " + " · ".join(
                 f"{nmap.get(k, k)} {v}%" for k, v in
                 sorted(rec.items(), key=lambda x: -x[1]) if v > 0) + "**")
-            fmt = {'연변동성': '{:.1f}%', 'Sharpe': '{:.2f}',
-                   'MDD': '{:.1f}%', '추천': '{:.0f}%'}
+
+            # 이 비중을 과거에 그대로 굴렸다면? — 강도를 바꿀 때마다 대가가 보이게
+            def _apply(wmap):
+                sub = R[[k for k in wmap if k in R.columns and wmap[k] > 0]]
+                if sub.empty:
+                    return None
+                ws = pd.Series({k: v for k, v in wmap.items() if k in sub.columns},
+                               dtype=float)
+                m = sub.notna()
+                den = m.mul(ws, axis=1).sum(axis=1)
+                return _port_stats((sub.fillna(0).mul(ws, axis=1).sum(axis=1)
+                                    / den.replace(0, np.nan)).dropna())
+
+            cur = _apply(rec)
+            eqw = _apply({k: 1.0 for k in rec})
+            if cur:
+                m1, m2, m3, m4 = st.columns(4)
+                m1.metric("이 비중의 CAGR", f"{cur['cagr']*100:.1f}%",
+                          delta=(f"균등 대비 {(cur['cagr']-eqw['cagr'])*100:+.1f}%p"
+                                 if eqw else None))
+                m2.metric("MDD", f"{cur['mdd']*100:.1f}%",
+                          delta=(f"{(cur['mdd']-eqw['mdd'])*100:+.1f}%p" if eqw else None),
+                          delta_color="inverse")
+                m3.metric("Sortino", f"{cur['sortino']:.2f}",
+                          delta=(f"{cur['sortino']-eqw['sortino']:+.2f}" if eqw else None))
+                m4.metric("Sharpe", f"{cur['sharpe']:.2f}",
+                          delta=(f"{cur['sharpe']-eqw['sharpe']:+.2f}" if eqw else None))
+                st.caption("↑ 이 비중을 공통구간에 그대로 적용했을 때의 과거 성과입니다 "
+                           "(비교 대상은 같은 전략들의 균등 배분). "
+                           "슬라이더를 좌우로 움직여 수익과 낙폭이 어떻게 맞바뀌는지 보세요.")
+
+            fmt = {'CAGR': '{:.1f}%', '연변동성': '{:.1f}%', 'Sortino': '{:.2f}',
+                   'Sharpe': '{:.2f}', 'MDD': '{:.1f}%',
+                   '계산값': '{:.1f}%', '추천': '{:.0f}%'}
             fmt.update({c: '{:+.2f}%' for c in rdf.columns if c.endswith('월 평균')})
             st.dataframe(rdf.style.format(fmt),
                          width="stretch", hide_index=True, key="comb_rec")
             st.button("이 비중으로 채우기", key="comb_apply",
                       on_click=_apply_rec, args=(rec,))
             st.caption(
-                "**계산 방식** — 뼈대는 역변동성(리스크 패리티)입니다. 수익률을 예측하지 않는 "
-                "배분이라 과최적화 여지가 가장 적습니다. 여기에 ①장기 Sharpe ②다음 보유월의 "
-                "과거 같은 달 평균 ③이번 달 방어 여부를 각각 ±30% 안쪽의 완만한 기울기로만 "
+                "**계산 방식** — 역변동성(위험 균등)과 Sortino 비례(수익 위주) 두 배분을 "
+                "위 슬라이더 값으로 기하평균해 섞습니다. Sortino를 쓰는 건 하락 편차만 "
+                "위험으로 봐서, 2026-05 +54% 같은 상승 급등을 벌주지 않기 때문입니다. "
+                "여기에 다음 보유월의 과거 같은 달 평균(±15%)과 이번 달 방어 여부(×1.15)를 "
                 "얹고, 한 전략이 40%를 넘지 않게 잘랐습니다.")
             st.caption(
                 "⚠️ **최적해가 아니라 출발점입니다.** 계절성은 전략당 표본이 8~15개월뿐이고, "
-                "MDD·Sharpe는 과거를 보고 만든 규칙의 백테스트 값이라 실전보다 낙관적입니다. "
-                "근거표를 같이 띄우는 건 숫자를 그대로 믿지 마시라는 뜻입니다.")
+                "Sortino·MDD는 과거를 보고 만든 규칙의 백테스트 값이라 실전보다 낙관적입니다. "
+                "강도를 1.0까지 올리면 과거에 잘한 전략에 그만큼 몰리는데, 그게 앞으로도 "
+                "잘한다는 보장은 없습니다.")
         else:
             st.info("추천을 계산할 만큼 이력이 충분하지 않습니다.")
 
@@ -2088,21 +2147,24 @@ def render_combined():
 
     st.markdown("#### 2️⃣ 통합 성과")
     if first_full:
-        st.caption(f"⏳ 7개 전략이 모두 존재하는 건 **{first_full}**부터입니다. "
+        st.caption(f"⏳ 선택한 전략이 모두 존재하는 건 **{first_full}**부터입니다. "
                    f"그 이전은 당시 가용한 전략끼리 비중을 재정규화해 계산했습니다.")
-    c1, c2, c3, c4, c5 = st.columns(5)
+    c1, c2, c3, c4, c5, c6 = st.columns(6)
     base = s_full or s_all
     c1.metric("CAGR", f"{base['cagr']*100:.1f}%")
     c2.metric("MDD", f"{base['mdd']*100:.1f}%", delta_color="inverse")
-    c3.metric("샤프 비율", f"{base['sharpe']:.2f}")
-    c4.metric("누적 수익", f"{base['cum']*100:,.0f}%")
-    c5.metric("승률", f"{base['win']*100:.0f}%",
-              delta=f"{base['n']}개월")
+    c3.metric("Sortino", f"{base['sortino']:.2f}",
+              help="하락 편차만 위험으로 보는 지표. 상승 급등을 벌주지 않아 "
+                   "수익 분포가 비대칭인 이 전략들에는 Sharpe보다 공정하다.")
+    c4.metric("Sharpe", f"{base['sharpe']:.2f}",
+              help="상승·하락 변동성을 똑같이 위험으로 본다. 참고용.")
+    c5.metric("누적 수익", f"{base['cum']*100:,.0f}%")
+    c6.metric("승률", f"{base['win']*100:.0f}%", delta=f"{base['n']}개월")
     if first_full and s_all:
         st.caption(f"※ 위 지표는 전 전략 공통구간({first_full}~) 기준입니다. "
                    f"전체 구간({s_all['n']}개월) 기준으로는 "
                    f"CAGR {s_all['cagr']*100:.1f}% · MDD {s_all['mdd']*100:.1f}% · "
-                   f"Sharpe {s_all['sharpe']:.2f}.")
+                   f"Sortino {s_all['sortino']:.2f} · Sharpe {s_all['sharpe']:.2f}.")
 
     # ---- 개별 vs 통합 비교표 ----
     st.markdown("#### 3️⃣ 개별 전략 vs 통합 (공통구간, 같은 자로 비교)")
@@ -2114,14 +2176,16 @@ def render_combined():
         if not s:
             continue
         rows.append({'전략': nmap[key], '비중': f"{W[key]*100:.1f}%",
-                     'CAGR': s['cagr']*100, 'MDD': s['mdd']*100, 'Sharpe': s['sharpe'],
+                     'CAGR': s['cagr']*100, 'MDD': s['mdd']*100,
+                     'Sortino': s['sortino'], 'Sharpe': s['sharpe'],
                      '2026-07': R.loc['2026-07', key]*100 if '2026-07' in R.index else np.nan})
     rows.append({'전략': '★ 통합 포트', '비중': '100%',
-                 'CAGR': base['cagr']*100, 'MDD': base['mdd']*100, 'Sharpe': base['sharpe'],
+                 'CAGR': base['cagr']*100, 'MDD': base['mdd']*100,
+                 'Sortino': base['sortino'], 'Sharpe': base['sharpe'],
                  '2026-07': port.get('2026-07', np.nan)*100})
     cmp_df = pd.DataFrame(rows)
     st.dataframe(
-        cmp_df.style.format({'CAGR': '{:.2f}%', 'MDD': '{:.2f}%',
+        cmp_df.style.format({'CAGR': '{:.2f}%', 'MDD': '{:.2f}%', 'Sortino': '{:.2f}',
                              'Sharpe': '{:.2f}', '2026-07': '{:.2f}%'})
         .apply(lambda s: ['font-weight:800; background-color:rgba(59,130,246,.15)'
                           if v == '★ 통합 포트' else '' for v in cmp_df['전략']], axis=0),
