@@ -1597,11 +1597,12 @@ def render_mamtax():
     col_off, col_def = st.columns(2)
     with col_off:
         is_active = not defensive_now
-        label = "⚔️ 공격 (12M 수익률 상위4·양수 균등)" + ("" if is_active else "  · 비활성")
+        label = f"⚔️ 공격 (12M 수익률 상위{MAMTAX_TOP_OFF}·양수 균등)" + ("" if is_active else "  · 비활성")
         st.markdown(f"<div style='font-weight:800; font-size:15px; margin-bottom:4px; "
                     f"color:{'#10B981' if is_active else '#9CA3AF'};'>{label}</div>", unsafe_allow_html=True)
-        st.markdown("<div style='font-size:11px; color:#9CA3AF; margin-bottom:2px;'>10종 중 12M 수익률 상위 4위 → "
-                    "12M 음수 제외 → 남은 승자 균등(듀얼모멘텀)</div>", unsafe_allow_html=True)
+        st.markdown(f"<div style='font-size:11px; color:#9CA3AF; margin-bottom:2px;'>10종 중 12M 수익률 "
+                    f"상위 {MAMTAX_TOP_OFF}위 → 12M 음수 제외 → 남은 승자 균등(듀얼모멘텀)</div>",
+                    unsafe_allow_html=True)
         ranked = sorted(off_scores, key=off_scores.get, reverse=True)
         rows = []
         for rk, t in enumerate(ranked, 1):
@@ -1700,7 +1701,7 @@ def render_mamtax():
     rule_act = rule_active_note(bt, mp, MAMTAX_OFFENSE + MAMTAX_DEFENSE)
     settings_dict = {
         '전략': '맘 비과세 (글로벌 듀얼모멘텀 + cond1)',
-        '공격': '10종 중 12M 수익률 상위4 → 12M 음수 제외 → 승자 균등(듀얼모멘텀)',
+        '공격': f'10종 중 12M 수익률 상위{MAMTAX_TOP_OFF} → 12M 음수 제외 → 승자 균등(듀얼모멘텀)',
         '방어': '6종 중 3M MA이격도 상위2, 각 50% (cond1 발동 시)',
         '위험회피 필터': f'cond1: TIP·VWO·VEA 6M 음수 AND (VIXY 6M 음수 또는 ≥ +{int(VIXY_SPIKE*100)}%)',
         '거래비용/교체': f"{cost_pct:.2f}%",
@@ -1718,10 +1719,249 @@ def render_mamtax():
 
 
 # ==========================================
+# 통합 포트 (탭 8) — 7개 전략을 실제 비중으로 합산
+# ==========================================
+#
+# 탭을 하나씩 보면 그달 제일 아픈 숫자만 눈에 들어온다. 실제 자산은 7개 계좌에
+# 나뉘어 있으므로, 전체가 얼마나 흔들렸는지는 비중을 넣어 합쳐야 보인다.
+# (예: 2026-07은 맘 삼성 탭에 -38.6%가 찍히지만 균등 배분이면 전체는 -17.9%다.)
+
+STRAT_META = [
+    # (키, 표시명, 색)
+    ('meritz',  '또 메리츠',  '#10B981'),
+    ('samsung', '맘 삼성',   '#06B6D4'),
+    ('so',      '쏘 삼성',   '#F59E0B'),
+    ('ko',      '또 ISA',   '#0EA5E9'),
+    ('pen',     '또 연금',   '#8B5CF6'),
+    ('ssopen',  '쏘 연금',   '#EC4899'),
+    ('mamtax',  '맘 비과세', '#F97316'),
+]
+
+
+@st.cache_data(ttl="1h", show_spinner=False)
+def build_all_strategy_returns(cost_rate):
+    """7개 전략의 월별 순수익률을 한 프레임으로 (index=보유월 문자열).
+
+    각 탭이 쓰는 것과 동일한 신호·백테스트 함수를 그대로 호출한다.
+    비어 있는 달(전략마다 시작 시점이 다름)은 NaN.
+    """
+    ko_p = load_ko_prices()
+    pen_p = load_pen_prices()
+    ss_p = load_ssopen_prices()
+    mp = load_mamtax_prices()
+    out = {}
+
+    def _put(key, bt):
+        if bt is not None and not bt.empty:
+            out[key] = bt.set_index('hold_month')['ret_strategy']
+
+    _put('meritz',  run_backtest(prices, compute_signals(prices, div_yield), cost=cost_rate))
+    _put('samsung', run_backtest_samsung(prices, compute_signals_samsung(prices), cost=cost_rate))
+    _put('so',      run_backtest_so(prices, compute_signals_so(prices), cost=cost_rate))
+    if not ko_p.empty:
+        _put('ko', run_backtest_ko(ko_p, compute_signals_ko(ko_p), cost=cost_rate))
+    if not pen_p.empty:
+        _put('pen', run_backtest_pension(pen_p, compute_signals_pension(pen_p), cost=cost_rate))
+    if not ss_p.empty:
+        _put('ssopen', run_backtest_ssopen(ss_p, compute_signals_ssopen(ss_p, prices), cost=cost_rate))
+    if not mp.empty:
+        _put('mamtax', run_backtest_mamtax(mp, compute_signals_mamtax(mp, prices), cost=cost_rate))
+
+    return pd.DataFrame(out).sort_index()
+
+
+def _shade_signed(v, cap):
+    """음수=빨강 / 양수=초록 배경. matplotlib 없이 인라인 rgba로 처리.
+    (Styler.background_gradient는 matplotlib을 요구하는데 이 레포엔 의존성이 없다.)"""
+    if pd.isna(v) or cap <= 0:
+        return ''
+    a = min(abs(v) / cap, 1.0) * 0.55
+    return f"background-color: rgba({'239,68,68' if v < 0 else '34,197,94'},{a:.3f})"
+
+
+def _shade_corr(v):
+    """상관계수 0~1 → 초록에서 빨강으로."""
+    if pd.isna(v):
+        return ''
+    a = min(max(float(v), 0.0), 1.0) * 0.55
+    return f"background-color: rgba(239,68,68,{a:.3f})"
+
+
+def _port_stats(r):
+    """월수익률 시리즈 → 성과지표."""
+    r = r.dropna()
+    if len(r) < 2:
+        return None
+    cum = (1 + r).cumprod()
+    dd = cum / cum.cummax().clip(lower=1.0) - 1.0
+    sd = r.std(ddof=0)
+    n = len(r)
+    return {
+        'n': n, 'cum': cum.iloc[-1] - 1.0, 'cagr': cum.iloc[-1] ** (12.0 / n) - 1.0,
+        'mdd': dd.min(), 'sharpe': (r.mean() / sd * np.sqrt(12)) if sd > 0 else 0.0,
+        'win': (r > 0).mean(), 'equity': cum, 'dd': dd, 'ret': r,
+    }
+
+
+def render_combined():
+    st.markdown("### 📊 통합 포트 — 내 실제 비중으로 합산")
+    st.caption("탭별로 보면 그달 제일 아픈 숫자만 보입니다. 계좌 비중을 넣으면 "
+               "전체 자산이 실제로 얼마나 움직였는지 한 화면에서 보입니다.")
+
+    cost_pct = st.number_input("거래비용 (%/교체)", 0.0, 1.0, 0.25, 0.05,
+                               key="comb_cost", help="7개 전략에 동일 적용")
+    cost_rate = cost_pct / 100.0
+
+    with st.spinner("7개 전략 백테스트 중..."):
+        R = build_all_strategy_returns(cost_rate)
+    if R.empty:
+        st.error("전략 수익률을 계산할 수 없습니다.")
+        return
+
+    # ---- 비중 입력 ----
+    st.markdown("#### 1️⃣ 계좌 비중 입력")
+    st.caption("금액 비율(%)을 넣으세요. 합이 100이 아니어도 자동으로 정규화합니다. "
+               "0을 넣으면 그 전략은 제외됩니다.")
+    cols = st.columns(7)
+    raw = {}
+    for (key, name, _), c in zip(STRAT_META, cols):
+        if key not in R.columns:
+            continue
+        raw[key] = c.number_input(name, min_value=0.0, max_value=100.0,
+                                  value=100.0 / len(STRAT_META), step=1.0,
+                                  key=f"w_{key}", format="%.1f")
+    tot = sum(raw.values())
+    if tot <= 0:
+        st.warning("비중을 하나 이상 0보다 크게 넣어주세요.")
+        return
+    W = {k: v / tot for k, v in raw.items() if v > 0}
+
+    wtxt = " · ".join(f"{dict((k, n) for k, n, _ in STRAT_META)[k]} {w*100:.1f}%"
+                      for k, w in W.items())
+    st.caption(f"정규화 비중 — {wtxt}  (입력 합계 {tot:.1f})")
+
+    # ---- 합산 ----
+    # 전략마다 시작월이 다르다. 그달 존재하는 전략들끼리 비중을 다시 정규화해
+    # '없는 전략은 현금'이 아니라 '있는 것들에 비례 배분'으로 처리한다.
+    sub = R[list(W)]
+    wser = pd.Series(W)
+    mask = sub.notna()
+    wsum = mask.mul(wser, axis=1).sum(axis=1)
+    port = sub.fillna(0).mul(wser, axis=1).sum(axis=1) / wsum.replace(0, np.nan)
+    port = port.dropna()
+
+    full = mask.all(axis=1)
+    first_full = full[full].index[0] if full.any() else None
+
+    s_all = _port_stats(port)
+    s_full = _port_stats(port[port.index >= first_full]) if first_full else None
+
+    st.markdown("#### 2️⃣ 통합 성과")
+    if first_full:
+        st.caption(f"⏳ 7개 전략이 모두 존재하는 건 **{first_full}**부터입니다. "
+                   f"그 이전은 당시 가용한 전략끼리 비중을 재정규화해 계산했습니다.")
+    c1, c2, c3, c4, c5 = st.columns(5)
+    base = s_full or s_all
+    c1.metric("CAGR", f"{base['cagr']*100:.1f}%")
+    c2.metric("MDD", f"{base['mdd']*100:.1f}%", delta_color="inverse")
+    c3.metric("샤프 비율", f"{base['sharpe']:.2f}")
+    c4.metric("누적 수익", f"{base['cum']*100:,.0f}%")
+    c5.metric("승률", f"{base['win']*100:.0f}%",
+              delta=f"{base['n']}개월")
+    if first_full and s_all:
+        st.caption(f"※ 위 지표는 전 전략 공통구간({first_full}~) 기준입니다. "
+                   f"전체 구간({s_all['n']}개월) 기준으로는 "
+                   f"CAGR {s_all['cagr']*100:.1f}% · MDD {s_all['mdd']*100:.1f}% · "
+                   f"Sharpe {s_all['sharpe']:.2f}.")
+
+    # ---- 개별 vs 통합 비교표 ----
+    st.markdown("#### 3️⃣ 개별 전략 vs 통합 (공통구간, 같은 자로 비교)")
+    span = base['ret'].index
+    rows = []
+    nmap = dict((k, n) for k, n, _ in STRAT_META)
+    for key in W:
+        s = _port_stats(R.loc[span, key])
+        if not s:
+            continue
+        rows.append({'전략': nmap[key], '비중': f"{W[key]*100:.1f}%",
+                     'CAGR': s['cagr']*100, 'MDD': s['mdd']*100, 'Sharpe': s['sharpe'],
+                     '2026-07': R.loc['2026-07', key]*100 if '2026-07' in R.index else np.nan})
+    rows.append({'전략': '★ 통합 포트', '비중': '100%',
+                 'CAGR': base['cagr']*100, 'MDD': base['mdd']*100, 'Sharpe': base['sharpe'],
+                 '2026-07': port.get('2026-07', np.nan)*100})
+    cmp_df = pd.DataFrame(rows)
+    st.dataframe(
+        cmp_df.style.format({'CAGR': '{:.2f}%', 'MDD': '{:.2f}%',
+                             'Sharpe': '{:.2f}', '2026-07': '{:.2f}%'})
+        .apply(lambda s: ['font-weight:800; background-color:rgba(59,130,246,.15)'
+                          if v == '★ 통합 포트' else '' for v in cmp_df['전략']], axis=0),
+        width="stretch", hide_index=True, key="comb_cmp")
+    best = cmp_df.iloc[:-1]['Sharpe'].max()
+    if base['sharpe'] > best:
+        st.success(f"✅ 통합 Sharpe {base['sharpe']:.2f} — 개별 최고({best:.2f})보다 높습니다. "
+                   f"상관관계가 낮아 분산에서 생기는 이득입니다.")
+
+    # ---- 자산곡선 ----
+    st.markdown("#### 4️⃣ 자산곡선 & 낙폭")
+    fig = go.Figure()
+    for key in W:
+        s = _port_stats(R.loc[span, key])
+        if not s:
+            continue
+        col = dict((k, c) for k, _, c in STRAT_META)[key]
+        fig.add_trace(go.Scatter(x=list(s['equity'].index), y=s['equity'].values,
+                                 name=nmap[key], line=dict(width=1.2, color=col),
+                                 opacity=0.45))
+    fig.add_trace(go.Scatter(x=list(base['equity'].index), y=base['equity'].values,
+                             name='★ 통합 포트', line=dict(width=3.4, color='#FFFFFF')))
+    fig.update_layout(height=420, yaxis_type='log', template='plotly_dark',
+                      yaxis_title='누적 (로그)', margin=dict(l=10, r=10, t=30, b=10),
+                      legend=dict(orientation='h', y=1.12))
+    st.plotly_chart(fig, width="stretch", key="comb_eq")
+
+    fig2 = go.Figure()
+    fig2.add_trace(go.Scatter(x=list(base['dd'].index), y=base['dd'].values*100,
+                              fill='tozeroy', name='통합 낙폭',
+                              line=dict(color='#EF4444', width=1.5)))
+    fig2.update_layout(height=240, template='plotly_dark', yaxis_title='낙폭 (%)',
+                       margin=dict(l=10, r=10, t=10, b=10), showlegend=False)
+    st.plotly_chart(fig2, width="stretch", key="comb_dd")
+
+    # ---- 기여도 ----
+    st.markdown("#### 5️⃣ 특정 달 기여도 — 그달 전체를 누가 끌어내렸나")
+    months = list(base['ret'].index)[::-1]
+    pick = st.selectbox("월 선택", months, index=0, key="comb_month")
+    crows = []
+    for key in W:
+        r = R.loc[pick, key] if pick in R.index else np.nan
+        if pd.isna(r):
+            continue
+        crows.append({'전략': nmap[key], '비중': W[key]*100,
+                      '그달 수익률': r*100, '기여도(%p)': r*W[key]*100})
+    cdf = pd.DataFrame(crows).sort_values('기여도(%p)')
+    cap = cdf['기여도(%p)'].abs().max() if not cdf.empty else 0.0
+    st.dataframe(cdf.style.format({'비중': '{:.1f}%', '그달 수익률': '{:.2f}%',
+                                   '기여도(%p)': '{:+.2f}'})
+                 .map(lambda v: _shade_signed(v, cap), subset=['기여도(%p)']),
+                 width="stretch", hide_index=True, key="comb_contrib")
+    st.caption(f"**{pick} 통합 수익률 = {port.get(pick, np.nan)*100:.2f}%** "
+               f"(기여도 합계). 개별 탭의 큰 숫자와 전체 영향의 차이를 확인하세요.")
+
+    # ---- 상관관계 ----
+    st.markdown("#### 6️⃣ 전략 간 상관관계 (공통구간 월수익률)")
+    st.caption("낮을수록 분산 효과가 큽니다. 다만 폭락장에서는 상관이 함께 올라가므로, "
+               "분산은 구덩이를 얕게 만들 뿐 피하게 해주지는 않습니다.")
+    corr = R.loc[span, list(W)].rename(columns=nmap).corr()
+    st.dataframe(corr.style.format('{:.2f}').map(_shade_corr),
+                 width="stretch", key="comb_corr")
+
+
+# ==========================================
 # 탭 배치
 # ==========================================
-tab1, tab2, tab3, tab4, tab5, tab6, tab7 = st.tabs(
-    ["🇺🇸 또 메리츠", "🇺🇸 맘 삼성", "🇺🇸 쏘 삼성", "🇰🇷 또 ISA", "🇰🇷 또 연금", "🇰🇷 쏘 연금", "🇰🇷 맘 비과세"])
+tab1, tab2, tab3, tab4, tab5, tab6, tab7, tab8 = st.tabs(
+    ["🇺🇸 또 메리츠", "🇺🇸 맘 삼성", "🇺🇸 쏘 삼성", "🇰🇷 또 ISA", "🇰🇷 또 연금", "🇰🇷 쏘 연금",
+     "🇰🇷 맘 비과세", "📊 통합 포트"])
 with tab1:
     render_meritz()
 with tab2:
@@ -1736,3 +1976,5 @@ with tab6:
     render_ssopen()
 with tab7:
     render_mamtax()
+with tab8:
+    render_combined()
