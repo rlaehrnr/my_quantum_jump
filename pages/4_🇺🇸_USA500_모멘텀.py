@@ -21,8 +21,12 @@ from utils.us_helpers import (
     get_spx_history_cached, generate_excel_report_cached, 
     calc_us_momentum, get_triple_momentum_us,
     run_backtest_triple_us_m4, get_multi4_cond1_map, get_multi4_start_ym,
-    get_benchmark_monthly_returns
+    get_benchmark_monthly_returns, prefetch_yf
 )
+
+# 이 페이지가 쓰는 지수·ETF 일봉을 한 번에 병렬로 받아 둔다.
+# (안 하면 티커별·날짜별·함수별로 yfinance를 11번 순차 호출해 콜드 로드가 5초 가까이 늘어난다)
+prefetch_yf(['^GSPC', '^IXIC', 'SPY', 'QQQ'])
 
 # ── 전략 공통 파라미터 (라이브 = 백테스트 기본값, 한 곳에서 관리하여 동일성 보장) ──
 STRAT_CUTOFF_N = 100   # 교집합 추출 기준: 3-1·6-1·12-1 각 지표 상위 N위 (라이브·백테스트 공통)

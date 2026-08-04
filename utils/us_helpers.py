@@ -4,7 +4,62 @@ from datetime import datetime, timedelta
 import FinanceDataReader as fdr
 import yfinance as yf
 import io
+import time
+import threading
+from concurrent.futures import ThreadPoolExecutor
 import streamlit as st
+
+
+# ==========================================================================
+# yfinance 일봉 메모 + 병렬 선반입
+# ==========================================================================
+# USA500 페이지는 티커 2종(^GSPC·^IXIC)을 날짜·함수별로 8번 따로 받고 있었다.
+# 거기에 ^GSPC 전체이력, SPY·QQQ까지 더해 콜드 로드에 yfinance 호출이 11번,
+# 4.8초가 들었다. 티커별 '전체 이력'을 한 번만 받아 필요한 구간을 잘라 쓰면
+# 호출이 4번으로 줄고, 그 4번도 병렬로 나간다.
+#
+# 자르기가 안전한 이유: ^GSPC·^IXIC는 지수라 배당·분할 조정이 없어 조회
+# 구간이 달라도 같은 날짜의 값이 동일하다. SPY·QQQ는 원래부터 1998년~현재
+# 전체를 받고 있어 구간이 바뀌지 않는다.
+#
+# 워커 스레드에서는 st.cache_data를 쓰지 않는다(ScriptRunContext가 없어
+# 캐시를 우회하고 경고를 뱉는다) — 평범한 dict + Lock을 쓴다.
+_YF_TTL = 3600.0
+_YF_MEMO = {}
+_YF_LOCK = threading.Lock()
+
+
+def _yf_full(ticker, start='1998-01-01'):
+    """티커 전체 일봉. 프로세스 안에서 (ticker,start)당 1회만 실제로 받는다."""
+    key = f"{ticker}|{start}"
+    with _YF_LOCK:
+        hit = _YF_MEMO.get(key)
+    if hit is not None and (time.time() - hit[0]) <= _YF_TTL:
+        return hit[1]
+    try:
+        df = yf.Ticker(ticker).history(start=start)
+        if df is not None and not df.empty and df.index.tz is not None:
+            df.index = df.index.tz_localize(None)
+        if df is None:
+            df = pd.DataFrame()
+    except Exception:
+        df = pd.DataFrame()
+    with _YF_LOCK:
+        _YF_MEMO[key] = (time.time(), df)
+    return df
+
+
+def prefetch_yf(tickers, start='1998-01-01', workers=8):
+    """여러 티커의 전체 일봉을 병렬로 미리 받아 메모를 채운다.
+
+    페이지 상단에서 한 번 불러 두면 이후 개별 함수들은 메모 히트로 즉시 끝난다.
+    실패는 조용히 무시 — 각 함수가 FDR 폴백을 그대로 갖고 있다.
+    """
+    todo = [t for t in dict.fromkeys(tickers) if t]
+    if not todo:
+        return
+    with ThreadPoolExecutor(max_workers=min(workers, len(todo))) as ex:
+        list(ex.map(lambda t: _yf_full(t, start), todo))
 
 def preprocess_us_data(df, is_daily=False):
     col_mapping = {
@@ -92,16 +147,19 @@ def robust_get_us_ma_all(target_date_str, ticker='^GSPC'):
         start_date = target_date - pd.Timedelta(days=450)
         end_date = target_date + pd.Timedelta(days=2)
         
-        df = pd.DataFrame()
-        try:
-            df = yf.Ticker(ticker).history(start=start_date.strftime('%Y-%m-%d'), end=end_date.strftime('%Y-%m-%d'))
-            if not df.empty and df.index.tz is not None: df.index = df.index.tz_localize(None)
-        except: pass
+        # 전체 이력을 메모에서 받아 필요한 구간만 자른다 (지수라 구간 무관하게 동일값)
+        full = _yf_full(ticker)
+        df = full.loc[(full.index >= start_date) & (full.index <= end_date)].copy() \
+            if not full.empty else pd.DataFrame()
         if df.empty:
             df = fdr.DataReader('US500' if ticker == '^GSPC' else 'IXIC', start_date, end_date)
         if df.empty: return 0.0, {}
-        
+
         df.index = pd.to_datetime(df.index).normalize()
+        # 장 시작 전에는 yfinance가 '오늘' 행을 종가 NaN으로 끼워 준다.
+        # 그대로 iloc[-1]을 잡으면 현재가·수익률이 통째로 nan이 된다.
+        if 'Close' in df.columns:
+            df = df.dropna(subset=['Close'])
         df = df[df.index <= target_date]
         if df.empty: return 0.0, {}
         
@@ -124,16 +182,18 @@ def robust_get_us_idx_return(target_date_str, ticker='^GSPC'):
         start_date = target_date - pd.Timedelta(days=150)
         end_date = target_date + pd.Timedelta(days=2)
         
-        df = pd.DataFrame()
-        try:
-            df = yf.Ticker(ticker).history(start=start_date.strftime('%Y-%m-%d'), end=end_date.strftime('%Y-%m-%d'))
-            if not df.empty and df.index.tz is not None: df.index = df.index.tz_localize(None)
-        except: pass
+        full = _yf_full(ticker)
+        df = full.loc[(full.index >= start_date) & (full.index <= end_date)].copy() \
+            if not full.empty else pd.DataFrame()
         if df.empty:
             df = fdr.DataReader('US500' if ticker == '^GSPC' else 'IXIC', start_date, end_date)
         if df.empty: return 0.0, 0.0
-        
+
         df.index = pd.to_datetime(df.index).normalize()
+        # 장 시작 전에는 yfinance가 '오늘' 행을 종가 NaN으로 끼워 준다.
+        # 그대로 iloc[-1]을 잡으면 현재가·수익률이 통째로 nan이 된다.
+        if 'Close' in df.columns:
+            df = df.dropna(subset=['Close'])
         df = df[df.index <= target_date]
         if df.empty: return 0.0, 0.0
         
@@ -158,11 +218,7 @@ def robust_get_us_idx_return(target_date_str, ticker='^GSPC'):
 @st.cache_data(ttl=86400, show_spinner=False)
 def get_spx_history_cached():
     try:
-        spx = pd.DataFrame()
-        try:
-            spx = yf.Ticker('^GSPC').history(start='1998-01-01')
-            if not spx.empty and spx.index.tz is not None: spx.index = spx.index.tz_localize(None)
-        except: pass
+        spx = _yf_full('^GSPC').copy()
         if spx.empty: spx = fdr.DataReader('US500', '1998-01-01')
         if not spx.empty: spx.index = pd.to_datetime(spx.index).normalize()
         return spx
@@ -566,14 +622,9 @@ def get_benchmark_monthly_returns():
     cols = {}
     for name in ['SPY', 'QQQ']:
         s = None
-        try:
-            h = yf.Ticker(name).history(start='1998-01-01')
-            if not h.empty:
-                if h.index.tz is not None:
-                    h.index = h.index.tz_localize(None)
-                s = h['Close']
-        except Exception:
-            s = None
+        h = _yf_full(name)
+        if not h.empty and 'Close' in h.columns:
+            s = h['Close']
         if s is None or len(s) == 0:
             try:
                 d = fdr.DataReader(name, '1998-01-01')
