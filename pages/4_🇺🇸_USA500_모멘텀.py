@@ -26,7 +26,8 @@ from utils.us_helpers import (
 
 # ── 전략 공통 파라미터 (라이브 = 백테스트 기본값, 한 곳에서 관리하여 동일성 보장) ──
 STRAT_CUTOFF_N = 100   # 교집합 추출 기준: 3-1·6-1·12-1 각 지표 상위 N위 (라이브·백테스트 공통)
-STRAT_TOP_N = 10       # 매수 종목 수(12-1 정렬 상위 N)
+STRAT_RANK_START = 3   # 매수 시작 순위(12-1 정렬)
+STRAT_RANK_END = 8     # 매수 종료 순위(12-1 정렬)
 
 inject_custom_css()
 
@@ -132,16 +133,18 @@ with tab1:
         with col_c_t:
             st.markdown(f"<h4 style='margin:0;'>🎯 종합 모멘텀 <span style='font-size:13px; color:gray;'>(3·6·12 교집합 · {len(df_combo_t1)}개)</span></h4>", unsafe_allow_html=True)
         with col_c_i:
-            top_n_combo = st.number_input("몇 개 투자", 1, max(1, len(df_combo_t1)), min(STRAT_TOP_N, max(1, len(df_combo_t1))), key="combo_n_usa", label_visibility="collapsed")
+            max_rank_t1 = max(2, len(df_combo_t1))
+            rank_s_t1, rank_e_t1 = st.slider("매수 순위", 1, max_rank_t1, (min(STRAT_RANK_START, max_rank_t1), min(STRAT_RANK_END, max_rank_t1)), key="combo_rank_usa", label_visibility="collapsed")
         with col_c_r:
-            avg_ret_combo = df_combo_t1.head(top_n_combo)['이번달수익률'].mean() if len(df_combo_t1) > 0 and '이번달수익률' in df_combo_t1.columns else 0
+            df_pick_t1 = df_combo_t1.iloc[rank_s_t1 - 1:rank_e_t1]
+            avg_ret_combo = df_pick_t1['이번달수익률'].mean() if len(df_pick_t1) > 0 and '이번달수익률' in df_combo_t1.columns else 0
             if avg_ret_combo != 0:
-                st.markdown(f"<div style='margin-top:8px; font-size:0.95rem; font-weight:bold;'>상위 {top_n_combo}개 투자 평균: <span style='color:{'#D32F2F' if avg_ret_combo>0 else '#1976D2'};'>{avg_ret_combo:+.2f}%</span></div>", unsafe_allow_html=True)
+                st.markdown(f"<div style='margin-top:8px; font-size:0.95rem; font-weight:bold;'>{rank_s_t1}~{rank_e_t1}위 투자 평균: <span style='color:{'#D32F2F' if avg_ret_combo>0 else '#1976D2'};'>{avg_ret_combo:+.2f}%</span></div>", unsafe_allow_html=True)
             else:
-                st.markdown("<div style='margin-top:8px; font-size:0.85rem; font-weight:bold; color:gray;'>상위 N개 투자 시 종목명이 강조됩니다.</div>", unsafe_allow_html=True)
-        st.markdown(f'<p class="strategy-desc">3-1M · 6-1M · 12-1M 각각 상위 {STRAT_CUTOFF_N}위에 모두 든 교집합 종목을 12-1M 내림차순 정렬. 상위 N개 투자 가정. (전략 백테스트와 동일 기준)</p>', unsafe_allow_html=True)
+                st.markdown("<div style='margin-top:8px; font-size:0.85rem; font-weight:bold; color:gray;'>선택한 순위 구간의 종목명이 강조됩니다.</div>", unsafe_allow_html=True)
+        st.markdown(f'<p class="strategy-desc">3-1M · 6-1M · 12-1M 각각 상위 {STRAT_CUTOFF_N}위에 모두 든 교집합 종목을 12-1M 내림차순 정렬. 기본 {STRAT_RANK_START}~{STRAT_RANK_END}위 투자 가정. (전략 백테스트와 동일 기준)</p>', unsafe_allow_html=True)
 
-        top_codes_combo = df_combo_t1.head(top_n_combo)['종목코드'].tolist()
+        top_codes_combo = df_pick_t1['종목코드'].tolist()
         col_order_combo = ['순위', '통합티커_L', '종목명_L', '3-1개월(%)', '6-1개월(%)', '12-1개월(%)', '이번달수익률']
         st.dataframe(df_combo_t1.style.apply(apply_custom_total_styling, top_codes=top_codes_combo, axis=1), use_container_width=True, height=600, hide_index=True, column_order=col_order_combo, column_config=us_main_cfg)
 
@@ -231,16 +234,18 @@ with tab2:
         with col_cd_t:
             st.markdown(f"<h4 style='margin:0;'>🎯 종합 모멘텀 <span style='font-size:13px; color:gray;'>(3·6·12 교집합 · {len(df_combo_d)}개)</span></h4>", unsafe_allow_html=True)
         with col_cd_i:
-            top_n_combo_d = st.number_input("몇 개 투자", 1, max(1, len(df_combo_d)), min(STRAT_TOP_N, max(1, len(df_combo_d))), key="combo_n_us_d", label_visibility="collapsed")
+            max_rank_d = max(2, len(df_combo_d))
+            rank_s_d, rank_e_d = st.slider("매수 순위", 1, max_rank_d, (min(STRAT_RANK_START, max_rank_d), min(STRAT_RANK_END, max_rank_d)), key="combo_rank_us_d", label_visibility="collapsed")
         with col_cd_r:
-            avg_ret_combo_d = df_combo_d.head(top_n_combo_d)['이번달수익률'].mean() if len(df_combo_d) > 0 and '이번달수익률' in df_combo_d.columns else 0
+            df_pick_d = df_combo_d.iloc[rank_s_d - 1:rank_e_d]
+            avg_ret_combo_d = df_pick_d['이번달수익률'].mean() if len(df_pick_d) > 0 and '이번달수익률' in df_combo_d.columns else 0
             if avg_ret_combo_d != 0:
-                st.markdown(f"<div style='margin-top:8px; font-size:0.95rem; font-weight:bold;'>상위 {top_n_combo_d}개 투자 평균: <span style='color:{'#D32F2F' if avg_ret_combo_d>0 else '#1976D2'};'>{avg_ret_combo_d:+.2f}%</span></div>", unsafe_allow_html=True)
+                st.markdown(f"<div style='margin-top:8px; font-size:0.95rem; font-weight:bold;'>{rank_s_d}~{rank_e_d}위 투자 평균: <span style='color:{'#D32F2F' if avg_ret_combo_d>0 else '#1976D2'};'>{avg_ret_combo_d:+.2f}%</span></div>", unsafe_allow_html=True)
             else:
-                st.markdown("<div style='margin-top:8px; font-size:0.85rem; font-weight:bold; color:gray;'>상위 N개 투자 시 종목명이 강조됩니다.</div>", unsafe_allow_html=True)
-        st.markdown(f'<p class="strategy-desc">3-1M · 6-1M · 12-1M 각각 상위 {STRAT_CUTOFF_N}위에 모두 든 교집합 종목을 12-1M 내림차순 정렬. 상위 N개 투자 가정. (전략 백테스트와 동일 기준)</p>', unsafe_allow_html=True)
+                st.markdown("<div style='margin-top:8px; font-size:0.85rem; font-weight:bold; color:gray;'>선택한 순위 구간의 종목명이 강조됩니다.</div>", unsafe_allow_html=True)
+        st.markdown(f'<p class="strategy-desc">3-1M · 6-1M · 12-1M 각각 상위 {STRAT_CUTOFF_N}위에 모두 든 교집합 종목을 12-1M 내림차순 정렬. 기본 {STRAT_RANK_START}~{STRAT_RANK_END}위 투자 가정. (전략 백테스트와 동일 기준)</p>', unsafe_allow_html=True)
 
-        top_codes_combo_d = df_combo_d.head(top_n_combo_d)['종목코드'].tolist()
+        top_codes_combo_d = df_pick_d['종목코드'].tolist()
         col_order_combo_d = ['순위', '통합티커_L', '종목명_L', '3-1개월(%)', '6-1개월(%)', '12-1개월(%)']
         st.dataframe(df_combo_d.style.apply(apply_custom_total_styling, top_codes=top_codes_combo_d, axis=1), use_container_width=True, height=600, hide_index=True, column_order=col_order_combo_d, column_config=us_main_cfg)
 
@@ -291,7 +296,7 @@ with tab3:
         with cm_e1:
             top_n_t5 = st.number_input("🎯 교집합 추출 기준 (각 지표 상위 N위)", min_value=1, max_value=500, value=STRAT_CUTOFF_N, key='t5_n_all_usa')
         with cm_e2:
-            rank_t5_s, rank_t5_e = st.slider("🛒 매수 순위 (12-1 정렬)", 1, 50, (1, STRAT_TOP_N), key='t5_rnk_usa')
+            rank_t5_s, rank_t5_e = st.slider("🛒 매수 순위 (12-1 정렬)", 1, 50, (STRAT_RANK_START, STRAT_RANK_END), key='t5_rnk_usa')
         with cm_e3:
             st.markdown("<div style='margin-top: 28px;'></div>", unsafe_allow_html=True)
             run_bt_m4 = st.form_submit_button("✅ 백테스트 실행", use_container_width=True)
