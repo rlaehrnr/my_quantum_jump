@@ -1782,6 +1782,33 @@ def build_all_strategy_returns(cost_rate):
     return pd.DataFrame(out).sort_index()
 
 
+@st.cache_data(ttl="1h", show_spinner=False)
+def build_current_states():
+    """전략별 '이번 달' 국면(공격/방어). 추천 비중의 국면 기울기에 쓴다."""
+    ko_p = load_ko_prices(); pen_p = load_pen_prices()
+    ss_p = load_ssopen_prices(); mp = load_mamtax_prices()
+    out = {}
+
+    def _last(key, sig):
+        if sig is None or sig.empty or 'defensive' not in sig.columns:
+            return
+        s = sig[sig['defensive'].notna()]
+        if len(s):
+            out[key] = {'defensive': bool(s.iloc[-1]['defensive'])}
+
+    _last('meritz', compute_signals(prices, div_yield))
+    _last('so', compute_signals_so(prices))
+    if not ko_p.empty:
+        _last('ko', compute_signals_ko(ko_p))
+    if not pen_p.empty:
+        _last('pen', compute_signals_pension(pen_p))
+    if not ss_p.empty:
+        _last('ssopen', compute_signals_ssopen(ss_p, prices))
+    if not mp.empty:
+        _last('mamtax', compute_signals_mamtax(mp, prices))
+    return out
+
+
 def _shade_signed(v, cap):
     """음수=빨강 / 양수=초록 배경. matplotlib 없이 인라인 rgba로 처리.
     (Styler.background_gradient는 matplotlib을 요구하는데 이 레포엔 의존성이 없다.)"""
@@ -1815,6 +1842,100 @@ def _port_stats(r):
     }
 
 
+def _round_to_step(wdict, step=10):
+    """비중(합=1)을 step% 단위로 반올림하되 합계를 정확히 100%로 맞춘다(최대잔여법)."""
+    raw = {k: v * 100 for k, v in wdict.items()}
+    base = {k: int(v // step) * step for k, v in raw.items()}
+    left = 100 - sum(base.values())
+    # 버림으로 잃은 양이 큰 순서대로 step씩 되돌려 준다
+    order = sorted(raw, key=lambda k: raw[k] - base[k], reverse=True)
+    i = 0
+    while left >= step and order:
+        base[order[i % len(order)]] += step
+        left -= step
+        i += 1
+    return base
+
+
+def recommend_weights(R, states, step=10, wmax=40):
+    """이번달 추천 비중과 그 근거표.
+
+    골격은 역변동성(리스크 패리티)이다 — 수익률을 예측하지 않는 배분이라
+    과최적화 여지가 가장 적다. 여기에 완만한 기울기 셋만 얹는다:
+      · 품질   : 장기 Sharpe가 높은 전략에 소폭 가중
+      · 계절성 : 다음 보유월의 과거 같은 달 평균 수익률
+      · 국면   : 이번 달 방어 모드면 실제 부담하는 위험이 작으므로 소폭 가중
+    각 기울기는 ±30%로 잘라 한 요소가 배분을 지배하지 못하게 한다.
+
+    ⚠️ 이건 최적해가 아니라 '출발점'이다. 근거표를 같이 보여주는 이유.
+    """
+    rows, score = [], {}
+    nmap = dict((k, n) for k, n, _ in STRAT_META)
+    hold_month = (int(str(R.index[-1])[-2:]) % 12) + 1     # 다음 보유월
+
+    sh, vol, sea = {}, {}, {}
+    for k in R.columns:
+        r = R[k].dropna()
+        if len(r) < 24:
+            continue
+        tail = r.tail(36)
+        sd = tail.std(ddof=0)
+        vol[k] = sd * np.sqrt(12) if sd > 0 else np.nan
+        s = r.std(ddof=0)
+        sh[k] = (r.mean() / s * np.sqrt(12)) if s > 0 else 0.0
+        same = r[[int(str(i)[-2:]) == hold_month for i in r.index]]
+        sea[k] = same.mean() if len(same) >= 3 else 0.0
+
+    keys = [k for k in R.columns if k in vol and pd.notna(vol[k]) and vol[k] > 0]
+    if not keys:
+        return {}, pd.DataFrame()
+
+    def _tilt(vals, lam=0.30):
+        """값 → 평균 대비 ±lam 배율. 표준편차가 0이면 전부 1.0."""
+        a = pd.Series(vals, dtype=float)
+        sd = a.std(ddof=0)
+        if not np.isfinite(sd) or sd == 0:
+            return {k: 1.0 for k in a.index}
+        z = ((a - a.mean()) / sd).clip(-1.5, 1.5)
+        return (1 + lam * z / 1.5).to_dict()
+
+    t_q = _tilt({k: sh[k] for k in keys})
+    t_s = _tilt({k: sea[k] for k in keys}, lam=0.15)   # 계절성은 더 약하게
+    for k in keys:
+        inv = 1.0 / vol[k]
+        defensive = states.get(k, {}).get('defensive')
+        t_r = 1.15 if defensive is True else 1.0
+        score[k] = inv * t_q[k] * t_s[k] * t_r
+        rows.append({'전략': nmap.get(k, k),
+                     '국면': ('🛡️ 방어' if defensive is True
+                              else '⚔️ 공격' if defensive is False else '—'),
+                     '연변동성': vol[k] * 100, 'Sharpe': sh[k],
+                     f'{hold_month}월 평균': sea[k] * 100,
+                     'MDD': _port_stats(R[k])['mdd'] * 100})
+
+    tot = sum(score.values())
+    w = {k: v / tot for k, v in score.items()}
+    # 한 전략이 과하게 커지지 않도록 상한을 걸고 나머지에 재분배
+    for _ in range(6):
+        over = {k: v for k, v in w.items() if v > wmax / 100}
+        if not over:
+            break
+        spill = sum(v - wmax / 100 for v in over.values())
+        rest = [k for k in w if k not in over]
+        if not rest:
+            break
+        for k in over:
+            w[k] = wmax / 100
+        add = spill / len(rest)
+        for k in rest:
+            w[k] += add
+
+    rec = _round_to_step(w, step)
+    df = pd.DataFrame(rows)
+    df['추천'] = [rec.get(k, 0) for k in keys]
+    return rec, df.sort_values('추천', ascending=False)
+
+
 def render_combined():
     st.markdown("### 📊 통합 포트 — 내 실제 비중으로 합산")
     st.caption("탭별로 보면 그달 제일 아픈 숫자만 보입니다. 계좌 비중을 넣으면 "
@@ -1830,27 +1951,124 @@ def render_combined():
         st.error("전략 수익률을 계산할 수 없습니다.")
         return
 
-    # ---- 비중 입력 ----
-    st.markdown("#### 1️⃣ 계좌 비중 입력")
-    st.caption("금액 비율(%)을 넣으세요. 합이 100이 아니어도 자동으로 정규화합니다. "
-               "0을 넣으면 그 전략은 제외됩니다.")
-    cols = st.columns(len(STRAT_META))
-    raw = {}
-    for (key, name, _), c in zip(STRAT_META, cols):
-        if key not in R.columns:
-            continue
-        raw[key] = c.number_input(name, min_value=0.0, max_value=100.0,
-                                  value=100.0 / len(STRAT_META), step=1.0,
-                                  key=f"w_{key}", format="%.1f")
+    # ---- 비중 입력 (금액 ↔ 비율 양방향) ----
+    nmap = dict((k, n) for k, n, _ in STRAT_META)
+    KEYS = [k for k, _, _ in STRAT_META if k in R.columns]
+
+    # 금액(만원)을 원본으로 두고 비율은 파생값. 반대로 비율을 고치면 총액 기준으로
+    # 금액을 되돌려 계산한다. on_change 콜백은 rerun '전에' 돌아 위젯 값을 갱신한다.
+    def _sv(key):
+        return float(st.session_state.get(key, 0) or 0)
+
+    if 'comb_ready' not in st.session_state:
+        for k in KEYS:
+            st.session_state[f'amt_{k}'] = 1000.0
+            st.session_state[f'pct_{k}'] = round(100.0 / len(KEYS), 1)
+        # 반올림 오차는 마지막 항목이 흡수해 합계를 정확히 100%로
+        st.session_state[f'pct_{KEYS[-1]}'] = round(
+            100.0 - sum(_sv(f'pct_{k}') for k in KEYS[:-1]), 1)
+        st.session_state['comb_total'] = 1000.0 * len(KEYS)
+        st.session_state['comb_ready'] = True
+
+    def _amt_from_pct():
+        t = _sv('comb_total')
+        s = sum(_sv(f'pct_{k}') for k in KEYS)
+        for k in KEYS:
+            st.session_state[f'amt_{k}'] = round(t * _sv(f'pct_{k}') / s, 1) if s > 0 else 0.0
+
+    def _from_amt():
+        """금액을 고치면 총액과 비율이 따라온다."""
+        t = sum(_sv(f'amt_{k}') for k in KEYS)
+        st.session_state['comb_total'] = t
+        for k in KEYS:
+            st.session_state[f'pct_{k}'] = round(_sv(f'amt_{k}') / t * 100, 1) if t > 0 else 0.0
+
+    def _from_pct(changed=None):
+        """비율을 고치면 나머지 비율이 비례로 밀려 합계 100%를 유지하고, 금액이 따라온다.
+
+        직접 고친 항목은 입력값 그대로 둔다(정규화로 값이 바뀌면 놀라니까).
+        총액 위젯에서 호출될 땐 changed=None — 비율은 그대로 두고 금액만 스케일한다.
+        """
+        if changed is not None:
+            keep = min(max(_sv(f'pct_{changed}'), 0.0), 100.0)
+            st.session_state[f'pct_{changed}'] = keep
+            others = [k for k in KEYS if k != changed]
+            room = 100.0 - keep
+            s_o = sum(_sv(f'pct_{k}') for k in others)
+            for k in others:
+                st.session_state[f'pct_{k}'] = (
+                    round(room * _sv(f'pct_{k}') / s_o, 1) if s_o > 0
+                    else round(room / len(others), 1) if others else 0.0)
+            if others:   # 반올림 오차 흡수
+                st.session_state[f'pct_{others[-1]}'] = round(
+                    100.0 - keep - sum(_sv(f'pct_{k}') for k in others[:-1]), 1)
+        _amt_from_pct()
+
+    def _apply_rec(rec):
+        """추천 비중 적용. 위젯 생성 후에는 session_state를 못 바꾸므로
+        반드시 on_click 콜백에서 처리한다 (콜백은 다음 실행 '전에' 돈다)."""
+        for k in KEYS:
+            st.session_state[f'pct_{k}'] = float(rec.get(k, 0))
+        _amt_from_pct()
+
+    st.markdown("#### 1️⃣ 계좌 금액 · 비중")
+    st.caption("금액을 넣으면 비율이, 비율을 넣으면 금액이 자동으로 따라옵니다. "
+               "총액을 바꾸면 비율을 유지한 채 금액만 스케일됩니다. 단위는 **만원**.")
+
+    tcol, _sp = st.columns([1, 3])
+    with tcol:
+        st.number_input("총 투자금액 (만원)", min_value=0.0, step=100.0,
+                        key='comb_total', on_change=_from_pct, format="%.0f")
+
+    st.markdown("<div style='font-size:12px; color:#9CA3AF; margin:2px 0;'>금액 (만원)</div>",
+                unsafe_allow_html=True)
+    for c, k in zip(st.columns(len(KEYS)), KEYS):
+        with c:
+            st.number_input(nmap[k], min_value=0.0, step=100.0,
+                            key=f'amt_{k}', on_change=_from_amt, format="%.0f")
+    st.markdown("<div style='font-size:12px; color:#9CA3AF; margin:6px 0 2px;'>비중 (%)</div>",
+                unsafe_allow_html=True)
+    for c, k in zip(st.columns(len(KEYS)), KEYS):
+        with c:
+            st.number_input(nmap[k], min_value=0.0, max_value=100.0, step=1.0,
+                            key=f'pct_{k}', on_change=_from_pct, args=(k,),
+                            format="%.1f", label_visibility='collapsed')
+
+    raw = {k: float(st.session_state.get(f'pct_{k}', 0) or 0) for k in KEYS}
     tot = sum(raw.values())
     if tot <= 0:
         st.warning("비중을 하나 이상 0보다 크게 넣어주세요.")
         return
     W = {k: v / tot for k, v in raw.items() if v > 0}
+    st.caption(f"입력 비중 합계 {tot:.1f}%"
+               + ("" if abs(tot - 100) < 0.05 else " — 100%가 아니어서 정규화해 계산합니다."))
 
-    wtxt = " · ".join(f"{dict((k, n) for k, n, _ in STRAT_META)[k]} {w*100:.1f}%"
-                      for k, w in W.items())
-    st.caption(f"정규화 비중 — {wtxt}  (입력 합계 {tot:.1f})")
+    # ---- 이번달 추천 비중 ----
+    with st.expander("🎯 이번달 추천 비중 (10% 단위)", expanded=True):
+        states = build_current_states()
+        rec, rdf = recommend_weights(R, states, step=10)
+        if rec:
+            st.markdown("**추천 — " + " · ".join(
+                f"{nmap.get(k, k)} {v}%" for k, v in
+                sorted(rec.items(), key=lambda x: -x[1]) if v > 0) + "**")
+            fmt = {'연변동성': '{:.1f}%', 'Sharpe': '{:.2f}',
+                   'MDD': '{:.1f}%', '추천': '{:.0f}%'}
+            fmt.update({c: '{:+.2f}%' for c in rdf.columns if c.endswith('월 평균')})
+            st.dataframe(rdf.style.format(fmt),
+                         width="stretch", hide_index=True, key="comb_rec")
+            st.button("이 비중으로 채우기", key="comb_apply",
+                      on_click=_apply_rec, args=(rec,))
+            st.caption(
+                "**계산 방식** — 뼈대는 역변동성(리스크 패리티)입니다. 수익률을 예측하지 않는 "
+                "배분이라 과최적화 여지가 가장 적습니다. 여기에 ①장기 Sharpe ②다음 보유월의 "
+                "과거 같은 달 평균 ③이번 달 방어 여부를 각각 ±30% 안쪽의 완만한 기울기로만 "
+                "얹고, 한 전략이 40%를 넘지 않게 잘랐습니다.")
+            st.caption(
+                "⚠️ **최적해가 아니라 출발점입니다.** 계절성은 전략당 표본이 8~15개월뿐이고, "
+                "MDD·Sharpe는 과거를 보고 만든 규칙의 백테스트 값이라 실전보다 낙관적입니다. "
+                "근거표를 같이 띄우는 건 숫자를 그대로 믿지 마시라는 뜻입니다.")
+        else:
+            st.info("추천을 계산할 만큼 이력이 충분하지 않습니다.")
 
     # ---- 합산 ----
     # 전략마다 시작월이 다르다. 그달 존재하는 전략들끼리 비중을 다시 정규화해
