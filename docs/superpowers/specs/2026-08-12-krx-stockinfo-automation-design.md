@@ -22,7 +22,7 @@
 |---|---|---|
 | 데이터 소스 | pykrx `get_market_ohlcv_by_market("ALL")` | 필요한 5개 컬럼을 한 번에 준다. FinanceDataReader는 상장주식수만 주고 **액면가가 없다**(2026-08-12 실측) |
 | 저장 위치 | `data/krx_stock_info.csv` | 아래 §저장 위치 참고 |
-| 갱신 주기 | 매월 1일 08:30 KST | 액면가는 액면분할 때만 바뀐다. 상장주식수도 시총 백업으로만 쓰여 월 단위로 충분하다. Actions 사용량 월 +1분 |
+| 갱신 주기 | 매월 15일 09:00 KST | 액면가는 액면분할 때만 바뀐다. 상장주식수도 시총 백업으로만 쓰여 월 단위로 충분하다. Actions 사용량 월 +1분 |
 | 수집 범위 | `ALL` (KOSPI·KOSDAQ·KONEX) | 필터링 코드를 없앤다. 호출 횟수·파일 크기가 사실상 같고, KONEX 종목을 담게 돼도 커버된다 |
 
 ### 저장 위치 — 구글 시트가 아니라 레포 CSV인 이유
@@ -46,7 +46,7 @@ CSV로 가면 GitHub에 들어가는 비밀은 `KRX_ID`/`KRX_PW`뿐이고, 둘 �
 ## 데이터 흐름
 
 ```
-매월 1일 08:30 KST
+매월 15일 09:00 KST
 │
 ├─ GitHub Actions ─ update_stock_info.py
 │    1) pykrx 로그인            KRX_ID·KRX_PW ← GitHub Secrets

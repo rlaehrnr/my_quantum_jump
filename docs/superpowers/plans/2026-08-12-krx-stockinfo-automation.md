@@ -2,7 +2,7 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** 손으로 하던 KRX 액면가·상장주식수 갱신을 매월 1일 도는 GitHub Actions 로봇으로 옮긴다.
+**Goal:** 손으로 하던 KRX 액면가·상장주식수 갱신을 매월 15일 도는 GitHub Actions 로봇으로 옮긴다.
 
 **Architecture:** 로봇(`update_stock_info.py`)이 pykrx로 KRX 전종목 기본정보를 받아 `data/krx_stock_info.csv`에 덮어쓰고 커밋한다. 앱은 구글 시트 `StockInfo` 탭 대신 이 CSV를 읽는다. 읽기 로직은 `utils/stock_info.py`에 두어 streamlit 없이 import·테스트할 수 있게 한다.
 
@@ -33,13 +33,13 @@
 | `utils/stock_info.py` (신규) | CSV → `{종목코드: {액면가, 상장주식수}}`. 앱이 읽는 쪽. streamlit 비의존 |
 | `update_stock_info.py` (신규) | KRX 수집 → CSV 저장. 로봇이 쓰는 쪽 |
 | `tests/test_stock_info.py` (신규) | 위 두 모듈의 순수 함수 테스트. `python tests/test_stock_info.py`로 실행 |
-| `.github/workflows/krx_stock_info_monthly.yml` (신규) | 매월 1일 09:00 KST 실행 |
+| `.github/workflows/krx_stock_info_monthly.yml` (신규) | 매월 15일 09:00 KST 실행 |
 | `pages/5_내 소형주 퀀트 포트.py` (수정) | 시트 대신 CSV를 읽도록 교체 |
 | `현황.md` · `CLAUDE.md` (수정) | 결과 반영 |
 
 ### 설계와 달라진 점 2가지
 
-1. **실행 시각 08:30 → 09:00 KST.** GitHub cron은 `L`(말일)을 지원하지 않는다. 08:30 KST는 전날 23:30 UTC라 말일 처리가 필요해진다. `'0 0 1 * *'`(UTC 0시 = KST 09:00)로 하면 기존 `kr_monthly_update.yml`과 같은 표현이 된다. KRX 기본정보는 장중 여부와 무관하므로 영향 없다
+1. **실행 시점 매월 1일 08:30 → 매월 15일 09:00 KST.** 말일·월초에는 이미 로봇 4개(KR Monthly, US Monthly, Seasonality, Snowball KR)가 몰려 있어 사용자가 15일로 옮기기를 원했다. 액면가는 한 달에 한 번 확인하는 수준이면 충분하다. 시각이 09:00인 것은 `'0 0 15 * *'`(UTC 0시)가 기존 `kr_monthly_update.yml`과 같은 표현이기 때문이다. KRX 기본정보는 장중 여부와 무관하므로 영향 없다
 2. **변수명 `gsheet_stock_info` → `stock_info`.** 설계에서는 호출부를 안 고친다고 했으나, 시트에서 안 읽게 된 뒤에도 `gsheet_`라는 이름이 남으면 다음 사람이 오해한다. 기계적 치환 4곳이고 되돌리기 쉽다
 
 ---
@@ -161,7 +161,7 @@ Expected: FAIL — `ModuleNotFoundError: No module named 'utils.stock_info'`
 ```python
 """종목 마스터(액면가·상장주식수) 로더.
 
-data/krx_stock_info.csv 는 매월 1일 GitHub Actions 로봇(update_stock_info.py)이
+data/krx_stock_info.csv 는 매월 15일 GitHub Actions 로봇(update_stock_info.py)이
 KRX 전종목 기본정보로 덮어쓴다. 이 모듈은 그 파일을 읽어 앱이 쓰는 형태로 바꾼다.
 
 💡 streamlit 을 import 하지 않는다. 테스트에서 그냥 import 할 수 있어야 하기 때문이다.
@@ -296,7 +296,7 @@ Expected: FAIL — `ModuleNotFoundError: No module named 'update_stock_info'`
 ```python
 """KRX 전종목 기본정보(액면가·상장주식수)를 받아 data/krx_stock_info.csv 로 저장한다.
 
-GitHub Actions 가 매월 1일 실행한다. KRX_ID / KRX_PW 환경변수로 로그인한다.
+GitHub Actions 가 매월 15일 실행한다. KRX_ID / KRX_PW 환경변수로 로그인한다.
 
 💡 pykrx 는 main() 안에서 import 한다. build_frame() 만 테스트할 때
    pykrx 없이도 이 파일을 import 할 수 있어야 하기 때문이다.
@@ -393,7 +393,7 @@ name: KRX Stock Info Monthly Update
 
 on:
   schedule:
-    - cron: '0 0 1 * *'   # 💡 매월 1일 UTC 0시 = 한국 시간 매월 1일 오전 9시
+    - cron: '0 0 15 * *'   # 💡 매월 15일 UTC 0시 = 한국 시간 매월 15일 오전 9시
   workflow_dispatch:        # 수동 실행 가능 (첫 검증에 사용)
 
 jobs:
@@ -436,8 +436,8 @@ jobs:
 git add .github/workflows/krx_stock_info_monthly.yml
 git commit -m "ci: KRX 종목 기본정보 월간 갱신 로봇 추가
 
-매월 1일 UTC 0시(KST 09:00)에 돈다. 기존 kr_monthly_update.yml 과 같은
-표현이다 — GitHub cron 은 말일(L)을 지원하지 않아 1일 기준으로 잡았다.
+매월 15일 UTC 0시(KST 09:00)에 돈다. 말일·월초에는 이미 로봇 4개가 몰려
+있어 15일로 뺐다. 액면가는 한 달에 한 번 확인하면 충분한 자료다.
 
 workflow_dispatch 를 넣어 첫 검증은 수동으로 돌린다.
 KRX_ID/KRX_PW 는 레포 Secrets 에서 이 스텝에만 주입한다."
@@ -540,7 +540,7 @@ def load_stock_info_from_gsheet():
 def load_stock_info_cached():
     """종목 마스터를 CSV 에서 읽는다.
 
-    💡 예전에는 구글 시트 StockInfo 탭을 읽었다. 매월 1일 GitHub Actions
+    💡 예전에는 구글 시트 StockInfo 탭을 읽었다. 매월 15일 GitHub Actions
        로봇이 KRX 에서 받아 data/krx_stock_info.csv 를 갱신하도록 바뀌었다.
        2,871행을 매 rerun 마다 파싱하지 않도록 1시간 캐시한다.
     """
@@ -606,7 +606,7 @@ git add "pages/5_내 소형주 퀀트 포트.py"
 git commit -m "refactor: 소형주 종목 마스터를 구글 시트 대신 CSV 에서 읽는다
 
 StockInfo 탭을 읽던 load_stock_info_from_gsheet() 를 utils.stock_info 의
-CSV 로더로 교체한다. 매월 1일 로봇이 갱신하는 data/krx_stock_info.csv 를 쓴다.
+CSV 로더로 교체한다. 매월 15일 로봇이 갱신하는 data/krx_stock_info.csv 를 쓴다.
 
 이로써 구글 서비스 계정 키를 GitHub Secrets 에 복사하지 않아도 된다.
 시트 권한은 파일 단위라 그 키는 보유 종목(ddo·sso·mom)까지 읽을 수 있었다.
@@ -653,7 +653,7 @@ push 뒤 `myquantumjump-bccuvb2zu4yacfnqd9exjc.streamlit.app` 의
 
 ```markdown
 `StockInfo` 탭은 **더 이상 쓰지 않는다.** 2026-08-12부터 액면가·상장주식수는
-`data/krx_stock_info.csv` 에서 읽는다(`utils/stock_info.py`). 로봇이 매월 1일 갱신한다.
+`data/krx_stock_info.csv` 에서 읽는다(`utils/stock_info.py`). 로봇이 매월 15일 갱신한다.
 시트의 탭은 되돌릴 때를 위해 지우지 않고 남겨뒀다.
 ```
 
@@ -662,13 +662,13 @@ push 뒤 `myquantumjump-bccuvb2zu4yacfnqd9exjc.streamlit.app` 의
 `## ✅ 2026-08-12 확인된 사실` 표의 `| StockInfo 탭 |` 행을 아래로 바꾼다:
 
 ```markdown
-| `StockInfo` 탭 | **자동화 완료.** 손 입력 → 매월 1일 로봇이 `data/krx_stock_info.csv` 갱신. 시트 탭은 미사용이나 보존 |
+| `StockInfo` 탭 | **자동화 완료.** 손 입력 → 매월 15일 로봇이 `data/krx_stock_info.csv` 갱신. 시트 탭은 미사용이나 보존 |
 ```
 
 `## 이력` 맨 아래에 추가:
 
 ```markdown
-- **2026-08-12** — StockInfo 자동화 완료. KRX 전종목 기본정보를 매월 1일 로봇이 받아 `data/krx_stock_info.csv` 로 저장하고, 앱이 구글 시트 대신 이 파일을 읽는다. 구글 서비스 계정 키를 GitHub 에 복사하지 않는 쪽을 택했다 — 설계 근거는 `docs/superpowers/specs/2026-08-12-krx-stockinfo-automation-design.md`
+- **2026-08-12** — StockInfo 자동화 완료. KRX 전종목 기본정보를 매월 15일 로봇이 받아 `data/krx_stock_info.csv` 로 저장하고, 앱이 구글 시트 대신 이 파일을 읽는다. 구글 서비스 계정 키를 GitHub 에 복사하지 않는 쪽을 택했다 — 설계 근거는 `docs/superpowers/specs/2026-08-12-krx-stockinfo-automation-design.md`
 ```
 
 - [ ] **Step 4: 커밋한다**
