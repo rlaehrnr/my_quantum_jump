@@ -59,6 +59,24 @@ def parse_krw(val_str, default_val):
         return int(val_str)
     except: return default_val
 
+def normalize_code(x):
+    """종목코드를 6자리로 맞춘다.
+
+    💡 우선주·전환우선주는 코드에 알파벳이 섞인다 (00104K, 37550K, 37550L).
+       예전에는 float()으로 변환해서 이런 코드가 ValueError를 냈고,
+       그게 except에 삼켜져 포트폴리오가 통째로 빈 표가 됐다.
+       숫자 코드는 예전과 똑같이 처리하고, 알파벳 코드만 원본을 살린다.
+    """
+    s = str(x).strip()
+    if not s:
+        return ""
+    try:
+        # "9520" · "5930.0" 처럼 순수 숫자면 소수점 흔적을 털고 0을 채운다
+        return str(int(float(s))).zfill(6)
+    except ValueError:
+        # "00104K" 같은 코드는 변환하지 않고 그대로 쓴다
+        return s.zfill(6)
+
 # --- [2. 구글 시트 엔진] ---
 @st.cache_resource
 def get_gspread_client():
@@ -119,7 +137,7 @@ def load_portfolio_from_gsheet(ws_name):
         if len(data) > 1:
             df = pd.DataFrame(data[1:], columns=data[0])
             df.columns = df.columns.str.strip()
-            df['종목코드'] = df['종목코드'].apply(lambda x: str(int(float(str(x).strip()))).zfill(6) if str(x).strip() else "")
+            df['종목코드'] = df['종목코드'].apply(normalize_code)
             df = df[df['종목코드'] != ""]
             for req_col in ["종목명", "종목코드", "매수단가", "수량"]:
                 if req_col not in df.columns: df[req_col] = "" if "종목" in req_col else 0

@@ -206,6 +206,22 @@ def _gspread_client():
     return gspread.authorize(Credentials.from_service_account_info(json.loads(st.secrets["google_credentials"]), scopes=scopes))
 
 
+def _normalize_code(x):
+    """종목코드를 6자리로 맞춘다. (pages/5_내 소형주 퀀트 포트.py의 normalize_code와 동일)
+
+    💡 우선주·전환우선주는 코드에 알파벳이 섞인다 (00104K, 37550K, 37550L).
+       float() 변환은 이런 코드에서 ValueError를 내고, 그게 except에 삼켜져
+       소형주 요약이 통째로 0으로 보였다. 숫자 코드 처리는 예전과 같다.
+    """
+    s = str(x).strip()
+    if not s:
+        return ""
+    try:
+        return str(int(float(s))).zfill(6)
+    except ValueError:
+        return s.zfill(6)
+
+
 @st.cache_data(ttl=300, show_spinner=False)
 def _smallcap_status():
     _SHEET = "https://docs.google.com/spreadsheets/d/1XTroUdH7iKN40dQSrSjz3nsZ1l1k2mr5skXSzlEfl7Y/edit"
@@ -219,7 +235,7 @@ def _smallcap_status():
             data = sheet.worksheet(ws_name).get_all_values()
             if len(data) > 1:
                 df = pd.DataFrame(data[1:], columns=data[0]); df.columns = df.columns.str.strip()
-                df['종목코드'] = df['종목코드'].apply(lambda x: str(int(float(str(x).strip()))).zfill(6) if str(x).strip() else "")
+                df['종목코드'] = df['종목코드'].apply(_normalize_code)
                 df = df[df['종목코드'] != ""]
                 for c in ['매수단가', '수량']:
                     df[c] = pd.to_numeric(df[c].astype(str).str.replace(r'[^0-9.-]', '', regex=True), errors='coerce').fillna(0)
