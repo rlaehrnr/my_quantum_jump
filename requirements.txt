@@ -8,3 +8,5 @@ xlsxwriter
 gspread
 openpyxl
 pykrx
+# archive_* 합본(parquet) 읽기/쓰기용. streamlit이 이미 의존하지만 직접 쓰므로 명시한다
+pyarrow

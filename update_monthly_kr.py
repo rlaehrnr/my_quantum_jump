@@ -140,6 +140,15 @@ def generate_monthly_archive_kr():
     recs_k = [monthly_records_dict[c] for c in df_korea_f['Code'] if c in monthly_records_dict]
     pd.DataFrame(recs_k).to_csv(f'archive_korea/only_korea_{invest_month_str}.csv', index=False, encoding='utf-8-sig')
 
+    # 새 달 파일이 생겼으니 '확정된 지난 달' 합본을 다시 만든다 (앱의 콜드 로드 가속).
+    # 반드시 위 생성이 끝난 뒤여야 직전 달이 확정분에 들어간다.
+    # 합본이 없어도 앱은 CSV를 전부 읽는 예전 경로로 정상 동작한다 — 실패해도 갱신은 성공 처리.
+    try:
+        from utils.archive_store import build_history
+        build_history('archive_kospi')
+    except Exception as e:
+        print(f"⚠️ archive_kospi 합본 생성 실패(앱은 CSV 폴백으로 정상 동작): {e}")
+
     print(f"🎉 🇰🇷 {invest_month_str.replace('_', '-')} 한국 아카이브 생성 완료!")
 
 if __name__ == "__main__":

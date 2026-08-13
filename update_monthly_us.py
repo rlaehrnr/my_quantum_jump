@@ -236,6 +236,16 @@ def main():
     print(f"🚀 🇺🇸 월간 통합 업데이트 시작 (신규 투자월: {invest_month_dash}, 미국 기준 선정일: {base_date_str})")
     generate_sp500(base_date, dates, start_date, base_date_str, invest_year, invest_month_str, invest_month_dash)
     generate_usa500(base_date, dates, start_date, base_date_str, invest_year, invest_month_str, invest_month_dash, top_n=500)
+
+    # 새 달 파일이 생겼으니 '확정된 지난 달' 합본을 다시 만든다 (앱의 콜드 로드 가속).
+    # 반드시 위 생성이 끝난 뒤여야 직전 달이 확정분에 들어간다.
+    # 합본이 없어도 앱은 CSV를 전부 읽는 예전 경로로 정상 동작한다 — 실패해도 갱신은 성공 처리.
+    try:
+        from utils.archive_store import build_history
+        build_history('archive_usa')
+    except Exception as e:
+        print(f"⚠️ archive_usa 합본 생성 실패(앱은 CSV 폴백으로 정상 동작): {e}")
+
     print(f"\n🎉 🇺🇸 {invest_month_dash} 미국 월간 업데이트가 완료되었습니다!")
 
 if __name__ == "__main__":

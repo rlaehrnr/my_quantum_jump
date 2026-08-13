@@ -2,7 +2,8 @@ import streamlit as st
 import pandas as pd
 import os
 import glob
-import re
+
+from utils import archive_store
 
 def get_folder_hash(folder_path):
     """폴더 내 'only_'로 시작하는 정상 월간 파일들만 검사."""
@@ -23,44 +24,18 @@ def load_archive_data(folder_path, folder_hash=None):
 
     ⚠️ ttl을 두지 않는다. 무효화는 folder_hash가 이미 담당한다 —
        인자로 받은 폴더 mtime 합이 바뀌면 캐시 키가 바뀌어 자동으로 다시 읽는다.
-       archive_*는 update_monthly_* 로봇이 '월 1회' 갱신하므로 ttl="1h"는
-       한 달에 한 번 바뀌는 데이터를 시간마다 다시 읽게 만드는 중복이었다
-       (archive_usa 기준 CSV 332개 · 약 1.9초).
-       max_entries는 월간 갱신으로 해시가 바뀔 때 옛 항목이 쌓이지 않도록 하는 상한이다
+       ttl="1h"는 그 위에 얹힌 중복이었다 (archive_usa 기준 CSV 332개 · 약 1.4초).
+       max_entries는 해시가 바뀔 때 옛 항목이 쌓이지 않도록 하는 상한이다
        (라이브가 쓰는 폴더는 archive_kospi · archive_usa 2개).
+
+    💡 실제 파일 읽기는 utils/archive_store.py 가 한다. 거기서 '확정된 지난 달'
+       합본(parquet)이 있으면 그걸 쓰고 최신월 CSV만 따로 읽는다. 합본이 없거나
+       어긋나면 예전처럼 CSV를 전부 읽는다 — 어느 쪽이든 결과는 같다.
     """
-    all_files = glob.glob(os.path.join(folder_path, "only_*.csv"))
-    li = []
+    frame = archive_store.load_frames(folder_path)
 
-    for filename in all_files:
-        try:
-            try:
-                df = pd.read_csv(filename, index_col=None, header=0,
-                                dtype={'종목코드': str}, encoding='utf-8-sig')
-            except UnicodeDecodeError:
-                df = pd.read_csv(filename, index_col=None, header=0,
-                                dtype={'종목코드': str}, encoding='cp949')
-
-            # 과거 파일에 '투자연도'/'투자월'이 없으면 파일명에서 추출
-            if '투자연도' not in df.columns or '투자월' not in df.columns:
-                basename = os.path.basename(filename)
-                match = re.search(r'_(\d{4})_(\d{2})\.csv', basename)
-                if match:
-                    year, month = match.group(1), match.group(2)
-                    df['투자연도'] = int(year)
-                    df['투자월'] = f"{year}-{month}"
-                else:
-                    print(f"⚠️ 파일명 규칙 불일치, 건너뜀: {filename}")
-                    continue
-
-            li.append(df)
-        except Exception as e:
-            print(f"Error loading {filename}: {e}")
-
-    if not li:
+    if frame.empty:
         return pd.DataFrame()
-
-    frame = pd.concat(li, axis=0, ignore_index=True)
 
     # 💡 [11번 수정] 시총 단위 통일: 원 → 억 원
     # '시가총액' 컬럼이 원 단위(평균 1조 이상)면 1억으로 나눠서 '시가총액(억)'으로 변환
