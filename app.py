@@ -39,6 +39,12 @@ PAGE_USA = "pages/4_🇺🇸_USA500_모멘텀.py"
 PAGE_SMALL = "pages/5_내 소형주 퀀트 포트.py"
 PAGE_SNOW = "pages/6 ❄️ 스노우볼 포트.py"
 
+# USA500 전략 매수 순위 (12-1 정렬 기준).
+# pages/4_🇺🇸_USA500_모멘텀.py의 STRAT_RANK_START/END와 반드시 일치시킨다 —
+# 홈 요약과 상세 페이지가 같은 종목을 보여줘야 한다.
+USA_RANK_START = 3
+USA_RANK_END = 8
+
 
 def _fmt(v):
     try:
@@ -143,7 +149,9 @@ def _usa_status():
     stop = sb_below or m4
     reason = " · ".join([x for x in [("SPY 이탈" if sb_below else ""), ("멀티4" if m4 else "")] if x]) or "안전"
     rc = '이번달수익률' if '이번달수익률' in picks.columns else '12-1개월(%)'
-    rows = [(r['종목코드'], r['종목명'], r.get(rc)) for _, r in picks.head(10).iterrows()]
+    # 전략: 3·6·12 교집합 → 12-1 내림차순 → STRAT_RANK_START~END위 매수 (상세 페이지와 동일)
+    picks_pick = picks.iloc[USA_RANK_START - 1:USA_RANK_END]
+    rows = [(r['종목코드'], r['종목명'], r.get(rc)) for _, r in picks_pick.iterrows()]
     allr = [x[2] for x in rows if pd.notna(x[2])]
     avg = float(np.mean(allr)) if allr else 0.0
     refdate = None
@@ -318,7 +326,7 @@ def render_usa():
     if d['stop']:
         st.markdown("<div class='dim' style='font-size:0.88rem; padding:6px 0;'>방어 국면 — 현금 보유</div>", unsafe_allow_html=True)
         return
-    st.markdown(f"<div class='sect-h' style='color:#93C5FD;'>🎯 3·6·12 교집합 상위 10"
+    st.markdown(f"<div class='sect-h' style='color:#93C5FD;'>🎯 3·6·12 교집합 {USA_RANK_START}~{USA_RANK_END}위"
                 f"<span class='avg-chip'>평균 {_fmt(d['avg'])}</span></div>" + _tbl(d['rows']), unsafe_allow_html=True)
 
 
