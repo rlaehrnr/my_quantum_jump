@@ -12,7 +12,7 @@ def get_folder_hash(folder_path):
     return sum(os.path.getmtime(f) for f in files)
 
 
-@st.cache_data(ttl="1h")
+@st.cache_data(max_entries=4)
 def load_archive_data(folder_path, folder_hash=None):
     """
     'only_*.csv' 파일들을 모두 읽어서 통합 DataFrame 반환.
@@ -20,6 +20,14 @@ def load_archive_data(folder_path, folder_hash=None):
     💡 [수정 사항]
     - 시총 단위 통일: 원 단위(매우 큰 수)면 자동으로 '억 원' 단위로 변환
     - 무결성 체크: 로드 후 1회 검증 (성능 영향 미미)
+
+    ⚠️ ttl을 두지 않는다. 무효화는 folder_hash가 이미 담당한다 —
+       인자로 받은 폴더 mtime 합이 바뀌면 캐시 키가 바뀌어 자동으로 다시 읽는다.
+       archive_*는 update_monthly_* 로봇이 '월 1회' 갱신하므로 ttl="1h"는
+       한 달에 한 번 바뀌는 데이터를 시간마다 다시 읽게 만드는 중복이었다
+       (archive_usa 기준 CSV 332개 · 약 1.9초).
+       max_entries는 월간 갱신으로 해시가 바뀔 때 옛 항목이 쌓이지 않도록 하는 상한이다
+       (라이브가 쓰는 폴더는 archive_kospi · archive_usa 2개).
     """
     all_files = glob.glob(os.path.join(folder_path, "only_*.csv"))
     li = []

@@ -122,13 +122,13 @@ def _kospi_status():
 
 @st.cache_data(ttl=1800, show_spinner=False)
 def _usa_status():
-    from utils.data_loader import load_archive_data, get_folder_hash
-    from utils.us_helpers import (preprocess_us_data, get_triple_momentum_us,
+    from utils.data_loader import get_folder_hash
+    from utils.us_helpers import (load_us_master, get_triple_momentum_us,
                                   get_spy_timing_map, get_multi4_cond1_map)
-    df_raw = load_archive_data("archive_usa", get_folder_hash("archive_usa"))
-    if df_raw is None or df_raw.empty:
+    # pages/4 와 같은 캐시 항목을 공유한다 (홈 → USA500 페이지 이동 시 재계산 없음)
+    df = load_us_master("archive_usa", get_folder_hash("archive_usa"))
+    if df is None or df.empty:
         return None
-    df = preprocess_us_data(df_raw, is_daily=False)
     latest = sorted(df['투자월'].dropna().unique())[-1]
     picks = get_triple_momentum_us(df[df['투자월'] == latest].copy(), cutoff=100, mode='rank')
     ym = datetime.today().strftime('%Y-%m')

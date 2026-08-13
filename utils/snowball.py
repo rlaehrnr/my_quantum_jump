@@ -518,6 +518,20 @@ def compute_div_percentile(div_yield, window=60, min_pct=0.8):
     return out, thr, rank, total
 
 
+# ──────────────────────────────────────────────────────────────────────────
+# 아래 compute_signals_* / run_backtest_* 에는 캐시를 건다.
+#
+# pages/6 은 st.tabs 로 탭 7개를 만드는데, Streamlit 의 탭은 CSS 전환이라
+# 탭을 눌러도 rerun 이 없는 대신 '보지 않는 탭까지 매번 전부 렌더링'된다.
+# 그래서 위젯(거래비용 슬라이더 등)을 한 번 누를 때마다 6개 전략의
+# 신호 계산 + 백테스트가 통째로 다시 돌았다 (실측 약 1.5초).
+#
+# 인자는 월봉 가격표(약 400행)와 스칼라뿐이라 해시 비용이 무시할 만하고,
+# 결과도 signals 92KB · backtest 31KB 수준이라 max_entries 를 넉넉히 줘도 된다.
+# ttl 은 원본인 load_* 로더들과 같은 1시간으로 맞춘다.
+# ※ 스레드에서 호출되지 않는다 (스레드는 _http_csv 계열 전용) — 캐시 사용 안전.
+# ──────────────────────────────────────────────────────────────────────────
+@st.cache_data(ttl="1h", max_entries=8, show_spinner=False)
 def compute_signals(prices, div_yield):
     """
     매월 m에서의 신호와 보유 종목을 계산.
@@ -678,6 +692,7 @@ def compute_signals(prices, div_yield):
 # 백테스트
 # ==========================================
 
+@st.cache_data(ttl="1h", max_entries=32, show_spinner=False)
 def run_backtest(prices, signals, cost=0.0025):
     """
     명세서 §5 — 월별 백테스트 루프.
@@ -1001,6 +1016,8 @@ def compute_signals_samsung(prices, use_filter=True, filter_win=SS_FILTER_WIN):
     return pd.DataFrame(records, index=prices.index)
 
 
+# run_backtest_so 가 이 함수를 그대로 재사용하므로, 여기 한 곳만 캐시하면 '맘·쏘 삼성' 탭도 함께 덮인다.
+@st.cache_data(ttl="1h", max_entries=32, show_spinner=False)
 def run_backtest_samsung(prices, signals, cost=0.0025):
     """맘 삼성 백테스트. 공격은 동일가중 바스켓, 방어는 단일/현금.
 
@@ -1112,6 +1129,7 @@ def compute_riskoff_cond1(prices):
     return cond1.astype(bool)
 
 
+@st.cache_data(ttl="1h", max_entries=8, show_spinner=False)
 def compute_signals_so(prices, use_riskoff=SO_USE_RISKOFF):
     """쏘 삼성 월별 신호·보유 계산.
 
@@ -1344,6 +1362,7 @@ def load_ko_prices(kr_dir='data/snowball_kr/monthly', us_dir='data/snowball/mont
 _RAW_NAME_VARIANTS_TIP = ("TIP_과거_데이터.csv", "TIP 과거 데이터.csv", "TIP.csv")
 
 
+@st.cache_data(ttl="1h", max_entries=8, show_spinner=False)
 def compute_signals_ko(prices):
     """또 ISA 월별 신호·보유 계산.
 
@@ -1434,6 +1453,7 @@ def compute_signals_ko(prices):
     return pd.DataFrame(rows).set_index('signal_month', drop=False)
 
 
+@st.cache_data(ttl="1h", max_entries=32, show_spinner=False)
 def run_backtest_ko(prices, signals, cost=0.0025):
     """또 ISA 백테스트. 공격 top3 / 방어 top2 모두 동일가중 바스켓.
 
@@ -1559,6 +1579,7 @@ def load_pen_prices(kr_dir='data/snowball_kr/monthly'):
     return df[~df.index.duplicated(keep='last')]
 
 
+@st.cache_data(ttl="1h", max_entries=8, show_spinner=False)
 def compute_signals_pension(prices):
     """또 연금 월별 신호·보유 계산.
 
@@ -1621,6 +1642,7 @@ def compute_signals_pension(prices):
     return pd.DataFrame(rows).set_index('signal_month', drop=False)
 
 
+@st.cache_data(ttl="1h", max_entries=32, show_spinner=False)
 def run_backtest_pension(prices, signals, cost=0.0025):
     """또 연금 백테스트 (단일 종목 보유). compute_performance 호환 bt 반환."""
     months = list(prices.index)
@@ -1737,6 +1759,7 @@ def load_ssopen_prices(kr_dir='data/snowball_kr/monthly'):
     return df[~df.index.duplicated(keep='last')]
 
 
+@st.cache_data(ttl="1h", max_entries=8, show_spinner=False)
 def compute_signals_ssopen(prices, us_prices):
     """쏘 연금 월별 신호·보유 계산.
 
@@ -1822,6 +1845,7 @@ def compute_signals_ssopen(prices, us_prices):
     return pd.DataFrame(rows).set_index('signal_month', drop=False)
 
 
+@st.cache_data(ttl="1h", max_entries=32, show_spinner=False)
 def run_backtest_ssopen(prices, signals, cost=0.0025):
     """쏘 연금 백테스트 (단일 종목 보유). compute_performance 호환 bt 반환.
 
@@ -1981,6 +2005,7 @@ def load_mamtax_prices(kr_dir='data/snowball_kr/monthly'):
     return df[~df.index.duplicated(keep='last')]
 
 
+@st.cache_data(ttl="1h", max_entries=8, show_spinner=False)
 def compute_signals_mamtax(prices, us_prices):
     """맘 비과세 월별 신호·보유(가중) 계산.
 
@@ -2064,6 +2089,7 @@ def compute_signals_mamtax(prices, us_prices):
     return pd.DataFrame(rows).set_index('signal_month', drop=False)
 
 
+@st.cache_data(ttl="1h", max_entries=32, show_spinner=False)
 def run_backtest_mamtax(prices, signals, cost=0.0025):
     """맘 비과세 백테스트 (다종목 가중). compute_performance 호환 bt 반환.
 

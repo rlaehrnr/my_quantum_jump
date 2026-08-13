@@ -6,7 +6,7 @@ import os
 
 st.set_page_config(page_title="USA 500 통합 모멘텀", layout="wide")
 
-from utils.data_loader import load_archive_data, get_folder_hash
+from utils.data_loader import get_folder_hash
 from utils.calculator import get_cycle_year, PRESIDENTIAL_DANGEROUS_MONTHS
 # 💡 핵심: ui_components에서 앞서 정의한 공통 설정들을 똑같이 가져옵니다.
 from utils.ui_components import (
@@ -17,7 +17,7 @@ from utils.ui_components import (
 )
 
 from utils.us_helpers import (
-    preprocess_us_data, add_naver_links, robust_get_us_ma_all, robust_get_us_idx_return, 
+    preprocess_us_data, load_us_master, add_naver_links, robust_get_us_ma_all, robust_get_us_idx_return,
     get_spx_history_cached, generate_excel_report_cached, 
     calc_us_momentum, get_triple_momentum_us,
     run_backtest_triple_us_m4, get_multi4_cond1_map, get_multi4_start_ym,
@@ -43,14 +43,15 @@ st.markdown('''<style>
 st.page_link("app.py", label="🇺🇸 USA 500 통합 모멘텀 (Top 500)")
 
 archive_path = "archive_usa"
-f_hash = get_folder_hash(archive_path) 
-df_master_raw = load_archive_data(archive_path, f_hash) 
+f_hash = get_folder_hash(archive_path)
+# 로드 + 전처리를 한 캐시로 묶었다. 예전에는 preprocess_us_data(16만 행, 약 0.9초)가
+# 캐시 밖에 있어서 위젯을 누를 때마다 다시 돌았다. app.py 홈과 캐시를 공유한다.
+df_master = load_us_master(archive_path, f_hash)
 
-if df_master_raw.empty:
+if df_master.empty:
     st.error(f"🚨 {archive_path} 폴더에 데이터가 없습니다!")
     st.stop()
 
-df_master = preprocess_us_data(df_master_raw, is_daily=False)
 valid_years = df_master['투자연도'].dropna().unique().astype(int).tolist()
 if not valid_years: valid_years = [datetime.today().year]
 years_list = sorted(valid_years)

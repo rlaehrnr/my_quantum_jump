@@ -61,6 +61,28 @@ def prefetch_yf(tickers, start='1998-01-01', workers=8):
     with ThreadPoolExecutor(max_workers=min(workers, len(todo))) as ex:
         list(ex.map(lambda t: _yf_full(t, start), todo))
 
+
+@st.cache_data(max_entries=2, show_spinner=False)
+def load_us_master(archive_path="archive_usa", folder_hash=None):
+    """archive 로드 + 전처리를 '한 덩어리로' 캐시한 미국 월간 마스터.
+
+    preprocess_us_data는 16만 행을 갈아엎어 약 0.9초가 든다. 이걸 페이지
+    최상단에 그냥 두면 Streamlit이 스크립트를 다시 돌릴 때마다 —
+    즉 위젯을 누를 때마다 — 매번 다시 계산했다.
+
+    캐시 키를 (경로, folder_hash)로 잡는 게 핵심이다. preprocess_us_data에
+    직접 데코레이터를 붙이면 Streamlit이 16만 행 DataFrame을 인자로 해싱해야
+    해서 이득을 깎아먹는다. 여기서는 문자열 2개만 해시한다.
+
+    app.py 홈과 pages/4 가 같은 인자로 부르므로 캐시 항목을 공유한다.
+    """
+    from utils.data_loader import load_archive_data
+    raw = load_archive_data(archive_path, folder_hash)
+    if raw is None or raw.empty:
+        return pd.DataFrame()
+    return preprocess_us_data(raw, is_daily=False)
+
+
 def preprocess_us_data(df, is_daily=False):
     col_mapping = {
         'Date': '종목선정일', 'Year': '투자연도_raw', 'Ticker': '종목코드', 
