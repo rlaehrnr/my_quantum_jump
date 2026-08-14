@@ -127,25 +127,20 @@ def _kospi_status():
 @st.cache_data(ttl=1800, show_spinner=False)
 def _usa_status():
     from utils.data_loader import get_folder_hash
-    from utils.us_helpers import (load_us_master, get_triple_momentum_us,
-                                  get_spy_timing_map, get_multi4_cond1_map)
+    from utils.us_helpers import load_us_master, get_triple_momentum_us, get_usa_market_status
     # pages/4 와 같은 캐시 항목을 공유한다 (홈 → USA500 페이지 이동 시 재계산 없음)
     df = load_us_master("archive_usa", get_folder_hash("archive_usa"))
     if df is None or df.empty:
         return None
     latest = sorted(df['투자월'].dropna().unique())[-1]
-    picks = get_triple_momentum_us(df[df['투자월'] == latest].copy(), cutoff=100, mode='rank')
-    ym = datetime.today().strftime('%Y-%m')
-    try:
-        sb_below = bool(get_spy_timing_map(10).get(ym, False))
-    except Exception:
-        sb_below = False
-    try:
-        m4 = bool(get_multi4_cond1_map().get(ym, False))
-    except Exception:
-        m4 = False
-    stop = sb_below or m4
-    reason = " · ".join([x for x in [("SPY 이탈" if sb_below else ""), ("멀티4" if m4 else "")] if x]) or "안전"
+    df_month = df[df['투자월'] == latest].copy()
+    picks = get_triple_momentum_us(df_month, cutoff=100, mode='rank')
+
+    # 투자/중지 판정은 공통 함수로 계산 → USA500 페이지 '월별 상세 분석'(탭1) 최신 달과 동일.
+    # (기존엔 홈만 SPY 월봉 10개월선을 봐서, 페이지 일봉 240일선/백테스트 12개월선과 어긋났다.)
+    mkt = get_usa_market_status(df_month)
+    stop = bool(mkt['stop']) if mkt else False
+    reason = mkt['reason'] if mkt else "안전"
     rc = '이번달수익률' if '이번달수익률' in picks.columns else '12-1개월(%)'
     # 전략: 3·6·12 교집합 → 12-1 내림차순 → STRAT_RANK_START~END위 매수 (상세 페이지와 동일)
     picks_pick = picks.iloc[USA_RANK_START - 1:USA_RANK_END]

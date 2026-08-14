@@ -556,6 +556,57 @@ def get_multi4_start_ym():
     return min(m.keys()) if m else None
 
 
+def get_usa_market_status(df_month):
+    """월간(저번달 말 선정) 데이터 한 달치로 'USA500 이번달 투자/중지'를 판정한다.
+
+    ⚠️ 판정의 단일 출처. USA500 페이지 '월별 상세 분석'(탭1)과 홈 대시보드가
+       반드시 같은 결과를 내도록 로직을 여기 한 곳에 모았다.
+       (데일리 순위 탭2의 '오늘의 시장 상태'는 성격이 달라 별도다.)
+
+    기준은 종목선정일(저번달 말) 시점이며, 이 판정은 한 달 내내 고정이다 —
+    매일 바뀌지 않는다. 조건은 백테스트 방어(SPY 개월선 OR 멀티4)와 같은 계열이다.
+      - S&P500 240일선 이탈: ^GSPC 종가 < 240일(12개월) 이동평균
+      - 멀티4 위험회피:      TIP·VWO·VEA 6M 음수 & (VIXY 6M<0 또는 급등)
+      - 둘 중 하나라도 참이면 투자 중지
+
+    ⚠️ robust_get_us_ma_all은 ^GSPC 일봉(yfinance/FDR)을 받는다. 페이지 tab1과
+       같은 base_date를 쓰므로 캐시를 공유해 추가 네트워크 비용은 사실상 없다.
+
+    Args:
+        df_month: 한 투자월치 미국 월간 데이터 (종목선정일·투자월 포함)
+
+    Returns:
+        dict 또는 None(빈 입력). 키:
+          stop, reason, status, is_below_ma, is_m4,
+          base_date, target_month, spx_curr, spx_mas(dict)
+    """
+    if df_month is None or df_month.empty:
+        return None
+    base_date = (df_month['종목선정일'].iloc[0]
+                 if '종목선정일' in df_month.columns and not pd.isna(df_month['종목선정일'].iloc[0])
+                 else datetime.today().strftime('%Y-%m-%d'))
+    tm_raw = df_month['투자월'].iloc[0] if '투자월' in df_month.columns else None
+    target_month = str(tm_raw)[:7] if tm_raw is not None else datetime.today().strftime('%Y-%m')
+
+    spx_curr, spx_mas = robust_get_us_ma_all(base_date, '^GSPC')
+    is_below_ma = (spx_curr > 0) and (spx_curr < (spx_mas.get(12) or 0))
+    is_m4 = bool(get_multi4_cond1_map().get(target_month, False))
+
+    stop = is_below_ma or is_m4
+    if stop:
+        reason = ("240일선+멀티4" if (is_below_ma and is_m4)
+                  else ("멀티4 방어" if is_m4 else "S&P500 240일선 이탈"))
+    else:
+        reason = "안전"
+    status = "🛑 투자 중지" if stop else "✅ 투자 진행"
+    return {
+        'stop': stop, 'reason': reason, 'status': status,
+        'is_below_ma': is_below_ma, 'is_m4': is_m4,
+        'base_date': base_date, 'target_month': target_month,
+        'spx_curr': spx_curr, 'spx_mas': spx_mas,
+    }
+
+
 @st.cache_data(show_spinner=False)
 def run_backtest_triple_us_m4(df, start_year, end_year, ma_months, apply_timing, use_multi4, top_n_cutoff, rank_s, rank_e, spx, universe_n=None):
     """
