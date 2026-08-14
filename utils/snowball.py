@@ -97,10 +97,9 @@ CASH = 'CASH'
 # ==========================================
 
 # 💡 GitHub raw 직접 로드 (data_loader.load_daily_data와 동일 패턴)
-# Streamlit Cloud 컨테이너는 재배포(reboot) 전까지 로컬 체크아웃 파일이 갱신되지
-# 않으므로, GitHub Actions가 커밋한 최신 CSV를 raw URL에서 우선 가져온다.
-# → 매월 1일 자동 업데이트 후 리부트 없이 최대 1시간(ttl) 내 자동 반영.
-# 네트워크 실패 시 로컬 파일로 폴백하므로 로컬 개발/장애 상황에도 안전.
+# GitHub Actions가 커밋한 CSV의 raw URL. 지금은 '폴백'이다 — 로컬(컨테이너 디스크)에
+# 파일이 없거나 못 읽을 때만 여기로 간다. 근거는 아래 §로컬 우선 로드 참조.
+# (2026-08-14 이전에는 raw를 우선했다. 콜드 로드에 5.6초를 더 썼고 결과는 동일했다.)
 SNOWBALL_RAW_BASE = "https://raw.githubusercontent.com/rlaehrnr/my_quantum_jump/main/data/snowball/monthly/"
 
 
@@ -158,6 +157,61 @@ def _http_csv(base, filename):
     return None
 
 
+# ------------------------------------------------------------------
+# 로컬 우선 로드
+# ------------------------------------------------------------------
+# 배포된 컨테이너에는 레포가 통째로 복사돼 있어 같은 CSV가 이미 디스크에 있다.
+# 예전에는 그걸 두고 매번 raw URL로 다시 받았다 (미국 24 + 국내 28 = 52개 왕복).
+# 실측 8.16초 → 2.57초. 결과 DataFrame은 전건 동일함을 확인했다.
+#
+# 로컬을 믿어도 되는 근거 — 이 앱의 나머지(archive_kospi·archive_usa·데일리 CSV)는
+# 이미 디스크에서만 읽는다. 로컬이 낡는 상황이면 그쪽이 먼저 틀린다. 게다가 데일리
+# 로봇이 매일 push하고 Streamlit Cloud는 그때마다 앱을 다시 띄우므로 체크아웃이
+# 매일 새로 내려온다. 월 1회 갱신되는 스노우볼 CSV는 늦어도 하루면 반영된다.
+# 파일이 없거나 못 읽으면 예전처럼 raw로 폴백하므로 최악이 '예전과 동일'이다.
+_LOCAL_DIRS = {}          # base URL → 로컬 디렉터리
+_LOCAL_INDEX = {}         # 디렉터리 → {정규화 파일명: 실제 경로}
+
+
+def _norm_name(s):
+    return re.sub(r'[\s_]+', '', s).lower()
+
+
+def _local_dir_for(base):
+    if not _LOCAL_DIRS:
+        _LOCAL_DIRS[SNOWBALL_RAW_BASE] = 'data/snowball/monthly'
+        ko = globals().get('KO_RAW_BASE')       # 파일 뒤쪽에 정의돼 있어 지연 조회
+        if ko:
+            _LOCAL_DIRS[ko] = 'data/snowball_kr/monthly'
+    return _LOCAL_DIRS.get(base)
+
+
+def _local_csv(base, filename):
+    """컨테이너 디스크에서 같은 CSV를 찾아 읽는다. 없거나 실패하면 None."""
+    d = _local_dir_for(base)
+    if not d or not os.path.isdir(d):
+        return None
+    idx = _LOCAL_INDEX.get(d)
+    if idx is None:
+        idx = {_norm_name(f): os.path.join(d, f)
+               for f in os.listdir(d) if f.lower().endswith('.csv')}
+        _LOCAL_INDEX[d] = idx
+    path = idx.get(_norm_name(filename))
+    if not path:
+        return None
+    try:
+        df = _read_csv_any_encoding(path)
+        return df if (df is not None and not df.empty) else None
+    except Exception:
+        return None
+
+
+def _load_csv(base, filename):
+    """로컬 우선 → 없으면 네트워크(raw). 모든 로더가 이 한 곳을 지난다."""
+    df = _local_csv(base, filename)
+    return df if df is not None else _http_csv(base, filename)
+
+
 def _prefetch(base, filenames, workers=16):
     """표준 파일명들을 병렬로 받아 메모에 채운다.
 
@@ -168,19 +222,29 @@ def _prefetch(base, filenames, workers=16):
             and (base + f) not in _RAW_MEMO]
     if not todo:
         return
-    with ThreadPoolExecutor(max_workers=min(workers, len(todo))) as ex:
-        for fn, df in zip(todo, ex.map(lambda f: _http_csv(base, f), todo)):
+    # 로컬에 있는 건 스레드풀에 넣지 않고 바로 읽는다 (네트워크 왕복 자체를 없앤다).
+    remain = []
+    for f in todo:
+        df = _local_csv(base, f)
+        if df is not None:
+            _memo_put(base + f, df)
+        else:
+            remain.append(f)
+    if not remain:
+        return
+    with ThreadPoolExecutor(max_workers=min(workers, len(remain))) as ex:
+        for fn, df in zip(remain, ex.map(lambda f: _http_csv(base, f), remain)):
             _memo_put(base + fn, df)
 
 
 def _fetch_raw_csv(filename):
-    """GitHub raw에서 CSV 로드 시도. 실패하면 None (조용히 폴백)."""
+    """미국 월봉 CSV 로드. 로컬 우선 → 없으면 GitHub raw. 실패하면 None."""
     key = SNOWBALL_RAW_BASE + filename
     with _RAW_LOCK:
         cached = key in _RAW_MEMO
     if cached:
         return _memo_get(key)
-    df = _http_csv(SNOWBALL_RAW_BASE, filename)
+    df = _load_csv(SNOWBALL_RAW_BASE, filename)
     _memo_put(key, df)
     return None if df is None else df.copy()
 
@@ -1176,23 +1240,23 @@ def _ko_filename_variants(code):
 
 
 def _fetch_ko_raw_csv(filename):
-    """snowball_kr 폴더의 GitHub raw CSV 로드 시도. 실패하면 None.
+    """snowball_kr 폴더의 CSV 로드. 로컬 우선 → 없으면 GitHub raw. 실패하면 None.
 
     메모를 공유하므로 ko/pen/ssopen/mamtax 로더가 같은 종목을 겹쳐 써도
-    실제 네트워크 요청은 한 번만 나간다.
+    파일당 한 번만 읽는다.
     """
     key = KO_RAW_BASE + filename
     with _RAW_LOCK:
         cached = key in _RAW_MEMO
     if cached:
         return _memo_get(key)
-    df = _http_csv(KO_RAW_BASE, filename)
+    df = _load_csv(KO_RAW_BASE, filename)
     _memo_put(key, df)
     return None if df is None else df.copy()
 
 
 def _prefetch_ko(codes):
-    """국내 종목의 표준 파일명(1순위 변형)을 병렬 선반입."""
+    """국내 종목의 표준 파일명(1순위 변형)을 선반입 (로컬 우선, 없는 것만 병렬 네트워크)."""
     _prefetch(KO_RAW_BASE, [_ko_filename_variants(c)[0] for c in codes])
 
 
