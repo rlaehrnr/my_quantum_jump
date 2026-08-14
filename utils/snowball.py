@@ -50,18 +50,13 @@ BENCHMARKS = ['QQQ', 'SOXX']           # 전략 비교용 벤치마크 (차트/�
 ALL_TICKERS = SIGNAL_ASSETS + OFFENSE_ASSETS + DEFENSE_ASSETS + BENCHMARKS
 
 # ==========================================
-# 맘 삼성 전략 자산군 (탭 2)  — 백테스트로 확정한 최종안
+# [폐지] 맘 삼성 전략 자산군 — 2026-08 운용 중단
 # ==========================================
-# 필터: TIP·SPY가 N개월 이동평균 이격도 > 0 (둘 다 위)일 때만 공격 국면 (기본 9개월)
-SS_FILTER_ASSETS  = ['TIP', 'SPY']
-SS_FILTER_WIN     = 9      # 필터 이동평균 개월 (백테스트 최적: 낙폭↓ 유지, 짧아 반응 빠름)
-# 공격: 12개월 이동평균 이격도 > 0인 것 모두 동일가중
-SS_OFFENSE_ASSETS = ['FAS', 'SOXL', 'TQQQ', 'TMF']
-SS_OFFENSE_WIN    = 12
-# 방어: IEF50 / GLD50 고정 (국채+금 반반 → 위기 성격 보완, TBT 제외).
-#   백테스트상 모멘텀 선택·현금 안전장치보다 이 고정 반반이 위험조정 성과가 가장 좋았음.
-SS_DEFENSE_ASSETS = ['IEF', 'GLD']
-# 벤치마크는 또 메리츠와 동일 (BENCHMARKS = QQQ/SOXX)
+# 자산군 상수(SS_FILTER_ASSETS·SS_OFFENSE_ASSETS·SS_DEFENSE_ASSETS 등)는 2026-08-14에
+# 지웠다. 이것들이 LOAD_TICKERS에 남아 있어서, 아무 전략도 쓰지 않는 FAS·SOXL·TMF를
+# 매번 로드하고 있었다. TIP·SPY·GLD·IEF는 살아있는 전략(또 메리츠·맘·쏘 삼성)이
+# 이미 가지고 있으므로 아래 LOAD_TICKERS는 그대로 커버한다.
+# (SS_CASH만 남는다 — run_backtest_samsung이 쓰고, 그 러너는 맘·쏘 삼성이 재사용한다)
 
 # ==========================================
 # 쏘 삼성 전략 자산군 (탭 3)
@@ -82,10 +77,9 @@ SO_DEFENSE_ASSETS = ['GLD', 'IEF']
 #   백테스트상 쏘삼성의 CAGR·MDD·샤프·Sortino가 모두 개선(놓친 급락을 매크로 신호가 포착).
 SO_USE_RISKOFF = True
 
-# 로더가 로드할 전체 유니버스 (세 탭 합집합, 순서 유지·중복 제거)
+# 로더가 로드할 전체 유니버스 (살아있는 전략들의 합집합, 순서 유지·중복 제거)
 LOAD_TICKERS = list(dict.fromkeys(
-    ALL_TICKERS + SS_FILTER_ASSETS + SS_OFFENSE_ASSETS + SS_DEFENSE_ASSETS
-    + [SO_FILTER_ASSET] + SO_OFFENSE_ASSETS + SO_DEFENSE_ASSETS
+    ALL_TICKERS + [SO_FILTER_ASSET] + SO_OFFENSE_ASSETS + SO_DEFENSE_ASSETS
 ))
 
 # CSH (현금 식별자)

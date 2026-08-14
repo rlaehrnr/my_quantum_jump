@@ -218,20 +218,9 @@ def _gspread_client():
     return gspread.authorize(Credentials.from_service_account_info(json.loads(st.secrets["google_credentials"]), scopes=scopes))
 
 
-def _normalize_code(x):
-    """종목코드를 6자리로 맞춘다. (pages/5_내 소형주 퀀트 포트.py의 normalize_code와 동일)
-
-    💡 우선주·전환우선주는 코드에 알파벳이 섞인다 (00104K, 37550K, 37550L).
-       float() 변환은 이런 코드에서 ValueError를 내고, 그게 except에 삼켜져
-       소형주 요약이 통째로 0으로 보였다. 숫자 코드 처리는 예전과 같다.
-    """
-    s = str(x).strip()
-    if not s:
-        return ""
-    try:
-        return str(int(float(s))).zfill(6)
-    except ValueError:
-        return s.zfill(6)
+# 종목코드 정규화는 utils 한 곳에서 관리한다 (pages/5와 같은 함수를 쓴다).
+# 사본을 두면 갈라진다 — 실제로 그래서 알파벳 종목코드 버그가 두 번 났다.
+from utils.data_loader import normalize_stock_code as _normalize_code
 
 
 @st.cache_data(ttl=300, show_spinner=False)
