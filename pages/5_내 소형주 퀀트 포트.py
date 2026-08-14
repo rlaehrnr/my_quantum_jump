@@ -59,23 +59,9 @@ def parse_krw(val_str, default_val):
         return int(val_str)
     except: return default_val
 
-def normalize_code(x):
-    """종목코드를 6자리로 맞춘다.
-
-    💡 우선주·전환우선주는 코드에 알파벳이 섞인다 (00104K, 37550K, 37550L).
-       예전에는 float()으로 변환해서 이런 코드가 ValueError를 냈고,
-       그게 except에 삼켜져 포트폴리오가 통째로 빈 표가 됐다.
-       숫자 코드는 예전과 똑같이 처리하고, 알파벳 코드만 원본을 살린다.
-    """
-    s = str(x).strip()
-    if not s:
-        return ""
-    try:
-        # "9520" · "5930.0" 처럼 순수 숫자면 소수점 흔적을 털고 0을 채운다
-        return str(int(float(s))).zfill(6)
-    except ValueError:
-        # "00104K" 같은 코드는 변환하지 않고 그대로 쓴다
-        return s.zfill(6)
+# 종목코드 정규화는 utils 한 곳에서 관리한다 (시트 읽기·엑셀 업로드·리밸런싱 공용).
+# 여기 따로 두면 app.py 사본과 갈라져 또 어긋난다.
+from utils.data_loader import normalize_stock_code as normalize_code
 
 # --- [2. 구글 시트 엔진] ---
 @st.cache_resource
@@ -234,8 +220,10 @@ def render_portfolio_tab(port_name, port_key, prices):
                     if not c_cols: st.error("🚨 파일에 '코드'라는 단어가 포함된 열이 없습니다.")
                     else:
                         code_col = c_cols[0]
-                        up_df['종목코드'] = up_df[code_col].astype(str).str.extract(r'(\d+)')[0].str.zfill(6)
-                        up_df = up_df.dropna(subset=['종목코드'])
+                        # ⚠️ 예전엔 str.extract(r'(\d+)')로 숫자만 뽑아 00104K → 000104처럼
+                        #    조용히 다른 종목으로 바꿨다. normalize_code가 알파벳을 보존한다.
+                        up_df['종목코드'] = up_df[code_col].apply(normalize_code)
+                        up_df = up_df[up_df['종목코드'] != ""]
                         
                         if '종목명' not in up_df.columns: up_df['종목명'] = up_df['종목코드'].map(name_map).fillna('이름없음')
                         for c in ['매수단가', '수량']:
@@ -409,8 +397,9 @@ with tabs[4]:
                 st.error("🚨 파일에 '코드' 또는 '목표'가 포함된 열 이름이 없습니다. 양식을 다시 확인해주세요.")
             else:
                 c_col, m_col = c_cols[0], m_cols[0]
-                t_df['종목코드'] = t_df[c_col].astype(str).str.extract(r'(\d+)')[0].str.zfill(6)
-                t_df = t_df.dropna(subset=['종목코드'])
+                # ⚠️ 업로드와 같은 이유로 normalize_code를 쓴다 (알파벳 종목코드 보존).
+                t_df['종목코드'] = t_df[c_col].apply(normalize_code)
+                t_df = t_df[t_df['종목코드'] != ""]
                 
                 t_df['목표금액'] = pd.to_numeric(t_df[m_col].astype(str).str.replace(r'[^0-9.-]', '', regex=True), errors='coerce').fillna(0).astype(int) * 10000
                 

@@ -23,14 +23,16 @@ from datetime import datetime
 MONTHLY_DIR = 'data/snowball/monthly'
 
 # 스노우볼 자산
-#  · 기존(또 메리츠): TIP, VWO, VEA, VIXY, TQQQ, USD, GLD, TLT, SQQQ, SLV, SPY
-#  · 신규(맘 삼성):   FAS, SOXL, TMF, IEF, TBT  (TQQQ, GLD, SPY, TIP은 위와 공유)
-#  · 신규(쏘 삼성):   EWY, FDN, IBB, LIT, SMH, XLE, XLF  (SPY, QQQ, GLD, IEF는 공유)
+#  · 또 메리츠:   TIP, VWO, VEA, VIXY, TQQQ, USD, GLD, TLT, SQQQ, SLV, SPY
+#  · 맘·쏘 삼성:  EWY, FDN, IBB, LIT, SMH, XLE, XLF, QQQ + 방어 IEF (SPY, GLD는 공유)
+#
+# ⚠️ 폐지된 '맘 삼성'(레버리지)이 쓰던 FAS·SOXL·TMF·TBT는 2026-08-14에 뺐다.
+#    앱이 읽지 않는 파일을 매일 만들고 있었다. IEF는 맘·쏘 삼성 방어자산이라 남긴다.
+#    (기존 CSV는 지우지 않았다 — 갱신만 멈춘다)
 CORE_TICKERS   = ['TIP', 'VWO', 'VEA', 'VIXY', 'TQQQ', 'USD', 'GLD', 'TLT', 'SQQQ', 'SLV', 'SPY']
-SAMSUNG_TICKERS = ['FAS', 'SOXL', 'TMF', 'IEF', 'TBT']
-# 쏘 삼성 공격 유니버스 (SPY는 CORE와 공유). QQQ는 벤치마크로 이미 저장소에 있으나
-# 쏘 삼성 공격 후보이기도 하므로, 자동 갱신 대상에 포함해 최신 조정종가로 관리한다.
-SO_TICKERS      = ['EWY', 'FDN', 'IBB', 'LIT', 'SMH', 'XLE', 'XLF', 'QQQ']
+# 맘·쏘 삼성 공격 유니버스 (SPY는 CORE와 공유) + 방어 IEF. QQQ는 벤치마크로 이미
+# 저장소에 있으나 공격 후보이기도 하므로 자동 갱신 대상에 포함해 최신 조정종가로 관리한다.
+SO_TICKERS      = ['EWY', 'FDN', 'IBB', 'LIT', 'SMH', 'XLE', 'XLF', 'QQQ', 'IEF']
 # 벤치마크 전용 (전략이 보유하진 않지만 snowball.BENCHMARKS가 읽어 차트·성과표에 쓴다).
 # ⚠️ 여기 빠지면 파일이 영원히 안 갱신돼 벤치마크 선만 조용히 과거에 멈춘다.
 #    (실제로 SOXX가 누락돼 2026-06 이후 멈춰 있었다 — 2026-08 수정)
@@ -38,7 +40,7 @@ BENCHMARK_TICKERS = ['SOXX']
 
 # 중복 제거하며 순서 유지한 전체 수집 대상
 ALL_TICKERS = list(dict.fromkeys(
-    CORE_TICKERS + SAMSUNG_TICKERS + SO_TICKERS + BENCHMARK_TICKERS))
+    CORE_TICKERS + SO_TICKERS + BENCHMARK_TICKERS))
 
 # 💡 수정주가(배당·분할 반영 종가)로 받을 티커.
 #    수정주가는 배당/분할 발생 시 과거 전체가 소급 재계산되므로 append가 아닌

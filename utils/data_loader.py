@@ -2,8 +2,51 @@ import streamlit as st
 import pandas as pd
 import os
 import glob
+import re
 
 from utils import archive_store
+
+
+def normalize_stock_code(x):
+    """한국 종목코드를 6자리로 맞춘다. **종목코드를 다루는 모든 곳이 이 함수를 쓴다.**
+
+    ⚠️ 우선주·전환우선주는 코드에 알파벳이 섞인다 (00104K, 37550K, 37550L).
+       예전에 두 가지 방식으로 잘못 처리했다.
+         · `int(float(코드))`  → ValueError가 except에 삼켜져 포트가 통째로 빈 화면
+         · `str.extract(r'(\\d+)')` → 알파벳이 잘려 **조용히 다른 종목**이 됨
+           (00104K → 000104 = 전혀 다른 회사. 터지지 않아서 더 위험했다)
+       그래서 규칙을 한 곳에 모았다.
+
+    | 입력 | 출력 | 비고 |
+    |---|---|---|
+    | `005930` | `005930` | 그대로 |
+    | `5930` | `005930` | 엑셀이 앞자리 0을 떼먹은 값 |
+    | `5930.0` | `005930` | 숫자로 읽힌 값 |
+    | `A005930` | `005930` | 증권사 내보내기의 접두 문자 |
+    | `00104K` | `00104K` | **알파벳 보존** |
+    | `104K` | `00104K` | 앞자리 0이 떨어진 우선주 |
+    | `A00104K` | `00104K` | 접두 제거 + 알파벳 보존 |
+    | 빈 값·NaN | `""` | 호출측에서 걸러낸다 |
+    """
+    s = re.sub(r'[\s,]', '', str(x).strip().upper())
+    if not s or s in ('NAN', 'NONE', '<NA>'):
+        return ""
+    # 증권사 내보내기의 접두 문자 제거 — 뒤가 코드 모양일 때만 (A005930, A00104K)
+    m = re.match(r'^[A-Z](\d{3,6}[A-Z]?)$', s)
+    if m:
+        s = m.group(1)
+    # 순수 숫자 (005930 · 5930 · 5930.0)
+    try:
+        return str(int(float(s))).zfill(6)
+    except ValueError:
+        pass
+    # 숫자 + 알파벳 접미 1자 (00104K · 104K · 37550L)
+    m = re.match(r'^(\d+)([A-Z])$', s)
+    if m:
+        return m.group(1).zfill(5) + m.group(2)
+    # 알 수 없는 형식 — 자르지 않고 원본을 살린다 (조용히 틀리는 것보다 낫다)
+    return s.zfill(6)
+
 
 def get_folder_hash(folder_path):
     """폴더 내 'only_'로 시작하는 정상 월간 파일들만 검사."""
