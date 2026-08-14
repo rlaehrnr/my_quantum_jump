@@ -84,26 +84,15 @@ def _badge(stop, reason):
 @st.cache_data(ttl=1800, show_spinner=False)
 def _kospi_status():
     from utils.data_loader import load_daily_data, load_archive_data, get_folder_hash
-    from utils.calculator import get_kospi_ma_all, get_strategy_stocks_korea
+    from utils.calculator import get_strategy_stocks_korea, get_korea_market_status
 
-    df_daily = load_daily_data()
-    if df_daily is None or df_daily.empty:
-        return None
-    # (1) 투자/중지 판단 — 현재 시장상태(데일리)
-    try:
-        kc, kmas = get_kospi_ma_all(datetime.today().strftime('%Y-%m-%d'))
-    except Exception:
-        kc, kmas = 0, {}
-    dk_d, _, _ = get_strategy_stocks_korea(df_daily)
-    n1 = int((dk_d['1개월(%)'] < 0).sum()) if '1개월(%)' in dk_d else 0
-    n3 = int((dk_d['3개월(%)'] < 0).sum()) if '3개월(%)' in dk_d else 0
-    is_bad = (n1 >= 100) and (n3 >= 100)
-    is_below = (kc > 0) and (kc < kmas.get(6, 0))
-    stop = is_bad or is_below
-    reason = (("하락장 " if is_bad else "") + ("6개월선 이탈" if is_below else "")) or "안전"
-
-    # (2) 선정 종목 — 월간 아카이브 최신 투자월(지난달 말 선정 + 이번달수익률 데일리)
+    # 선정 종목 · 투자/중지 판정 모두 '월간 아카이브 최신 투자월'(저번달 말 선정) 기준이다.
+    # 판정은 공통 함수 get_korea_market_status로 계산 → KOSPI200 페이지 '월별 상세 분석'(탭1)
+    # 최신 달과 정확히 같은 결과가 나온다. (데일리 순위 탭2의 '오늘의 시장 상태'와는 성격이 다르다.
+    # 이 판정은 저번달 말에 정해져 한 달 내내 고정이며, 매일 바뀌지 않는다.)
     dm = load_archive_data("archive_kospi", get_folder_hash("archive_kospi"))
+    if dm is None or dm.empty:
+        return None
     dm['종목코드'] = dm['종목코드'].astype(str).str.zfill(6)
     dm = dm[dm['종목코드'].str.endswith('0')].copy()
     for col in ['시가총액', '1개월(%)', '3개월(%)', '6개월(%)', '12개월(%)', '이번달수익률']:
@@ -111,8 +100,12 @@ def _kospi_status():
             dm[col] = pd.to_numeric(dm[col], errors='coerce').fillna(0)
     latest_m = sorted(dm['투자월'].dropna().unique())[-1]
     dmm = dm[dm['투자월'] == latest_m].copy()
-    _, dp, ds = get_strategy_stocks_korea(dmm)
 
+    mkt = get_korea_market_status(dmm)
+    stop = bool(mkt['stop']) if mkt else False
+    reason = mkt['reason'] if mkt else "안전"
+
+    _, dp, ds = get_strategy_stocks_korea(dmm)
     rc = '이번달수익률' if '이번달수익률' in dp.columns else '1개월(%)'
     perf = [(r['종목코드'], r['종목명'], r.get(rc)) for _, r in dp.head(6).iterrows()]
     spec = [(r['종목코드'], r['종목명'], r.get(rc)) for _, r in ds.head(2).iterrows()]
@@ -121,7 +114,12 @@ def _kospi_status():
     avg_p = float(np.mean(perf_r)) if perf_r else 0.0
     avg_s = float(np.mean(spec_r)) if spec_r else 0.0
     avg = (avg_p + avg_s) / 2   # 앙상블(50:50)
-    refdate = str(df_daily['기준일'].iloc[0]) if '기준일' in df_daily.columns else None
+
+    # 수익률(이번달수익률) 신선도 표시용 — 데일리 로봇이 매일 갱신하는 기준일
+    df_daily = load_daily_data()
+    refdate = (str(df_daily['기준일'].iloc[0])
+               if df_daily is not None and not df_daily.empty and '기준일' in df_daily.columns
+               else None)
     return {'stop': stop, 'reason': reason, 'avg': avg, 'avg_p': avg_p, 'avg_s': avg_s,
             'perf': perf, 'spec': spec, 'refdate': refdate, 'month': latest_m}
 

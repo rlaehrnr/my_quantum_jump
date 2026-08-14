@@ -466,6 +466,62 @@ def get_strategy_stocks_korea(df):
     return df.copy(), df_perf, df_spec
 
 
+def get_korea_market_status(df_month):
+    """월간(저번달 말 선정) 데이터 한 달치로 '이번달 투자/중지'를 판정한다.
+
+    ⚠️ 판정의 단일 출처. KOSPI200 페이지 '월별 상세 분석'(탭1)과 홈 대시보드가
+       반드시 같은 결과를 내도록 로직을 여기 한 곳에 모았다.
+       (데일리 순위 탭2는 '오늘의 시장 상태'라 성격이 달라 별도다.)
+
+    기준은 종목선정일(저번달 말) 시점 데이터다 — 이 판정은 한 달 내내 고정이며
+    매일 바뀌지 않는다.
+      - 하락장:      1개월 & 3개월 수익률이 음수인 종목이 각각 100개 이상
+      - 6개월선 이탈: KOSPI 종가 < 120일(6개월) 이동평균
+      - 둘 중 하나라도 참이면 투자 중지
+    방어 시 금 배분: 금이 6개월선 위→금100 / 6M~12M→금50:현금50 / 12M 아래→현금100
+
+    Args:
+        df_month: 한 투자월치 월간 데이터 (종목선정일·1/3/6/12개월(%) 포함)
+
+    Returns:
+        dict 또는 None(빈 입력). 키:
+          stop(bool), reason(str), status(str), defense_alloc(str),
+          is_bad_market, is_below_ma, neg_1m, neg_3m, base_date,
+          kospi_curr, kospi_mas(dict)
+    """
+    if df_month is None or df_month.empty:
+        return None
+    base_date = (df_month['종목선정일'].iloc[0] if '종목선정일' in df_month.columns
+                 and not pd.isna(df_month['종목선정일'].iloc[0])
+                 else datetime.today().strftime('%Y-%m-%d'))
+
+    df_all, _, _ = get_strategy_stocks_korea(df_month)
+    neg_1m = int((pd.to_numeric(df_all['1개월(%)'], errors='coerce') < 0).sum()) if '1개월(%)' in df_all else 0
+    neg_3m = int((pd.to_numeric(df_all['3개월(%)'], errors='coerce') < 0).sum()) if '3개월(%)' in df_all else 0
+    is_bad_market = (neg_1m >= 100) and (neg_3m >= 100)
+
+    kospi_curr, kospi_mas = get_kospi_ma_all(base_date)
+    is_below_ma = (kospi_curr > 0) and (kospi_curr < kospi_mas.get(6, 0))
+
+    gold_curr, gold_mas = get_gold_ma_all(base_date)
+    gold_below_6 = (gold_curr > 0) and (gold_curr < gold_mas.get(6, 0))
+    gold_below_12 = (gold_curr > 0) and (gold_curr < gold_mas.get(12, 0))
+    defense_alloc = "현금 100" if gold_below_12 else ("금 50 : 현금 50" if gold_below_6 else "금 100")
+
+    stop = is_bad_market or is_below_ma
+    reason = (("하락장" if is_bad_market else "")
+              + (" + " if is_bad_market and is_below_ma else "")
+              + ("6개월선 이탈" if is_below_ma else "")) or "안전"
+    status = f"🛑 투자 중지 ({defense_alloc})" if stop else "✅ 투자 진행"
+
+    return {
+        'stop': stop, 'reason': reason, 'status': status, 'defense_alloc': defense_alloc,
+        'is_bad_market': is_bad_market, 'is_below_ma': is_below_ma,
+        'neg_1m': neg_1m, 'neg_3m': neg_3m, 'base_date': base_date,
+        'kospi_curr': kospi_curr, 'kospi_mas': kospi_mas,
+    }
+
+
 # ==========================================
 # 💡 백테스트: KOSPI 200 전용
 # 
