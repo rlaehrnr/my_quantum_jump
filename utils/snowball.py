@@ -908,112 +908,13 @@ def rule_active_note(bt, prices, candidates):
 
 
 # ==========================================
-# 맘 삼성 전략 엔진 (탭 2)
+# [폐지] 맘 삼성 전략 엔진 (레버리지 모멘텀) — 2026-08 운용 중단
 # ==========================================
-#
-# 규칙 요약:
-#   · 필터(진입 관문): TIP·SPY 둘 다 11M 이동평균 이격도 > 0 → 공격 국면
-#   · 공격: FAS·SOXL·TQQQ·TMF 중 12M 이동평균 이격도 > 0인 것 모두 동일가중.
-#           필터는 통과했는데 통과 자산이 0개면 → 방어로 전환.
-#   · 방어: IEF·GLD·TBT 중 5M 이동평균 이격도 1위 1개.
-#           단 1위가 절대모멘텀 미달(5M MA 아래, 이격도 ≤ 0)이면 → 현금(CASH).
-#   · 벤치마크: QQQ·SOXX (또 메리츠와 동일).
-#
-# 반환 포맷은 또 메리츠 엔진과 동일하게 맞춰(백테스트 bt 컬럼 동일) compute_performance를
-# 그대로 재사용한다. hold는 표시용 문자열(공격이면 "SOXL·TQQQ"), holds는 실제 티커 리스트.
+# 신호 계산기(compute_signals_samsung)는 2026-08-14에 제거했다.
+# 폐지 사유와 백테스트 근거는 pages/6 의 [폐지] 주석에 있다.
+# run_backtest_samsung 러너는 남는다 — 라이브 '맘·쏘 삼성'(run_backtest_so)이 재사용한다.
 
 SS_CASH = 'CASH'
-
-
-def compute_signals_samsung(prices, use_filter=True, filter_win=SS_FILTER_WIN):
-    """맘 삼성 전략의 월별 신호·보유 계산 (최종안).
-
-    규칙:
-      · 필터: TIP·SPY 둘 다 filter_win개월 MA 이격도 > 0 → 공격 게이트 통과 (기본 9개월)
-      · 공격: FAS·SOXL·TQQQ·TMF 중 12M MA 이격도 > 0인 것 모두 동일가중
-      · 방어: IEF50 / GLD50 고정 (게이트 미통과 또는 공격 후보 0개일 때)
-
-    Args:
-        prices: 월봉 종가 DataFrame
-        use_filter: False면 필터를 무시하고 공격 후보가 있으면 항상 공격(A/B 비교용).
-            'filter_pass'에는 실제 필터 상태를 그대로 기록하되 보유 결정만 무시.
-        filter_win: 필터 이동평균 개월 (기본 SS_FILTER_WIN=9)
-
-    Returns:
-        DataFrame, index=YearMonth, columns=[
-            'defensive', 'filter_pass', 'n_offense',
-            'holds', 'hold', 'reason',
-            'dispF_TIP','dispF_SPY',                       # 필터 이격도 (filter_win 기준)
-            'disp12_FAS','disp12_SOXL','disp12_TQQQ','disp12_TMF',
-            'disp_IEF','disp_GLD',                          # 방어 참고용 이격도(5M)
-        ]
-    """
-    dF  = compute_ma_disparity(prices, filter_win)   # 필터
-    d12 = compute_ma_disparity(prices, SS_OFFENSE_WIN)   # 공격
-    d5  = compute_ma_disparity(prices, 5)                # 방어(참고 표시용)
-
-    filt = [t for t in SS_FILTER_ASSETS if t in prices.columns]
-    off  = [t for t in SS_OFFENSE_ASSETS if t in prices.columns]
-    dfn  = [t for t in SS_DEFENSE_ASSETS if t in prices.columns]
-
-    # 준비도: 필터·공격·방어 자산 이격도가 모두 계산 가능해야 그 달 신호 유효.
-    ready = pd.Series(True, index=prices.index)
-    if filt:
-        ready &= dF[filt].notna().all(axis=1)
-    if off:
-        ready &= d12[off].notna().all(axis=1)
-    if dfn:
-        ready &= d5[dfn].notna().all(axis=1)
-    if (len(filt) < len(SS_FILTER_ASSETS)
-            or len(off) < len(SS_OFFENSE_ASSETS)
-            or len(dfn) < len(SS_DEFENSE_ASSETS)):
-        ready &= False
-
-    records = []
-    for m in prices.index:
-        rec = {
-            'dispF_TIP':   dF.loc[m, 'TIP']   if 'TIP'  in dF.columns else np.nan,
-            'dispF_SPY':   dF.loc[m, 'SPY']   if 'SPY'  in dF.columns else np.nan,
-            'disp12_FAS':  d12.loc[m, 'FAS']  if 'FAS'  in d12.columns else np.nan,
-            'disp12_SOXL': d12.loc[m, 'SOXL'] if 'SOXL' in d12.columns else np.nan,
-            'disp12_TQQQ': d12.loc[m, 'TQQQ'] if 'TQQQ' in d12.columns else np.nan,
-            'disp12_TMF':  d12.loc[m, 'TMF']  if 'TMF'  in d12.columns else np.nan,
-            'disp_IEF':    d5.loc[m, 'IEF']   if 'IEF'  in d5.columns else np.nan,
-            'disp_GLD':    d5.loc[m, 'GLD']   if 'GLD'  in d5.columns else np.nan,
-        }
-
-        if not bool(ready.loc[m]):
-            rec.update({'defensive': True, 'filter_pass': False, 'n_offense': 0,
-                        'holds': None, 'hold': None, 'reason': '데이터 워밍업'})
-            records.append(rec)
-            continue
-
-        # 필터: TIP·SPY 둘 다 filter_win개월 MA 이격도 > 0
-        filter_pass = bool((dF.loc[m, filt] > 0).all())
-        off_pass = [t for t in off if d12.loc[m, t] > 0]
-        rec['n_offense'] = len(off_pass)
-        rec['filter_pass'] = filter_pass
-
-        gate = filter_pass or (not use_filter)
-
-        if gate and len(off_pass) > 0:
-            holds = off_pass
-            defensive = False
-            reason = f"공격 · {len(off_pass)}종 동일가중"
-        else:
-            # 방어: IEF50 / GLD50 고정
-            holds = list(SS_DEFENSE_ASSETS)   # ['IEF','GLD']
-            defensive = True
-            reason = ("방어 · IEF50·GLD50 (필터 이탈)" if not gate
-                      else "방어 · IEF50·GLD50 (공격 후보 없음)")
-
-        rec['defensive'] = defensive
-        rec['holds'] = holds
-        rec['hold'] = SS_CASH if holds == [SS_CASH] else '·'.join(holds)
-        rec['reason'] = reason
-        records.append(rec)
-
-    return pd.DataFrame(records, index=prices.index)
 
 
 # run_backtest_so 가 이 함수를 그대로 재사용하므로, 여기 한 곳만 캐시하면 '맘·쏘 삼성' 탭도 함께 덮인다.

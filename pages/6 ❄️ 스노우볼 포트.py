@@ -3,11 +3,10 @@
 ─────────────────────
 동적 자산배분 전략 페이지 (탭 구성).
 
-- 탭 1 "또 메리츠": 기존 스노우볼 전략 (조건1 모멘텀 + 조건2 밸류에이션).
-- 탭 2 "맘 삼성":   레버리지 모멘텀 전략 (백테스트로 확정).
-    · 필터: TIP·SPY 둘 다 9M MA 이격도 > 0 → 공격 (제목 옆 토글/슬라이더로 조절)
-    · 공격: FAS·SOXL·TQQQ·TMF 중 12M MA 이격도 > 0인 것 모두 동일가중
-    · 방어: IEF50 · GLD50 고정
+탭 7개: 또 메리츠 · 맘·쏘 삼성 · 또 ISA · 또 연금 · 쏘 연금 · 맘 비과세 · 통합 포트.
+- 탭 1 "또 메리츠":  기존 스노우볼 전략 (조건1 모멘텀 + 조건2 밸류에이션).
+- 탭 2 "맘·쏘 삼성": 모멘텀 상위 2종 동일가중 + 또 메리츠 리스크오프 동반 방어.
+    · 삼성증권 계좌를 하나로 합쳐 운용한다 (레버리지 '맘 삼성'은 2026-08 폐지)
 
 각 탭 구성은 동일: 공격/방어 현황 → 신호/필터 → 백테스트 성과 + 자산곡선 + 월별 로그.
 새 탭을 추가하려면 render_* 함수를 만들어 아래 st.tabs에 연결하면 된다.
@@ -24,9 +23,7 @@ from utils.snowball import (
     # 또 메리츠
     compute_signals, run_backtest, compute_performance, rule_active_note,
     SIGNAL_ASSETS, OFFENSE_ASSETS, DEFENSE_ASSETS, BENCHMARKS, VIXY_SPIKE,
-    # 맘 삼성
-    compute_signals_samsung, run_backtest_samsung,
-    SS_FILTER_ASSETS, SS_OFFENSE_ASSETS, SS_DEFENSE_ASSETS, SS_CASH, SS_FILTER_WIN,
+    # 맘·쏘 삼성
     compute_signals_so, run_backtest_so,
     SO_FILTER_ASSET, SO_OFFENSE_ASSETS, SO_DEFENSE_ASSETS, SO_TOPK,
     SIGNAL_ASSETS, C1_RISK_ASSETS, VIXY_SPIKE,
@@ -291,11 +288,6 @@ def build_meritz_detail_excel(signals, bt, prices):
 # ──────────────────────────────────────────────────────────
 # 방어월 반사실: '공격이었다면 무엇을·수익률' — 전 전략 공용 (엑셀 전용)
 # ──────────────────────────────────────────────────────────
-def _cf_samsung(s):
-    passed = [t for t in SS_OFFENSE_ASSETS if pd.notna(s.get(f'disp12_{t}')) and s.get(f'disp12_{t}') > 0]
-    return {t: 1.0/len(passed) for t in passed} if passed else {}
-
-
 def _cf_so(s):
     scores = {t: s.get(f'score_{t}') for t in SO_OFFENSE_ASSETS if pd.notna(s.get(f'score_{t}'))}
     if not scores:
@@ -371,28 +363,6 @@ def _build_cf_excel(base_df, signals, bt, prices, cf_fn, name_fn):
     out['공격시_수익률(%)'] = cf_ret
     out['공격−방어_차이(%)'] = cf_diff
     return out
-
-
-def build_samsung_detail(signals, bt):
-    """맘 삼성 월별 상세 근거표 (필터 → 공격/방어 후보 → 보유 → 결과)."""
-    rows = []
-    for _, r in bt.iterrows():
-        m = pd.Period(r['signal_month'], 'M')
-        s = signals.loc[m]
-        rows.append({
-            '보유월': r['hold_month'],
-            '국면': '🛡️방어' if r['defensive'] else '⚔️공격',
-            'TIP 필터': _pct(s.get('dispF_TIP')), 'SPY 필터': _pct(s.get('dispF_SPY')),
-            '필터': '통과' if s.get('filter_pass') else '이탈',
-            'FAS 12M': _pct(s.get('disp12_FAS')), 'SOXL 12M': _pct(s.get('disp12_SOXL')),
-            'TQQQ 12M': _pct(s.get('disp12_TQQQ')), 'TMF 12M': _pct(s.get('disp12_TMF')),
-            'IEF 5M': _pct(s.get('disp_IEF')), 'GLD 5M': _pct(s.get('disp_GLD')),
-            '보유': r['hold'],
-            '전략수익률(%)': round(r['ret_strategy']*100, 2),
-            '누적(%)': round((r['cum_strategy']-1)*100, 1),
-            '낙폭(%)': round(r['dd_strategy']*100, 1),
-        })
-    return pd.DataFrame(rows)
 
 
 def build_so_detail(signals, bt):
@@ -728,7 +698,9 @@ def render_meritz():
 # ==========================================
 # [폐지] 맘 삼성 (레버리지 모멘텀) — 2026-08 운용 중단
 # ==========================================
-# 탭에서 내렸고 통합 포트 후보에서도 뺐다. 되돌릴 수 있게 코드는 남겨 둔다.
+# 탭에서 내렸고 통합 포트 후보에서도 뺐다.
+# 화면 코드(render_samsung 등)는 2026-08-14에 제거했다 — 되돌리려면 git 히스토리에서
+# 이 커밋 직전 판을 꺼내면 된다. 이 메모는 같은 발상을 다시 시도하지 않도록 남긴다.
 #
 # 폐지 사유 — 레버리지 ETF를 보유 자산으로 쓰는 발상 자체가 문제였다.
 #   · 같은 기간 같은 CAGR(36.77%)로 맞추면 쏘 삼성 × 1.28배가 MDD -25.51%인데
@@ -739,136 +711,6 @@ def render_meritz():
 #   · 7개 균등 통합 포트에서 이 전략만 빼면 CAGR 45.15%→45.49%,
 #     MDD -17.28%→-13.72%, Sharpe 2.01→2.19로 전 지표가 좋아진다.
 # 실제 운용은 삼성증권 계좌를 쏘 삼성 하나로 합쳐 '맘·쏘 삼성'으로 굴린다.
-def render_samsung():
-    need = SS_FILTER_ASSETS + SS_OFFENSE_ASSETS + SS_DEFENSE_ASSETS
-    missing = [t for t in need if t not in prices.columns]
-    if missing:
-        st.warning(
-            f"⚠️ 누락된 ETF: {', '.join(missing)}. 자동 업데이트(update_snowball.py)가 "
-            f"이 종목들을 아직 생성하지 않았을 수 있습니다. Actions에서 워크플로우를 한 번 실행하세요."
-        )
-
-    # 컨트롤 상태(토글·슬라이더)는 아래 '진입 필터' 줄에 배치하지만,
-    # 값은 상단 현황 카드에도 반영돼야 하므로 session_state에서 먼저 읽어 신호를 계산한다.
-    st.session_state.setdefault('ss_use_filter', True)
-    st.session_state.setdefault('ss_filter_win', SS_FILTER_WIN)
-    use_filter = bool(st.session_state['ss_use_filter'])
-    filter_win = int(st.session_state['ss_filter_win'])
-
-    signals = compute_signals_samsung(prices, use_filter=use_filter, filter_win=filter_win)
-    valid = signals.index[signals['hold'].notna()]
-    if len(valid) == 0:
-        st.error("유효한 신호월이 없습니다. (데이터 워밍업 부족 또는 신규 ETF 파일 누락)")
-        return
-    lm = valid[-1]
-    last = signals.loc[lm]
-    defensive_now = bool(last['defensive'])
-    holds = last['holds'] or []
-    hold_set = set(holds)
-
-    # 보유 표시 (공격이면 여러 종목 색칠)
-    if holds == [SS_CASH]:
-        hold_disp = "<span style='color:#6B7280;'>CASH</span>"
-    else:
-        hold_disp = " · ".join(
-            f"<span style='color:{ASSET_COLORS.get(t,'#E5E7EB')};'>{t}</span>" for t in holds)
-
-    st.markdown(
-        f"<div style='font-size:1.5rem; font-weight:800; margin-bottom:8px;'>공격 · 방어 자산 현황 "
-        f"<span style='font-size:12px; color:#9CA3AF; font-weight:500;'>(기준: {lm} 월말)</span></div>",
-        unsafe_allow_html=True)
-    _mode_badge(defensive_now, hold_disp)
-
-    col_off, col_def = st.columns(2)
-    with col_off:
-        is_active = not defensive_now
-        label = "⚔️ 공격 자산 (12개월 MA · 공격 전용)" + ("" if is_active else "  · 비활성")
-        st.markdown(f"<div style='font-weight:800; font-size:15px; margin-bottom:4px; "
-                    f"color:{'#10B981' if is_active else '#9CA3AF'};'>{label}</div>", unsafe_allow_html=True)
-        st.markdown("<div style='font-size:11px; color:#9CA3AF; margin-bottom:2px;'>이격도 &gt; 0 인 종목 모두 동일가중</div>",
-                    unsafe_allow_html=True)
-        rows = [{'자산': t, '이격도': last.get(f'disp12_{t}', np.nan)} for t in SS_OFFENSE_ASSETS]
-        sel = hold_set if is_active else set()
-        st.dataframe(_style_asset_table(rows, is_active, sel, '이격도'),
-                     hide_index=True, use_container_width=True, key="ss_off",
-                     column_config={'자산': st.column_config.LinkColumn('자산', display_text=r'stock/([A-Za-z0-9]+)\.')})
-    with col_def:
-        is_active = defensive_now
-        label = "🛡️ 방어 자산 (IEF50 · GLD50 고정)" + ("" if is_active else "  · 비활성")
-        st.markdown(f"<div style='font-weight:800; font-size:15px; margin-bottom:4px; "
-                    f"color:{'#EF4444' if is_active else '#9CA3AF'};'>{label}</div>", unsafe_allow_html=True)
-        st.markdown("<div style='font-size:11px; color:#9CA3AF; margin-bottom:2px;'>국채+금 반반 고정 (참고: 5M 이격도)</div>",
-                    unsafe_allow_html=True)
-        rows = [{'자산': t, '이격도': last.get(f'disp_{t}', np.nan)} for t in SS_DEFENSE_ASSETS]
-        sel = hold_set if is_active else set()
-        st.dataframe(_style_asset_table(rows, is_active, sel, '이격도'),
-                     hide_index=True, use_container_width=True, key="ss_def",
-                     column_config={'자산': st.column_config.LinkColumn('자산', display_text=r'stock/([A-Za-z0-9]+)\.')})
-
-    # 진입 필터 — 제목 줄 오른쪽에 토글 + N 슬라이더 (새 줄 없이 한 줄 배치)
-    ft_col, tog_col, sld_col = st.columns([2.0, 1.1, 1.6])
-    with ft_col:
-        st.markdown("<div style='font-size:1.5rem; font-weight:800; margin:10px 0 0 0;'>진입 필터</div>",
-                    unsafe_allow_html=True)
-    with tog_col:
-        st.toggle("필터 사용", key="ss_use_filter",
-                  help="끄면 필터를 무시하고 공격 후보가 있으면 항상 공격 → 필터 효과를 바로 비교.")
-    with sld_col:
-        st.slider("필터 MA(개월)", 5, 14, key="ss_filter_win",
-                  help="TIP·SPY 이동평균 개월. 짧을수록 하락 전환에 빠르게 반응(백테스트 기본 9).")
-
-    filt_pass = bool(last['filter_pass'])
-    badge = (f"<span style='font-size:13px; font-weight:900; color:#10B981; background:#10B98118; padding:3px 10px; border-radius:6px;'>✅ 통과 (공격 허용)</span>"
-             if filt_pass else
-             f"<span style='font-size:13px; font-weight:900; color:#EF4444; background:#EF444418; padding:3px 10px; border-radius:6px;'>🛑 미통과 (방어)</span>")
-    off_note = (" &nbsp; <span style='color:#F59E0B;'>· 필터 OFF: 판단엔 미적용(표는 실제 상태)</span>"
-                if not use_filter else "")
-    st.markdown(f"<div style='margin-bottom:6px;'>{badge} <b>필터: 추세 확인</b> "
-                f"<span style='font-size:12px; color:#9CA3AF;'>(TIP·SPY 둘 다 {filter_win}M MA 이격도 &gt; 0){off_note}</span></div>",
-                unsafe_allow_html=True)
-    fdata = []
-    for t in SS_FILTER_ASSETS:
-        v = last.get(f'dispF_{t}', np.nan)
-        if pd.notna(v):
-            fdata.append({'자산': t, f'{filter_win}M 이격도': f"{v*100:+.2f}%", '조건': '>0', '충족?': '✅' if v > 0 else '❌'})
-        else:
-            fdata.append({'자산': t, f'{filter_win}M 이격도': 'N/A', '조건': '>0', '충족?': '⚠️'})
-    st.dataframe(pd.DataFrame(fdata), hide_index=True, use_container_width=True, key="ss_filter")
-
-    # 백테스트
-    st.markdown("---")
-    t_col, s_col = st.columns([2.2, 1])
-    with s_col:
-        cost_pct = st.slider("거래비용 %/교체", 0.0, 1.0, 0.25, 0.05, format="%.2f%%",
-                             key="ss_cost",
-                             help="새로 매수하는 비중만큼 차감(턴오버). 벤치마크는 매수 후 보유로 비용 없음.")
-    cost_rate = cost_pct / 100.0
-    bt = run_backtest_samsung(prices, signals, cost=cost_rate)
-    if bt.empty:
-        st.warning("백테스트 데이터가 충분하지 않습니다. (레버리지 ETF 상장 시점상 2011년 전후부터 시작)")
-        return
-    perf = compute_performance(bt)
-    detail_df = build_samsung_detail(signals, bt)
-    rule_act = rule_active_note(bt, prices,
-                                SS_FILTER_ASSETS + SS_OFFENSE_ASSETS + SS_DEFENSE_ASSETS)
-    settings_dict = {
-        '전략': '맘 삼성',
-        '진입 필터': f"{'사용' if use_filter else '미사용(OFF)'} · TIP·SPY {filter_win}M MA",
-        '거래비용/교체': f"{cost_pct:.2f}%",
-        '기간': f"{perf['n_months']}개월 ({bt['hold_month'].iloc[0]} ~ {bt['hold_month'].iloc[-1]})",
-        '규칙 실제 가동': f"{rule_act[1]}개월" if rule_act else "전 기간 (후보 전종목 상장 완료 상태로 시작)",
-        '공격': ', '.join(SS_OFFENSE_ASSETS) + ' (12M MA 이격도 > 0, 동일가중)',
-        '방어': 'IEF 50% · GLD 50% 고정',
-        '벤치마크': ', '.join(BENCHMARKS),
-    }
-    render_bt_title(t_col, rule_act)
-    render_backtest_section(bt, perf, cost_rate, key_prefix="ss",
-                            strat_color='#06B6D4', strat_name='맘 삼성 전략',
-                            detail_df=detail_df, settings_dict=settings_dict,
-                            excel_detail_df=_build_cf_excel(detail_df, signals, bt, prices, _cf_samsung, lambda t: t),
-                            rule_active=rule_act)
-
-
 def render_so():
     need = [SO_FILTER_ASSET] + SO_OFFENSE_ASSETS + SO_DEFENSE_ASSETS
     missing = [t for t in need if t not in prices.columns]
