@@ -7,7 +7,7 @@ import os
 st.set_page_config(page_title="KOSPI 200 모멘텀", layout="wide")
 
 from utils.data_loader import load_archive_data, get_folder_hash
-from utils.calculator import get_cycle_year, PRESIDENTIAL_DANGEROUS_MONTHS, get_kospi_ma_all, get_kosdaq_ma_all, get_strategy_stocks_korea, run_backtest_k200, get_idx_kr, get_gold_returns, get_kospi_benchmark_stats, get_gold_ma_all
+from utils.calculator import get_cycle_year, PRESIDENTIAL_DANGEROUS_MONTHS, get_kospi_ma_all, get_kosdaq_ma_all, get_strategy_stocks_korea, run_backtest_k200, get_idx_kr, get_gold_returns, get_kospi_benchmark_stats, get_gold_ma_all, get_korea_market_status
 from utils.ui_components import inject_custom_css, apply_korea_styling, style_kospi_ma, get_styled_stats, get_mdd_history, get_monthly_heatmap, ma_cfg, main_cfg, generate_excel_report_cached, render_vix_widget, style_ma_with_gold, ma_cfg_gold
 from utils.data_loader import load_archive_data, get_folder_hash, load_daily_data
 
@@ -101,15 +101,10 @@ with tab1:
         cycle_year_t1 = get_cycle_year(int(selected_year))
         bad_m_str_t1 = ", ".join(f"{m}월" for m in PRESIDENTIAL_DANGEROUS_MONTHS.get(cycle_year_t1, [])) or "없음"
         
-        is_bad_market = (neg_1m_cnt >= 100) and (neg_3m_cnt >= 100)
-        is_below_ma = (kospi_curr > 0) and (kospi_curr < kospi_mas.get(6, 0))
-        # 🥇 방어 시 금 배분: 금이 6개월선 위→금100 / 6M~12M→금50:현금50 / 12M 아래→현금100
-        gold_below_6 = (gold_curr > 0) and (gold_curr < gold_mas.get(6, 0))
-        gold_below_12 = (gold_curr > 0) and (gold_curr < gold_mas.get(12, 0))
-        defense_alloc = "현금 100" if gold_below_12 else ("금 50 : 현금 50" if gold_below_6 else "금 100")
-        status, box_c, text_c = (f"🛑 투자 중지 ({defense_alloc})", "#FFEBEE", "#C62828") if (is_bad_market or is_below_ma) else ("✅ 투자 진행", "#E8F5E9", "#2E7D32")
-        reason_desc = ("하락장" if is_bad_market else "") + (" + " if is_bad_market and is_below_ma else "") + ("6개월선 이탈" if is_below_ma else "")
-        if not is_bad_market and not is_below_ma: reason_desc = "안전"
+        # 투자/중지 판정은 공통 함수 하나로 계산한다 (홈 대시보드와 동일 결과 보장).
+        mkt = get_korea_market_status(df_monthly)
+        status, reason_desc = mkt['status'], mkt['reason']
+        box_c, text_c = ("#FFEBEE", "#C62828") if mkt['stop'] else ("#E8F5E9", "#2E7D32")
 
         col1, col2, col3, col4, col5, col6 = st.columns([0.9, 0.9, 1.0, 1.0, 1.4, 1.6])
         with col1: st.metric("📈 KOSPI 1M", f"{kospi_1m}%")
