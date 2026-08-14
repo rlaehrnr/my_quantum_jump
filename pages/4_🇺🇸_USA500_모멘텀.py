@@ -21,7 +21,7 @@ from utils.us_helpers import (
     get_spx_history_cached, generate_excel_report_cached, 
     calc_us_momentum, get_triple_momentum_us,
     run_backtest_triple_us_m4, get_multi4_cond1_map, get_multi4_start_ym,
-    get_benchmark_monthly_returns, prefetch_yf
+    get_benchmark_monthly_returns, prefetch_yf, get_usa_market_status
 )
 
 # 이 페이지가 쓰는 지수·ETF 일봉을 한 번에 병렬로 받아 둔다.
@@ -114,15 +114,11 @@ with tab1:
         cycle_year_t1 = get_cycle_year(safe_year)
         bad_m_str_t1 = ", ".join(f"{m}월" for m in PRESIDENTIAL_DANGEROUS_MONTHS.get(cycle_year_t1, [])) or "없음"
         
-        # 방어 판정: SPY 12개월선 이탈 OR 멀티4(cond1) — 백테스트와 동일 조건
-        is_below_ma = (spx_curr > 0) and (spx_curr < (spx_mas.get(12) or 0))
-        is_m4 = bool(get_multi4_cond1_map().get(target_month_str, False))
-        defense_on = is_below_ma or is_m4
-        status, box_c, text_c = ("🛑 투자 중지", "#FFEBEE", "#C62828") if defense_on else ("✅ 투자 진행", "#E8F5E9", "#2E7D32")
-        if defense_on:
-            reason_desc = "240일선+멀티4" if (is_below_ma and is_m4) else ("멀티4 방어" if is_m4 else "S&P500 240일선 이탈")
-        else:
-            reason_desc = "안전"
+        # 방어 판정(SPY 240일선 이탈 OR 멀티4)은 공통 함수 하나로 계산한다
+        # (홈 대시보드와 동일 결과 보장 · 백테스트와 동일 조건 계열).
+        mkt = get_usa_market_status(df_monthly)
+        status, reason_desc = mkt['status'], mkt['reason']
+        box_c, text_c = ("#FFEBEE", "#C62828") if mkt['stop'] else ("#E8F5E9", "#2E7D32")
 
         col1, col2, col3, col4, col5, col6 = st.columns([1.0, 1.0, 1.0, 1.0, 1.4, 1.6])
         with col1: st.metric("📈 S&P 500 1M", f"{spx_1m}%")

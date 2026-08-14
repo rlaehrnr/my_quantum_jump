@@ -556,6 +556,55 @@ def get_multi4_start_ym():
     return min(m.keys()) if m else None
 
 
+# USA500 마켓타이밍 SPY 개월선. 백테스트 기본값(pages/4 t5_ma 슬라이더 default=12)과
+# 동일하게 12로 둔다 = 라이브·백테스트 단일 기준. 바꾸려면 여기 한 곳만 고친다.
+SPY_TIMING_MA_MONTHS = 12
+
+
+def get_usa_market_status(df_month):
+    """월간(저번달 말 선정) 데이터 한 달치로 'USA500 이번달 투자/중지'를 판정한다.
+
+    ⚠️ 판정의 단일 출처. USA500 페이지 '월별 상세 분석'(탭1)·홈 대시보드·백테스트가
+       모두 같은 방식(SPY 월봉 N개월선)을 쓰도록 로직을 여기 한 곳에 모았다.
+       (데일리 순위 탭2의 '오늘의 시장 상태'는 오늘 기준이라 별도다.)
+
+    SPY 신호는 커밋된 SPY 월봉 CSV(get_spy_timing_map)로 계산한다 — 야후(^GSPC)
+    차단·실패와 무관하게 안정적이고, 백테스트가 쓰는 신호와 정확히 같다.
+    신호는 '전월 말' 기준이 이 투자월로 시프트돼 있어, 저번달 말에 정해진 뒤
+    한 달 내내 고정이다(매일 바뀌지 않는다).
+      - SPY 개월선 이탈: SPY 월봉 종가 < N개월(기본 12) 이동평균  (전월 기준)
+      - 멀티4 위험회피:  TIP·VWO·VEA 6M 음수 & (VIXY 6M<0 또는 급등)
+      - 둘 중 하나라도 참이면 투자 중지
+
+    Args:
+        df_month: 한 투자월치 미국 월간 데이터 (투자월 포함)
+
+    Returns:
+        dict 또는 None(빈 입력). 키:
+          stop, reason, status, is_below_ma, is_m4, target_month, ma_months
+    """
+    if df_month is None or df_month.empty:
+        return None
+    tm_raw = df_month['투자월'].iloc[0] if '투자월' in df_month.columns else None
+    target_month = str(tm_raw)[:7] if tm_raw is not None else datetime.today().strftime('%Y-%m')
+
+    is_below_ma = bool(get_spy_timing_map(SPY_TIMING_MA_MONTHS).get(target_month, False))
+    is_m4 = bool(get_multi4_cond1_map().get(target_month, False))
+
+    stop = is_below_ma or is_m4
+    if stop:
+        reason = (f"{SPY_TIMING_MA_MONTHS}개월선+멀티4" if (is_below_ma and is_m4)
+                  else ("멀티4 방어" if is_m4 else f"S&P500 {SPY_TIMING_MA_MONTHS}개월선 이탈"))
+    else:
+        reason = "안전"
+    status = "🛑 투자 중지" if stop else "✅ 투자 진행"
+    return {
+        'stop': stop, 'reason': reason, 'status': status,
+        'is_below_ma': is_below_ma, 'is_m4': is_m4,
+        'target_month': target_month, 'ma_months': SPY_TIMING_MA_MONTHS,
+    }
+
+
 @st.cache_data(show_spinner=False)
 def run_backtest_triple_us_m4(df, start_year, end_year, ma_months, apply_timing, use_multi4, top_n_cutoff, rank_s, rank_e, spx, universe_n=None):
     """
