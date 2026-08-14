@@ -166,7 +166,18 @@ def _snowball_status():
     sso = sb.load_ssopen_prices(); mam = sb.load_mamtax_prices()
 
     def last(sig):
-        if 'defensive' in sig.columns:
+        """'현재 달' = 보유 종목이 정해진 마지막 달. pages/6의 각 render_*와 같은 기준이다.
+
+        ⚠️ 예전엔 defensive가 채워진 마지막 달을 골랐다. 그러면 방어/공격 판정은 났는데
+           보유가 안 정해진 달(워밍업 구간, 또는 신규 ETF의 CSV를 로봇이 아직 안 만든 경우)에
+           홈은 그 달을, 페이지는 그 전 달을 '현재'라고 말해 두 화면이 어긋난다.
+           hold(표시용 문자열)와 holds(티커 리스트)는 값이 있는 행이 서로 같음을 확인했고,
+           페이지도 전략에 따라 둘 중 있는 쪽을 쓴다.
+        """
+        col = 'hold' if 'hold' in sig.columns else ('holds' if 'holds' in sig.columns else None)
+        if col is not None:
+            sig = sig[sig[col].notna()]
+        elif 'defensive' in sig.columns:
             sig = sig[sig['defensive'].notna()]
         return sig.iloc[-1] if len(sig) else None
 
