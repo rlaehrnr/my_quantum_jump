@@ -8,7 +8,7 @@ name: App Probe (콜드 부팅 관찰)
 #     관찰 행위가 관찰 대상을 바꾸지 않도록)
 #
 # 읽는 법: Actions 탭 → 이 워크플로 → 각 실행의 Summary
-#   ttfb 15초 이상  = 잠들어 있다가 깨어남 (콜드)
+#   ttfb 8초 이상   = 잠들어 있다가 깨어남 (콜드)
 #   ttfb 3초 미만   = 깨어 있었음 (웜)
 #
 # 관찰 설계 (2단계)
@@ -38,18 +38,26 @@ jobs:
         env:
           APP_URL: https://myquantumjump-bccuvb2zu4yacfnqd9exjc.streamlit.app
         run: |
+          # ⚠️ 이 스텝은 bash -e (errexit)로 돈다. 실패 종료코드를 '값'으로 쓰는 곳은
+          #    반드시 if 로 감싼다 — `awk ... && VAR=x` 처럼 쓰면 awk가 1을 낼 때
+          #    그 줄 전체가 실패로 잡혀 스크립트가 죽는다. (실제로 한 번 죽었다)
           set -u
           # -L 로 로그인 리다이렉트를 따라간다. 쿠키 없이는 auth 루프에 걸리므로 쿠키 항아리를 쓴다.
           JAR=$(mktemp)
-          read -r CODE TTFB TOTAL < <(curl -s -o /dev/null \
+          OUT=$(curl -s -o /dev/null \
             -c "$JAR" -b "$JAR" -L --max-time 120 \
             -w '%{http_code} %{time_starttransfer} %{time_total}' \
-            "$APP_URL")
+            "$APP_URL") || OUT="000 999 999"
+          read -r CODE TTFB TOTAL <<< "$OUT"
 
-          # 15초 이상이면 슬립에서 깨어난 것으로 본다 (실측 콜드 15~18초, 웜 1~2초)
+          # 8초 이상이면 슬립에서 깨어난 것으로 본다 (실측 콜드 15~18초, 웜 1~2초)
           STATE="웜 (깨어 있었음)"
-          awk "BEGIN{exit !($TTFB >= 8)}" && STATE="🥶 콜드 (잠들어 있었음)"
-          [ "$CODE" = "200" ] || STATE="⚠️ 응답 이상"
+          if awk "BEGIN{exit !($TTFB >= 8)}"; then
+            STATE="🥶 콜드 (잠들어 있었음)"
+          fi
+          if [ "$CODE" != "200" ]; then
+            STATE="⚠️ 응답 이상 (http=$CODE)"
+          fi
 
           NOW=$(TZ=Asia/Seoul date '+%Y-%m-%d %H:%M KST')
           LINE="| $NOW | $CODE | ${TTFB}s | ${TOTAL}s | $STATE |"
