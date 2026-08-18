@@ -59,8 +59,10 @@ pages/                   전략별 화면. Streamlit이 .py만 페이지로 읽�
   7_계절성_사이클.py
 utils/                   calculator · data_loader · snowball · ui_components · us_helpers
 update_*.py         9개  데이터 갱신 스크립트. Actions가 호출한다
-.github/workflows/  9개  자동 갱신 로봇
+check.py                 push 전 검증. 신호 지문 대조 + 전 페이지 실행 (§push 판단)
+.github/workflows/       자동 갱신 로봇 9개 + 관찰용 `app_probe.yml` 1개
 data/          CSV 1028  시장 데이터. 로봇 소유
+기록/                    DGbrain 이관 대기함. 클라우드 routine이 매일 02:07 회수한다
 archive_*/               과거 버전 보관
 ```
 
