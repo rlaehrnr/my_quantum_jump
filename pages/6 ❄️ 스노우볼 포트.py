@@ -970,7 +970,7 @@ def render_ko():
         label = f"🛡️ 방어 후보 ({KO_DEF_WIN}M MA 이격도)" + ("" if is_active else "  · 비활성")
         st.markdown(f"<div style='font-weight:800; font-size:15px; margin-bottom:4px; "
                     f"color:{'#EF4444' if is_active else '#9CA3AF'};'>{label}</div>", unsafe_allow_html=True)
-        st.markdown(f"<div style='font-size:11px; color:#9CA3AF; margin-bottom:2px;'>3종 중 {KO_DEF_WIN}M MA 이격도 상위 {KO_DEF_TOPK}종 동일가중(50:50)</div>",
+        st.markdown(f"<div style='font-size:11px; color:#9CA3AF; margin-bottom:2px;'>{len(KO_DEFENSE)}종 중 {KO_DEF_WIN}M MA 이격도 상위 {KO_DEF_TOPK}종 동일가중(50:50)</div>",
                     unsafe_allow_html=True)
         def_ranked = sorted(def_scores, key=def_scores.get, reverse=True)
         rows = []
