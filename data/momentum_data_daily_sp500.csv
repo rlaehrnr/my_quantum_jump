@@ -1,502 +1,502 @@
 ﻿기준일,시장,종목명,종목코드,시가총액,종가,1개월(%),3개월(%),6개월(%),12개월(%)
-2026-09-15,US,Align Technology,ALGN,0,,,,,
-2026-09-15,US,AES Corporation,AES,0,,,,,
-2026-09-15,US,Advanced Micro Devices,AMD,0,,,,,
-2026-09-15,US,Adobe Inc.,ADBE,0,,,,,
-2026-09-15,US,A. O. Smith,AOS,0,,,,,
-2026-09-15,US,3M,MMM,0,,,,,
-2026-09-15,US,Akamai Technologies,AKAM,0,,,,,
-2026-09-15,US,Airbnb,ABNB,0,,,,,
-2026-09-15,US,Alphabet Inc. (Class A),GOOGL,0,,,,,
-2026-09-15,US,Allegion,ALLE,0,,,,,
-2026-09-15,US,AbbVie,ABBV,0,,,,,
-2026-09-15,US,Allstate,ALL,0,,,,,
-2026-09-15,US,Alliant Energy,LNT,0,,,,,
-2026-09-15,US,Agilent Technologies,A,0,,,,,
-2026-09-15,US,Albemarle Corporation,ALB,0,,,,,
-2026-09-15,US,Accenture,ACN,0,,,,,
-2026-09-15,US,Aflac,AFL,0,,,,,
-2026-09-15,US,Abbott Laboratories,ABT,0,,,,,
-2026-09-15,US,Alexandria Real Estate Equities,ARE,0,,,,,
-2026-09-15,US,Air Products,APD,0,,,,,
-2026-09-15,US,Alphabet Inc. (Class C),GOOG,0,,,,,
-2026-09-15,US,Amazon,AMZN,0,,,,,
-2026-09-15,US,Altria,MO,0,,,,,
-2026-09-15,US,Ameren,AEE,0,,,,,
-2026-09-15,US,American Water Works,AWK,0,,,,,
-2026-09-15,US,Amcor,AMCR,0,,,,,
-2026-09-15,US,Ameriprise Financial,AMP,0,,,,,
-2026-09-15,US,American Tower,AMT,0,,,,,
-2026-09-15,US,American International Group,AIG,0,,,,,
-2026-09-15,US,American Electric Power,AEP,0,,,,,
-2026-09-15,US,American Express,AXP,0,,,,,
-2026-09-15,US,Amgen,AMGN,0,,,,,
-2026-09-15,US,Ametek,AME,0,,,,,
-2026-09-15,US,Amphenol,APH,0,,,,,
-2026-09-15,US,AppLovin,APP,0,,,,,
-2026-09-15,US,Aptiv,APTV,0,,,,,
-2026-09-15,US,Apple Inc.,AAPL,0,,,,,
-2026-09-15,US,Applied Materials,AMAT,0,,,,,
-2026-09-15,US,APA Corporation,APA,0,,,,,
-2026-09-15,US,Arch Capital Group,ACGL,0,,,,,
-2026-09-15,US,Aon plc,AON,0,,,,,
-2026-09-15,US,Analog Devices,ADI,0,,,,,
-2026-09-15,US,Apollo Global Management,APO,0,,,,,
-2026-09-15,US,Ares Management,ARES,0,,,,,
-2026-09-15,US,Arthur J. Gallagher & Co.,AJG,0,,,,,
-2026-09-15,US,Archer Daniels Midland,ADM,0,,,,,
-2026-09-15,US,AT&T,T,0,,,,,
-2026-09-15,US,Arista Networks,ANET,0,,,,,
-2026-09-15,US,Assurant,AIZ,0,,,,,
-2026-09-15,US,Atmos Energy,ATO,0,,,,,
-2026-09-15,US,Autodesk,ADSK,0,,,,,
-2026-09-15,US,AutoZone,AZO,0,,,,,
-2026-09-15,US,Automatic Data Processing,ADP,0,,,,,
-2026-09-15,US,Axon Enterprise,AXON,0,,,,,
-2026-09-15,US,Avery Dennison,AVY,0,,,,,
-2026-09-15,US,Bank of America,BAC,0,,,,,
-2026-09-15,US,Ball Corporation,BALL,0,,,,,
-2026-09-15,US,Bio-Techne,TECH,0,,,,,
-2026-09-15,US,Becton Dickinson,BDX,0,,,,,
-2026-09-15,US,Best Buy,BBY,0,,,,,
-2026-09-15,US,Baker Hughes,BKR,0,,,,,
-2026-09-15,US,Baxter International,BAX,0,,,,,
-2026-09-15,US,Biogen,BIIB,0,,,,,
-2026-09-15,US,Blackstone Inc.,BX,0,,,,,
-2026-09-15,US,Boston Scientific,BSX,0,,,,,
-2026-09-15,US,BlackRock,BLK,0,,,,,
-2026-09-15,US,Booking Holdings,BKNG,0,,,,,
-2026-09-15,US,BNY Mellon,BNY,0,,,,,
-2026-09-15,US,Bristol Myers Squibb,BMY,0,,,,,
-2026-09-15,US,Broadcom,AVGO,0,,,,,
-2026-09-15,US,Broadridge Financial Solutions,BR,0,,,,,
-2026-09-15,US,Builders FirstSource,BLDR,0,,,,,
-2026-09-15,US,Boeing,BA,0,,,,,
-2026-09-15,US,Brown & Brown,BRO,0,,,,,
-2026-09-15,US,"Block, Inc.",XYZ,0,,,,,
-2026-09-15,US,C.H. Robinson,CHRW,0,,,,,
-2026-09-15,US,Bunge Global,BG,0,,,,,
-2026-09-15,US,Cadence Design Systems,CDNS,0,,,,,
-2026-09-15,US,"BXP, Inc.",BXP,0,,,,,
-2026-09-15,US,Cardinal Health,CAH,0,,,,,
-2026-09-15,US,Carrier Global,CARR,0,,,,,
-2026-09-15,US,Camden Property Trust,CPT,0,,,,,
-2026-09-15,US,Carvana,CVNA,0,,,,,
-2026-09-15,US,Capital One,COF,0,,,,,
-2026-09-15,US,Carnival Corporation,CCL,0,,,,,
-2026-09-15,US,Casey's,CASY,0,,,,,
-2026-09-15,US,Cboe Global Markets,CBOE,0,,,,,
-2026-09-15,US,CBRE Group,CBRE,0,,,,,
-2026-09-15,US,Caterpillar Inc.,CAT,0,,,,,
-2026-09-15,US,Centene Corporation,CNC,0,,,,,
-2026-09-15,US,CDW Corporation,CDW,0,,,,,
-2026-09-15,US,CF Industries,CF,0,,,,,
-2026-09-15,US,Charter Communications,CHTR,0,,,,,
-2026-09-15,US,Charles River Laboratories,CRL,0,,,,,
-2026-09-15,US,Cencora,COR,0,,,,,
-2026-09-15,US,Charles Schwab Corporation,SCHW,0,,,,,
-2026-09-15,US,Chipotle Mexican Grill,CMG,0,,,,,
-2026-09-15,US,CenterPoint Energy,CNP,0,,,,,
-2026-09-15,US,Ciena,CIEN,0,,,,,
-2026-09-15,US,Cincinnati Financial,CINF,0,,,,,
-2026-09-15,US,Chubb Limited,CB,0,,,,,
-2026-09-15,US,Church & Dwight,CHD,0,,,,,
-2026-09-15,US,Cigna,CI,0,,,,,
-2026-09-15,US,Citizens Financial Group,CFG,0,,,,,
-2026-09-15,US,Cisco,CSCO,0,,,,,
-2026-09-15,US,Cintas,CTAS,0,,,,,
-2026-09-15,US,Chevron Corporation,CVX,0,,,,,
-2026-09-15,US,Citigroup,C,0,,,,,
-2026-09-15,US,Clorox,CLX,0,,,,,
-2026-09-15,US,Coherent Corp.,COHR,0,,,,,
-2026-09-15,US,Coinbase,COIN,0,,,,,
-2026-09-15,US,Comcast,CMCSA,0,,,,,
-2026-09-15,US,Cognizant,CTSH,0,,,,,
-2026-09-15,US,Comfort Systems USA,FIX,0,,,,,
-2026-09-15,US,Colgate-Palmolive,CL,0,,,,,
-2026-09-15,US,ConocoPhillips,COP,0,,,,,
-2026-09-15,US,Consolidated Edison,ED,0,,,,,
-2026-09-15,US,Constellation Energy,CEG,0,,,,,
-2026-09-15,US,Cooper Companies (The),COO,0,,,,,
-2026-09-15,US,Constellation Brands,STZ,0,,,,,
-2026-09-15,US,Copart,CPRT,0,,,,,
-2026-09-15,US,Corning Inc.,GLW,0,,,,,
-2026-09-15,US,CoStar Group,CSGP,0,,,,,
-2026-09-15,US,CME Group,CME,0,,,,,
-2026-09-15,US,CMS Energy,CMS,0,,,,,
-2026-09-15,US,Coca-Cola Company (The),KO,0,,,,,
-2026-09-15,US,CrowdStrike,CRWD,0,,,,,
-2026-09-15,US,CRH plc,CRH,0,,,,,
-2026-09-15,US,Corpay,CPAY,0,,,,,
-2026-09-15,US,Costco,COST,0,,,,,
-2026-09-15,US,Corteva,CTVA,0,,,,,
-2026-09-15,US,Cummins,CMI,0,,,,,
-2026-09-15,US,CSX Corporation,CSX,0,,,,,
-2026-09-15,US,DaVita,DVA,0,,,,,
-2026-09-15,US,CVS Health,CVS,0,,,,,
-2026-09-15,US,Darden Restaurants,DRI,0,,,,,
-2026-09-15,US,Datadog,DDOG,0,,,,,
-2026-09-15,US,Deckers Brands,DECK,0,,,,,
-2026-09-15,US,Deere & Company,DE,0,,,,,
-2026-09-15,US,Dell Technologies,DELL,0,,,,,
-2026-09-15,US,Delta Air Lines,DAL,0,,,,,
-2026-09-15,US,Crown Castle,CCI,0,,,,,
-2026-09-15,US,Diamondback Energy,FANG,0,,,,,
-2026-09-15,US,Digital Realty,DLR,0,,,,,
-2026-09-15,US,Dollar General,DG,0,,,,,
-2026-09-15,US,Dominion Energy,D,0,,,,,
-2026-09-15,US,Dollar Tree,DLTR,0,,,,,
-2026-09-15,US,Danaher Corporation,DHR,0,,,,,
-2026-09-15,US,Dexcom,DXCM,0,,,,,
-2026-09-15,US,Domino's,DPZ,0,,,,,
-2026-09-15,US,Devon Energy,DVN,0,,,,,
-2026-09-15,US,DuPont,DD,0,,,,,
-2026-09-15,US,D. R. Horton,DHI,0,,,,,
-2026-09-15,US,DoorDash,DASH,0,,,,,
-2026-09-15,US,DTE Energy,DTE,0,,,,,
-2026-09-15,US,eBay Inc.,EBAY,0,,,,,
-2026-09-15,US,Dow Inc.,DOW,0,,,,,
-2026-09-15,US,Eaton Corporation,ETN,0,,,,,
-2026-09-15,US,EchoStar,ECHO,0,,,,,
-2026-09-15,US,Ecolab,ECL,0,,,,,
-2026-09-15,US,Dover Corporation,DOV,0,,,,,
-2026-09-15,US,Duke Energy,DUK,0,,,,,
-2026-09-15,US,Emerson Electric,EMR,0,,,,,
-2026-09-15,US,Elevance Health,ELV,0,,,,,
-2026-09-15,US,Edison International,EIX,0,,,,,
-2026-09-15,US,Entergy,ETR,0,,,,,
-2026-09-15,US,Emcor,EME,0,,,,,
-2026-09-15,US,Essex Property Trust,ESS,0,,,,,
-2026-09-15,US,Erie Indemnity,ERIE,0,,,,,
-2026-09-15,US,Estée Lauder Companies (The),EL,0,,,,,
-2026-09-15,US,Equifax,EFX,0,,,,,
-2026-09-15,US,EQT Corporation,EQT,0,,,,,
-2026-09-15,US,Equinix,EQIX,0,,,,,
-2026-09-15,US,EOG Resources,EOG,0,,,,,
-2026-09-15,US,Everest Group,EG,0,,,,,
-2026-09-15,US,Eversource Energy,ES,0,,,,,
-2026-09-15,US,Expeditors International,EXPD,0,,,,,
-2026-09-15,US,Edwards Lifesciences,EW,0,,,,,
-2026-09-15,US,Exelon,EXC,0,,,,,
-2026-09-15,US,Evergy,EVRG,0,,,,,
-2026-09-15,US,Expedia Group,EXPE,0,,,,,
-2026-09-15,US,Extra Space Storage,EXR,0,,,,,
-2026-09-15,US,Expand Energy,EXE,0,,,,,
-2026-09-15,US,FactSet,FDS,0,,,,,
-2026-09-15,US,"F5, Inc.",FFIV,0,,,,,
-2026-09-15,US,Fair Isaac,FICO,0,,,,,
-2026-09-15,US,FedEx Freight,FDXF,0,,,,0.0,0.0
-2026-09-15,US,Federal Realty Investment Trust,FRT,0,,,,,
-2026-09-15,US,Fastenal,FAST,0,,,,,
-2026-09-15,US,First Solar,FSLR,0,,,,,
-2026-09-15,US,FedEx,FDX,0,,,,,
-2026-09-15,US,Ferguson Enterprises,FERG,0,,,,,
-2026-09-15,US,Fidelity National Information Services,FIS,0,,,,,
-2026-09-15,US,Fifth Third Bancorp,FITB,0,,,,,
-2026-09-15,US,Fox Corporation (Class B),FOX,0,,,,,
-2026-09-15,US,FirstEnergy,FE,0,,,,,
-2026-09-15,US,Fortinet,FTNT,0,,,,,
-2026-09-15,US,Flex Ltd.,FLEX,0,,,,,
-2026-09-15,US,Fortive,FTV,0,,,,,
-2026-09-15,US,Ford Motor Company,F,0,,,,,
-2026-09-15,US,Fox Corporation (Class A),FOXA,0,,,,,
-2026-09-15,US,Franklin Resources,BEN,0,,,,,
-2026-09-15,US,Gartner,IT,0,,,,,
-2026-09-15,US,Freeport-McMoRan,FCX,0,,,,,
-2026-09-15,US,Garmin,GRMN,0,,,,,
-2026-09-15,US,GE HealthCare,GEHC,0,,,,,
-2026-09-15,US,ExxonMobil,XOM,0,,,,,
-2026-09-15,US,GE Vernova,GEV,0,,,,,
-2026-09-15,US,GE Aerospace,GE,0,,,,,
-2026-09-15,US,Gen Digital,GEN,0,,,,,
-2026-09-15,US,Generac,GNRC,0,,,,,
-2026-09-15,US,General Motors,GM,0,,,,,
-2026-09-15,US,Fiserv,FISV,0,,,,,
-2026-09-15,US,General Mills,GIS,0,,,,,
-2026-09-15,US,General Dynamics,GD,0,,,,,
-2026-09-15,US,Genuine Parts Company,GPC,0,,,,,
-2026-09-15,US,Gilead Sciences,GILD,0,,,,,
-2026-09-15,US,GoDaddy,GDDY,0,,,,,
-2026-09-15,US,Global Payments,GPN,0,,,,,
-2026-09-15,US,Globe Life,GL,0,,,,,
-2026-09-15,US,Goldman Sachs,GS,0,,,,,
-2026-09-15,US,Hartford (The),HIG,0,,,,,
-2026-09-15,US,Henry Schein,HSIC,0,,,,,
-2026-09-15,US,Healthpeak Properties,DOC,0,,,,,
-2026-09-15,US,Honeywell Aerospace,HONA,0,,,,0.0,0.0
-2026-09-15,US,Home Depot (The),HD,0,,,,,
-2026-09-15,US,Halliburton,HAL,0,,,,,
-2026-09-15,US,HCA Healthcare,HCA,0,,,,,
-2026-09-15,US,Hasbro,HAS,0,,,,,
-2026-09-15,US,Hershey Company (The),HSY,0,,,,,
-2026-09-15,US,Hewlett Packard Enterprise,HPE,0,,,,,
-2026-09-15,US,Hormel Foods,HRL,0,,,,,
-2026-09-15,US,Hubbell Incorporated,HUBB,0,,,,,
-2026-09-15,US,Howmet Aerospace,HWM,0,,,,,
-2026-09-15,US,Honeywell Technologies,HON,0,,,,,
-2026-09-15,US,Humana,HUM,0,,,,,
-2026-09-15,US,Host Hotels & Resorts,HST,0,,,,,
-2026-09-15,US,HP Inc.,HPQ,0,,,,,
-2026-09-15,US,Huntington Bancshares,HBAN,0,,,,,
-2026-09-15,US,Hilton Worldwide,HLT,0,,,,,
-2026-09-15,US,IDEX Corporation,IEX,0,,,,,
-2026-09-15,US,IBM,IBM,0,,,,,
-2026-09-15,US,Idexx Laboratories,IDXX,0,,,,,
-2026-09-15,US,Incyte,INCY,0,,,,,
-2026-09-15,US,Ingersoll Rand,IR,0,,,,,
-2026-09-15,US,Illinois Tool Works,ITW,0,,,,,
-2026-09-15,US,Intercontinental Exchange,ICE,0,,,,,
-2026-09-15,US,Interactive Brokers,IBKR,0,,,,,
-2026-09-15,US,Intel,INTC,0,,,,,
-2026-09-15,US,International Flavors & Fragrances,IFF,0,,,,,
-2026-09-15,US,International Paper,IP,0,,,,,
-2026-09-15,US,Intuitive Surgical,ISRG,0,,,,,
-2026-09-15,US,Huntington Ingalls Industries,HII,0,,,,,
-2026-09-15,US,Intuit,INTU,0,,,,,
-2026-09-15,US,IQVIA,IQV,0,,,,,
-2026-09-15,US,Iron Mountain,IRM,0,,,,,
-2026-09-15,US,Jacobs Solutions,J,0,,,,,
-2026-09-15,US,Jabil,JBL,0,,,,,
-2026-09-15,US,Insulet Corporation,PODD,0,,,,,
-2026-09-15,US,Jack Henry & Associates,JKHY,0,,,,,
-2026-09-15,US,J.B. Hunt,JBHT,0,,,,,
-2026-09-15,US,Kenvue,KVUE,0,,,,,
-2026-09-15,US,Keysight Technologies,KEYS,0,,,,,
-2026-09-15,US,Kimco Realty,KIM,0,,,,,
-2026-09-15,US,Invitation Homes,INVH,0,,,,,
-2026-09-15,US,Invesco,IVZ,0,,,,,
-2026-09-15,US,Keurig Dr Pepper,KDP,0,,,,,
-2026-09-15,US,Kimberly-Clark,KMB,0,,,,,
-2026-09-15,US,Johnson & Johnson,JNJ,0,,,,,
-2026-09-15,US,KKR & Co.,KKR,0,,,,,
-2026-09-15,US,Johnson Controls,JCI,0,,,,,
-2026-09-15,US,KeyCorp,KEY,0,,,,,
-2026-09-15,US,JPMorgan Chase,JPM,0,,,,,
-2026-09-15,US,Kraft Heinz,KHC,0,,,,,
-2026-09-15,US,Kinder Morgan,KMI,0,,,,,
-2026-09-15,US,Lam Research,LRCX,0,,,,,
-2026-09-15,US,Leidos,LDOS,0,,,,,
-2026-09-15,US,Las Vegas Sands,LVS,0,,,,,
-2026-09-15,US,Labcorp,LH,0,,,,,
-2026-09-15,US,Lennox International,LII,0,,,,,
-2026-09-15,US,Linde plc,LIN,0,,,,,
-2026-09-15,US,Lennar,LEN,0,,,,,
-2026-09-15,US,Lilly (Eli),LLY,0,,,,,
-2026-09-15,US,KLA Corporation,KLAC,0,,,,,
-2026-09-15,US,Lululemon Athletica,LULU,0,,,,,
-2026-09-15,US,Lockheed Martin,LMT,0,,,,,
-2026-09-15,US,Kroger,KR,0,,,,,
-2026-09-15,US,Loews Corporation,L,0,,,,,
-2026-09-15,US,Live Nation Entertainment,LYV,0,,,,,
-2026-09-15,US,Marvell Technology,MRVL,0,,,,,
-2026-09-15,US,M&T Bank,MTB,0,,,,,
-2026-09-15,US,LyondellBasell,LYB,0,,,,,
-2026-09-15,US,Marsh McLennan,MRSH,0,,,,,
-2026-09-15,US,Lowe's,LOW,0,,,,,
-2026-09-15,US,Lumentum,LITE,0,,,,,
-2026-09-15,US,Masco,MAS,0,,,,,
-2026-09-15,US,Martin Marietta Materials,MLM,0,,,,,
-2026-09-15,US,Marriott International,MAR,0,,,,,
-2026-09-15,US,Mastercard,MA,0,,,,,
-2026-09-15,US,Meta Platforms,META,0,,,,,
-2026-09-15,US,L3Harris,LHX,0,,,,,
-2026-09-15,US,McKesson Corporation,MCK,0,,,,,
-2026-09-15,US,Marathon Petroleum,MPC,0,,,,,
-2026-09-15,US,McCormick & Company,MKC,0,,,,,
-2026-09-15,US,Mettler Toledo,MTD,0,,,,,
-2026-09-15,US,Medtronic,MDT,0,,,,,
-2026-09-15,US,MetLife,MET,0,,,,,
-2026-09-15,US,McDonald's,MCD,0,,,,,
-2026-09-15,US,MGM Resorts,MGM,0,,,,,
-2026-09-15,US,Merck & Co.,MRK,0,,,,,
-2026-09-15,US,Micron Technology,MU,0,,,,,
-2026-09-15,US,Microchip Technology,MCHP,0,,,,,
-2026-09-15,US,Molson Coors Beverage Company,TAP,0,,,,,
-2026-09-15,US,Mondelez International,MDLZ,0,,,,,
-2026-09-15,US,Microsoft,MSFT,0,,,,,
-2026-09-15,US,Moody's Corporation,MCO,0,,,,,
-2026-09-15,US,Morgan Stanley,MS,0,,,,,
-2026-09-15,US,Mosaic Company (The),MOS,0,,,,,
-2026-09-15,US,Mid-America Apartment Communities,MAA,0,,,,,
-2026-09-15,US,MSCI,MSCI,0,,,,,
-2026-09-15,US,Monster Beverage,MNST,0,,,,,
-2026-09-15,US,Netflix,NFLX,0,,,,,
-2026-09-15,US,Monolithic Power Systems,MPWR,0,,,,,
-2026-09-15,US,Motorola Solutions,MSI,0,,,,,
-2026-09-15,US,NetApp,NTAP,0,,,,,
-2026-09-15,US,News Corp (Class B),NWS,0,,,,,
-2026-09-15,US,Newmont,NEM,0,,,,,
-2026-09-15,US,"Nike, Inc.",NKE,0,,,,,
-2026-09-15,US,Moderna,MRNA,0,,,,,
-2026-09-15,US,Nordson Corporation,NDSN,0,,,,,
-2026-09-15,US,NextEra Energy,NEE,0,,,,,
-2026-09-15,US,"Nasdaq, Inc.",NDAQ,0,,,,,
-2026-09-15,US,Northern Trust,NTRS,0,,,,,
-2026-09-15,US,Norfolk Southern,NSC,0,,,,,
-2026-09-15,US,NiSource,NI,0,,,,,
-2026-09-15,US,Norwegian Cruise Line Holdings,NCLH,0,,,,,
-2026-09-15,US,Northrop Grumman,NOC,0,,,,,
-2026-09-15,US,News Corp (Class A),NWSA,0,,,,,
-2026-09-15,US,"NVR, Inc.",NVR,0,,,,,
-2026-09-15,US,Old Dominion,ODFL,0,,,,,
-2026-09-15,US,NRG Energy,NRG,0,,,,,
-2026-09-15,US,Nvidia,NVDA,0,,,,,
-2026-09-15,US,Nucor,NUE,0,,,,,
-2026-09-15,US,O'Reilly Automotive,ORLY,0,,,,,
-2026-09-15,US,Oracle Corporation,ORCL,0,,,,,
-2026-09-15,US,Otis Worldwide,OTIS,0,,,,,
-2026-09-15,US,ON Semiconductor,ON,0,,,,,
-2026-09-15,US,Oneok,OKE,0,,,,,
-2026-09-15,US,Packaging Corporation of America,PKG,0,,,,,
-2026-09-15,US,NXP Semiconductors,NXPI,0,,,,,
-2026-09-15,US,Paccar,PCAR,0,,,,,
-2026-09-15,US,Palo Alto Networks,PANW,0,,,,,
-2026-09-15,US,Palantir Technologies,PLTR,0,,,,,
-2026-09-15,US,Parker Hannifin,PH,0,,,,,
-2026-09-15,US,Paramount Skydance Corporation,PSKY,0,,,,,
-2026-09-15,US,Paychex,PAYX,0,,,,,
-2026-09-15,US,PayPal,PYPL,0,,,,,
-2026-09-15,US,Pentair,PNR,0,,,,,
-2026-09-15,US,Omnicom Group,OMC,0,,,,,
-2026-09-15,US,PepsiCo,PEP,0,,,,,
-2026-09-15,US,Philip Morris International,PM,0,,,,,
-2026-09-15,US,Occidental Petroleum,OXY,0,,,,,
-2026-09-15,US,Phillips 66,PSX,0,,,,,
-2026-09-15,US,Pfizer,PFE,0,,,,,
-2026-09-15,US,Principal Financial Group,PFG,0,,,,,
-2026-09-15,US,Pinnacle West Capital,PNW,0,,,,,
-2026-09-15,US,PG&E Corporation,PCG,0,,,,,
-2026-09-15,US,PNC Financial Services,PNC,0,,,,,
-2026-09-15,US,PPL Corporation,PPL,0,,,,,
-2026-09-15,US,PPG Industries,PPG,0,,,,,
-2026-09-15,US,Prologis,PLD,0,,,,,
-2026-09-15,US,Procter & Gamble,PG,0,,,,,
-2026-09-15,US,Prudential Financial,PRU,0,,,,,
-2026-09-15,US,Quanta Services,PWR,0,,,,,
-2026-09-15,US,Progressive Corporation,PGR,0,,,,,
-2026-09-15,US,PTC Inc.,PTC,0,,,,,
-2026-09-15,US,Qualcomm,QCOM,0,,,,,
-2026-09-15,US,Quest Diagnostics,DGX,0,,,,,
-2026-09-15,US,Public Service Enterprise Group,PEG,0,,,,,
-2026-09-15,US,Raymond James Financial,RJF,0,,,,,
-2026-09-15,US,Public Storage,PSA,0,,,,,
-2026-09-15,US,Qnity Electronics,Q,0,,,,,0.0
-2026-09-15,US,PulteGroup,PHM,0,,,,,
-2026-09-15,US,Ralph Lauren Corporation,RL,0,,,,,
-2026-09-15,US,Reddit,RDDT,0,,,,,
-2026-09-15,US,Regency Centers,REG,0,,,,,
-2026-09-15,US,Realty Income,O,0,,,,,
-2026-09-15,US,Regeneron Pharmaceuticals,REGN,0,,,,,
-2026-09-15,US,RTX Corporation,RTX,0,,,,,
-2026-09-15,US,Republic Services,RSG,0,,,,,
-2026-09-15,US,Regions Financial Corporation,RF,0,,,,,
-2026-09-15,US,ResMed|,RMD,0,,,,,
-2026-09-15,US,Robinhood Markets,HOOD,0,,,,,
-2026-09-15,US,Revvity,RVTY,0,,,,,
-2026-09-15,US,Roper Technologies,ROP,0,,,,,
-2026-09-15,US,Rockwell Automation,ROK,0,,,,,
-2026-09-15,US,"Rollins, Inc.",ROL,0,,,,,
-2026-09-15,US,Royal Caribbean Group,RCL,0,,,,,
-2026-09-15,US,Salesforce,CRM,0,,,,,
-2026-09-15,US,Sandisk,SNDK,0,,,,,
-2026-09-15,US,Ross Stores,ROST,0,,,,,
-2026-09-15,US,SBA Communications,SBAC,0,,,,,
-2026-09-15,US,S&P Global,SPGI,0,,,,,
-2026-09-15,US,Simon Property Group,SPG,0,,,,,
-2026-09-15,US,Sempra,SRE,0,,,,,
-2026-09-15,US,Schlumberger,SLB,0,,,,,
-2026-09-15,US,ServiceNow,NOW,0,,,,,
-2026-09-15,US,Seagate Technology,STX,0,,,,,
-2026-09-15,US,Skyworks Solutions,SWKS,0,,,,,
-2026-09-15,US,Sherwin-Williams,SHW,0,,,,,
-2026-09-15,US,Snap-on,SNA,0,,,,,
-2026-09-15,US,Smurfit Westrock,SW,0,,,,,
-2026-09-15,US,J.M. Smucker Company (The),SJM,0,,,,,
-2026-09-15,US,Starbucks,SBUX,0,,,,,
-2026-09-15,US,Southern Company,SO,0,,,,,
-2026-09-15,US,Solventum,SOLV,0,,,,,
-2026-09-15,US,Steris,STE,0,,,,,
-2026-09-15,US,Steel Dynamics,STLD,0,,,,,
-2026-09-15,US,Southwest Airlines,LUV,0,,,,,
-2026-09-15,US,Stanley Black & Decker,SWK,0,,,,,
-2026-09-15,US,State Street Corporation,STT,0,,,,,
-2026-09-15,US,Supermicro,SMCI,0,,,,,
-2026-09-15,US,Synopsys,SNPS,0,,,,,
-2026-09-15,US,Sysco,SYY,0,,,,,
-2026-09-15,US,T. Rowe Price,TROW,0,,,,,
-2026-09-15,US,Take-Two Interactive,TTWO,0,,,,,
-2026-09-15,US,T-Mobile US,TMUS,0,,,,,
-2026-09-15,US,Target Corporation,TGT,0,,,,,
-2026-09-15,US,Targa Resources,TRGP,0,,,,,
-2026-09-15,US,"Tapestry, Inc.",TPR,0,,,,,
-2026-09-15,US,Synchrony Financial,SYF,0,,,,,
-2026-09-15,US,Teledyne Technologies,TDY,0,,,,,
-2026-09-15,US,Stryker Corporation,SYK,0,,,,,
-2026-09-15,US,Teradyne,TER,0,,,,,
-2026-09-15,US,"Tesla, Inc.",TSLA,0,,,,,
-2026-09-15,US,Texas Instruments,TXN,0,,,,,
-2026-09-15,US,Trade Desk (The),TTD,0,,,,,
-2026-09-15,US,Texas Pacific Land Corporation,TPL,0,,,,,
-2026-09-15,US,Thermo Fisher Scientific,TMO,0,,,,,
-2026-09-15,US,Tractor Supply,TSCO,0,,,,,
-2026-09-15,US,TJX Companies,TJX,0,,,,,
-2026-09-15,US,TKO Group Holdings,TKO,0,,,,,
-2026-09-15,US,TransDigm Group,TDG,0,,,,,
-2026-09-15,US,TE Connectivity,TEL,0,,,,,
-2026-09-15,US,Trimble Inc.,TRMB,0,,,,,
-2026-09-15,US,Trane Technologies,TT,0,,,,,
-2026-09-15,US,Textron,TXT,0,,,,,
-2026-09-15,US,Uber,UBER,0,,,,,
-2026-09-15,US,Ulta Beauty,ULTA,0,,,,,
-2026-09-15,US,"UDR, Inc.",UDR,0,,,,,
-2026-09-15,US,Tyler Technologies,TYL,0,,,,,
-2026-09-15,US,United Airlines Holdings,UAL,0,,,,,
-2026-09-15,US,Tyson Foods,TSN,0,,,,,
-2026-09-15,US,U.S. Bancorp,USB,0,,,,,
-2026-09-15,US,Truist Financial,TFC,0,,,,,
-2026-09-15,US,Union Pacific Corporation,UNP,0,,,,,
-2026-09-15,US,United Parcel Service,UPS,0,,,,,
-2026-09-15,US,United Rentals,URI,0,,,,,
-2026-09-15,US,Universal Health Services,UHS,0,,,,,
-2026-09-15,US,Veralto,VLTO,0,,,,,
-2026-09-15,US,Veeva Systems,VEEV,0,,,,,
-2026-09-15,US,Verisign,VRSN,0,,,,,
-2026-09-15,US,Vertex Pharmaceuticals,VRTX,0,,,,,
-2026-09-15,US,Ventas,VTR,0,,,,,
-2026-09-15,US,Verizon,VZ,0,,,,,
-2026-09-15,US,Travelers Companies (The),TRV,0,,,,,
-2026-09-15,US,Visa Inc.,V,0,,,,,
-2026-09-15,US,Viatris,VTRS,0,,,,,
-2026-09-15,US,Vertiv,VRT,0,,,,,
-2026-09-15,US,Vici Properties,VICI,0,,,,,
-2026-09-15,US,Valero Energy,VLO,0,,,,,
-2026-09-15,US,Wabtec,WAB,0,,,,,
-2026-09-15,US,Vistra Corp.,VST,0,,,,,
-2026-09-15,US,Vulcan Materials Company,VMC,0,,,,,
-2026-09-15,US,Walmart,WMT,0,,,,,
-2026-09-15,US,Verisk Analytics,VRSK,0,,,,,
-2026-09-15,US,W. W. Grainger,GWW,0,,,,,
-2026-09-15,US,W. R. Berkley Corporation,WRB,0,,,,,
-2026-09-15,US,Waste Management,WM,0,,,,,
-2026-09-15,US,UnitedHealth Group,UNH,0,,,,,
-2026-09-15,US,Waters Corporation,WAT,0,,,,,
-2026-09-15,US,Warner Bros. Discovery,WBD,0,,,,,
-2026-09-15,US,Wells Fargo,WFC,0,,,,,
-2026-09-15,US,West Pharmaceutical Services,WST,0,,,,,
-2026-09-15,US,Welltower,WELL,0,,,,,
-2026-09-15,US,Walt Disney Company (The),DIS,0,,,,,
-2026-09-15,US,WEC Energy Group,WEC,0,,,,,
-2026-09-15,US,Western Digital,WDC,0,,,,,
-2026-09-15,US,"Williams-Sonoma, Inc.",WSM,0,,,,,
-2026-09-15,US,Vivmark Residential,VMRK,0,,,,,
-2026-09-15,US,Willis Towers Watson,WTW,0,,,,,
-2026-09-15,US,Weyerhaeuser,WY,0,,,,,
-2026-09-15,US,Williams Companies,WMB,0,,,,,
-2026-09-15,US,"Workday, Inc.",WDAY,0,,,,,
-2026-09-15,US,Wynn Resorts,WYNN,0,,,,,
-2026-09-15,US,Zebra Technologies,ZBRA,0,,,,,
-2026-09-15,US,Xcel Energy,XEL,0,,,,,
-2026-09-15,US,Zoetis,ZTS,0,,,,,
-2026-09-15,US,Yum! Brands,YUM,0,,,,,
-2026-09-15,US,Zimmer Biomet,ZBH,0,,,,,
-2026-09-15,US,Xylem Inc.,XYL,0,,,,,
+2026-09-16,US,Align Technology,ALGN,0,150.4499969482422,-5.85,-10.8,-12.24,20.15
+2026-09-16,US,Advanced Micro Devices,AMD,0,512.5,8.88,-11.78,151.93,216.77
+2026-09-16,US,A. O. Smith,AOS,0,56.88999938964844,-3.79,-9.3,-13.72,-22.5
+2026-09-16,US,AES Corporation,AES,0,14.8100004196167,0.47,1.02,5.11,12.54
+2026-09-16,US,Adobe Inc.,ADBE,0,250.5,-14.44,22.18,3.05,-28.99
+2026-09-16,US,Allegion,ALLE,0,,,,,
+2026-09-16,US,Akamai Technologies,AKAM,0,104.4800033569336,-3.81,-11.61,-9.03,37.91
+2026-09-16,US,Airbnb,ABNB,0,,,,,
+2026-09-16,US,3M,MMM,0,162.64999389648438,-5.34,0.46,11.99,4.81
+2026-09-16,US,Alphabet Inc. (Class A),GOOGL,0,342.8699951171875,1.04,-4.06,19.23,41.04
+2026-09-16,US,AbbVie,ABBV,0,,,,,
+2026-09-16,US,Albemarle Corporation,ALB,0,109.47000122070312,-18.89,-18.93,-39.02,35.01
+2026-09-16,US,Allstate,ALL,0,254.85000610351562,-1.14,7.11,22.91,18.73
+2026-09-16,US,Alliant Energy,LNT,0,66.11000061035156,-2.75,-13.34,-7.87,-1.93
+2026-09-16,US,Agilent Technologies,A,0,153.69000244140625,0.08,15.7,34.84,19.74
+2026-09-16,US,Accenture,ACN,0,189.63999938964844,-0.06,52.39,-4.36,-23.1
+2026-09-16,US,Aflac,AFL,0,116.80999755859375,0.83,-0.38,6.47,4.57
+2026-09-16,US,Abbott Laboratories,ABT,0,102.36000061035156,-7.25,12.81,-0.3,-23.58
+2026-09-16,US,Air Products,APD,0,287.0799865722656,-7.23,-2.08,-1.17,5.27
+2026-09-16,US,Alexandria Real Estate Equities,ARE,0,53.52000045776367,4.35,1.27,15.3,-35.78
+2026-09-16,US,Alphabet Inc. (Class C),GOOG,0,,,,,
+2026-09-16,US,Amazon,AMZN,0,245.9600067138672,-5.32,3.2,18.1,12.02
+2026-09-16,US,Ameren,AEE,0,103.04000091552734,-2.8,-8.85,-6.26,-1.28
+2026-09-16,US,American Express,AXP,0,312.42999267578125,-5.37,-7.63,3.29,-5.94
+2026-09-16,US,Altria,MO,0,70.0999984741211,2.37,-2.57,6.23,6.12
+2026-09-16,US,American Water Works,AWK,0,137.75999450683594,-0.34,4.7,1.23,-1.03
+2026-09-16,US,Amcor,AMCR,0,,,,,
+2026-09-16,US,Ameriprise Financial,AMP,0,540.8599853515625,-2.21,17.9,21.71,10.1
+2026-09-16,US,American Tower,AMT,0,176.38999938964844,0.39,7.84,2.21,-8.28
+2026-09-16,US,American Electric Power,AEP,0,120.69000244140625,-1.42,-11.78,-7.93,7.28
+2026-09-16,US,American International Group,AIG,0,76.06999969482422,-0.38,2.07,1.09,-3.14
+2026-09-16,US,Amphenol,APH,0,77.26000213623047,-2.54,-12.36,22.3,24.86
+2026-09-16,US,Ametek,AME,0,232.19000244140625,-1.27,-4.03,8.32,23.51
+2026-09-16,US,Amgen,AMGN,0,376.3500061035156,-12.45,3.93,6.96,33.36
+2026-09-16,US,Aptiv,APTV,0,43.34000015258789,-3.17,-29.39,-37.59,-49.73
+2026-09-16,US,AppLovin,APP,0,,,,,
+2026-09-16,US,Applied Materials,AMAT,0,415.3800048828125,-9.38,-42.55,21.53,102.88
+2026-09-16,US,Apple Inc.,AAPL,0,332.4100036621094,4.91,14.88,30.98,30.55
+2026-09-16,US,APA Corporation,APA,0,44.790000915527344,3.8,37.52,5.54,84.47
+2026-09-16,US,Arch Capital Group,ACGL,0,96.97000122070312,-1.12,-0.09,1.02,6.88
+2026-09-16,US,Aon plc,AON,0,300.57000732421875,-6.52,-9.38,-6.88,-15.71
+2026-09-16,US,Analog Devices,ADI,0,362.0400085449219,-0.03,-8.85,13.8,47.35
+2026-09-16,US,Apollo Global Management,APO,0,124.52999877929688,-8.82,5.26,11.77,-6.56
+2026-09-16,US,Ares Management,ARES,0,,,,,
+2026-09-16,US,Arthur J. Gallagher & Co.,AJG,0,243.77999877929688,-7.01,6.19,12.56,-21.3
+2026-09-16,US,Archer Daniels Midland,ADM,0,85.0,4.56,11.26,16.93,42.28
+2026-09-16,US,Arista Networks,ANET,0,,,,,
+2026-09-16,US,Assurant,AIZ,0,283.55999755859375,0.6,5.6,30.19,30.91
+2026-09-16,US,AT&T,T,0,25.860000610351562,-0.12,24.93,-10.8,-8.43
+2026-09-16,US,Atmos Energy,ATO,0,161.9600067138672,-2.51,-5.98,-12.32,-5.15
+2026-09-16,US,Autodesk,ADSK,0,220.30999755859375,-14.78,13.32,-7.97,-30.65
+2026-09-16,US,AutoZone,AZO,0,2849.0400390625,-4.75,-10.85,-15.65,-33.59
+2026-09-16,US,Axon Enterprise,AXON,0,468.4200134277344,-17.32,-16.44,10.3,-34.73
+2026-09-16,US,Automatic Data Processing,ADP,0,273.19000244140625,-4.53,21.99,34.46,-6.92
+2026-09-16,US,Avery Dennison,AVY,0,172.27999877929688,-1.05,6.12,-0.23,6.23
+2026-09-16,US,Bank of America,BAC,0,57.900001525878906,-6.52,1.61,18.77,12.23
+2026-09-16,US,Ball Corporation,BALL,0,61.2599983215332,-2.72,-1.83,3.64,21.5
+2026-09-16,US,Becton Dickinson,BDX,0,181.85000610351562,-3.33,20.17,15.66,23.58
+2026-09-16,US,Bio-Techne,TECH,0,72.33000183105469,0.03,2.38,38.4,30.02
+2026-09-16,US,Best Buy,BBY,0,92.44999694824219,15.35,21.84,44.0,22.26
+2026-09-16,US,Baker Hughes,BKR,0,56.31999969482422,-11.38,1.48,-7.75,15.6
+2026-09-16,US,Baxter International,BAX,0,23.530000686645508,-9.5,10.37,40.06,3.34
+2026-09-16,US,Blackstone Inc.,BX,0,123.44999694824219,-13.82,4.91,7.36,-27.74
+2026-09-16,US,Biogen,BIIB,0,216.00999450683594,-0.3,-0.02,17.83,54.2
+2026-09-16,US,BlackRock,BLK,0,1037.239990234375,-10.24,7.87,7.85,-11.03
+2026-09-16,US,Boston Scientific,BSX,0,43.90999984741211,-9.09,2.88,-30.02,-55.02
+2026-09-16,US,BNY Mellon,BNY,0,153.47000122070312,-4.84,6.13,29.37,40.85
+2026-09-16,US,Booking Holdings,BKNG,0,171.39999389648438,-13.91,-3.84,1.77,-20.64
+2026-09-16,US,Bristol Myers Squibb,BMY,0,63.599998474121094,-4.8,10.38,4.86,41.02
+2026-09-16,US,Broadcom,AVGO,0,339.510009765625,-8.32,-10.12,9.69,2.91
+2026-09-16,US,Broadridge Financial Solutions,BR,0,167.08999633789062,-8.38,22.01,2.84,-29.84
+2026-09-16,US,Builders FirstSource,BLDR,0,59.650001525878906,-10.17,-33.34,-27.55,-50.8
+2026-09-16,US,Boeing,BA,0,201.9600067138672,-2.8,-6.7,1.47,-6.43
+2026-09-16,US,Brown & Brown,BRO,0,65.87999725341797,-8.72,2.7,1.03,-29.76
+2026-09-16,US,C.H. Robinson,CHRW,0,153.47000122070312,2.55,-18.51,-7.59,15.91
+2026-09-16,US,"Block, Inc.",XYZ,0,,,,,
+2026-09-16,US,Bunge Global,BG,0,117.12999725341797,0.79,9.74,-7.92,44.16
+2026-09-16,US,Cadence Design Systems,CDNS,0,279.8999938964844,-17.38,-25.42,0.73,-20.32
+2026-09-16,US,"BXP, Inc.",BXP,0,64.04000091552734,-5.81,-3.42,23.39,-13.86
+2026-09-16,US,Cardinal Health,CAH,0,232.5399932861328,-0.89,-2.11,10.05,48.15
+2026-09-16,US,Camden Property Trust,CPT,0,101.30000305175781,-4.25,-11.52,3.73,-5.13
+2026-09-16,US,Carrier Global,CARR,0,,,,,
+2026-09-16,US,Carvana,CVNA,0,,,,,
+2026-09-16,US,Capital One,COF,0,203.19000244140625,-5.28,1.28,11.38,-4.42
+2026-09-16,US,Cboe Global Markets,CBOE,0,270.42999267578125,-9.92,11.44,-3.79,10.27
+2026-09-16,US,Carnival Corporation,CCL,0,22.350000381469727,-6.45,-21.77,-13.64,-22.69
+2026-09-16,US,Casey's,CASY,0,589.0,-21.7,-25.89,-19.08,4.19
+2026-09-16,US,CBRE Group,CBRE,0,138.55999755859375,-4.97,2.87,2.29,-12.06
+2026-09-16,US,Centene Corporation,CNC,0,66.01000213623047,2.6,2.84,101.62,85.01
+2026-09-16,US,CDW Corporation,CDW,0,,,,,
+2026-09-16,US,Caterpillar Inc.,CAT,0,782.719970703125,-1.85,-26.5,10.48,64.04
+2026-09-16,US,CF Industries,CF,0,131.99000549316406,1.51,21.92,1.66,47.15
+2026-09-16,US,Charter Communications,CHTR,0,135.0,-11.44,-5.07,-37.47,-50.93
+2026-09-16,US,Charles River Laboratories,CRL,0,273.4100036621094,-5.15,20.56,58.5,74.75
+2026-09-16,US,Cencora,COR,0,318.5,-1.58,12.55,1.39,1.91
+2026-09-16,US,Charles Schwab Corporation,SCHW,0,105.16000366210938,-4.24,13.97,11.9,10.15
+2026-09-16,US,CenterPoint Energy,CNP,0,38.33000183105469,-3.21,-12.97,-11.19,-1.21
+2026-09-16,US,Chipotle Mexican Grill,CMG,0,33.68000030517578,-11.44,-0.94,5.22,-14.06
+2026-09-16,US,Ciena,CIEN,0,340.5,-11.05,-30.59,-12.29,133.75
+2026-09-16,US,Cincinnati Financial,CINF,0,170.77000427246094,0.51,-7.76,8.53,8.01
+2026-09-16,US,Chubb Limited,CB,0,341.5299987792969,0.87,0.23,4.79,21.0
+2026-09-16,US,Church & Dwight,CHD,0,95.51000213623047,-4.28,-1.41,2.35,8.99
+2026-09-16,US,Cigna,CI,0,280.45001220703125,1.58,1.73,5.14,-2.71
+2026-09-16,US,Citizens Financial Group,CFG,0,,,,,
+2026-09-16,US,Cisco,CSCO,0,107.73999786376953,-2.49,-8.28,38.86,57.47
+2026-09-16,US,Chevron Corporation,CVX,0,211.5399932861328,2.62,27.62,2.24,36.22
+2026-09-16,US,Cintas,CTAS,0,199.4600067138672,-1.15,17.27,17.93,-2.83
+2026-09-16,US,Citigroup,C,0,132.9499969482422,1.01,-5.01,17.23,30.99
+2026-09-16,US,CME Group,CME,0,272.4599914550781,-4.57,23.38,-7.75,0.84
+2026-09-16,US,Coherent Corp.,COHR,0,289.92999267578125,4.36,-26.5,21.71,169.15
+2026-09-16,US,CMS Energy,CMS,0,65.98999786376953,-3.04,-13.74,-14.94,-9.92
+2026-09-16,US,Coca-Cola Company (The),KO,0,87.87000274658203,-0.9,8.12,15.54,32.49
+2026-09-16,US,Comcast,CMCSA,0,23.729999542236328,-10.86,-3.34,-17.35,-19.41
+2026-09-16,US,Comfort Systems USA,FIX,0,1587.3499755859375,2.7,-19.91,15.11,92.36
+2026-09-16,US,Clorox,CLX,0,84.86000061035156,-13.12,-11.09,-18.11,-31.18
+2026-09-16,US,Coinbase,COIN,0,,,,,
+2026-09-16,US,Consolidated Edison,ED,0,105.41999816894531,-1.5,-4.71,-6.86,4.87
+2026-09-16,US,Cognizant,CTSH,0,61.849998474121094,-4.23,59.7,0.81,-7.78
+2026-09-16,US,Constellation Energy,CEG,0,,,,,
+2026-09-16,US,Cooper Companies (The),COO,0,54.61000061035156,-22.09,-23.85,-23.62,-20.35
+2026-09-16,US,Colgate-Palmolive,CL,0,87.0199966430664,-3.12,-5.08,2.1,8.86
+2026-09-16,US,Copart,CPRT,0,30.81999969482422,-6.58,9.33,-7.17,-31.47
+2026-09-16,US,ConocoPhillips,COP,0,132.5399932861328,0.04,27.49,0.41,40.12
+2026-09-16,US,Constellation Brands,STZ,0,123.02999877929688,-5.81,-11.55,-17.98,-8.64
+2026-09-16,US,CoStar Group,CSGP,0,30.360000610351562,-5.33,7.2,-24.74,-64.02
+2026-09-16,US,Corning Inc.,GLW,0,144.16000366210938,-3.07,-43.56,6.02,75.74
+2026-09-16,US,Costco,COST,0,893.739990234375,-5.31,-4.46,-10.31,-3.45
+2026-09-16,US,Corpay,CPAY,0,402.2699890136719,-0.5,20.7,38.24,39.65
+2026-09-16,US,CRH plc,CRH,0,86.69999694824219,-8.05,-18.97,-17.52,-27.69
+2026-09-16,US,Corteva,CTVA,0,,,,,
+2026-09-16,US,Cummins,CMI,0,527.5,-6.54,-26.04,-1.96,24.89
+2026-09-16,US,CSX Corporation,CSX,0,47.900001525878906,-5.17,0.78,16.69,34.89
+2026-09-16,US,DaVita,DVA,0,193.86000061035156,10.14,-12.86,26.14,45.9
+2026-09-16,US,CVS Health,CVS,0,91.72000122070312,-2.33,-11.34,27.71,21.66
+2026-09-16,US,Darden Restaurants,DRI,0,208.0800018310547,-2.88,1.0,6.14,9.31
+2026-09-16,US,Deckers Brands,DECK,0,77.95999908447266,-10.47,-21.48,-22.11,-23.09
+2026-09-16,US,Danaher Corporation,DHR,0,208.36000061035156,-2.43,9.39,9.89,5.09
+2026-09-16,US,Crown Castle,CCI,0,73.22000122070312,-3.84,-3.31,-9.95,-24.12
+2026-09-16,US,Deere & Company,DE,0,669.469970703125,2.22,5.54,18.85,46.41
+2026-09-16,US,Dexcom,DXCM,0,87.33999633789062,-4.09,29.68,39.08,29.8
+2026-09-16,US,CrowdStrike,CRWD,0,,,,,
+2026-09-16,US,Devon Energy,DVN,0,48.439998626708984,-0.14,17.23,-3.74,38.16
+2026-09-16,US,Delta Air Lines,DAL,0,77.87000274658203,-0.17,-16.86,17.13,37.22
+2026-09-16,US,Diamondback Energy,FANG,0,,,,,
+2026-09-16,US,Dollar General,DG,0,123.01000213623047,-2.95,6.86,3.6,19.02
+2026-09-16,US,Datadog,DDOG,0,,,,,
+2026-09-16,US,DoorDash,DASH,0,,,,,
+2026-09-16,US,Dollar Tree,DLTR,0,112.4000015258789,-11.21,-7.07,2.64,19.11
+2026-09-16,US,Domino's,DPZ,0,301.29998779296875,-11.92,1.78,-16.02,-30.21
+2026-09-16,US,Dell Technologies,DELL,0,,,,,
+2026-09-16,US,Dover Corporation,DOV,0,188.36000061035156,-3.02,-16.02,-9.64,12.91
+2026-09-16,US,Digital Realty,DLR,0,181.07000732421875,-2.44,0.83,0.48,4.74
+2026-09-16,US,Dominion Energy,D,0,63.5099983215332,-3.79,-7.0,2.73,3.83
+2026-09-16,US,DuPont,DD,0,127.56999969482422,-5.22,-5.95,-7.15,30.46
+2026-09-16,US,Dow Inc.,DOW,0,,,,,
+2026-09-16,US,Duke Energy,DUK,0,117.76000213623047,-1.79,-6.97,-10.07,-4.84
+2026-09-16,US,Edwards Lifesciences,EW,0,89.27999877929688,-1.62,-1.3,11.49,14.8
+2026-09-16,US,D. R. Horton,DHI,0,138.32000732421875,-4.32,-15.08,0.8,-18.38
+2026-09-16,US,DTE Energy,DTE,0,130.6999969482422,-3.63,-14.22,-10.61,-7.59
+2026-09-16,US,eBay Inc.,EBAY,0,109.16999816894531,5.42,-2.31,19.94,20.03
+2026-09-16,US,EchoStar,ECHO,0,93.45999908447266,8.12,-7.92,-20.17,22.39
+2026-09-16,US,Emerson Electric,EMR,0,145.8300018310547,-4.34,1.87,11.3,11.17
+2026-09-16,US,Eaton Corporation,ETN,0,397.79998779296875,-1.02,-6.65,11.22,6.29
+2026-09-16,US,Entergy,ETR,0,102.31999969482422,-3.75,-10.92,-8.94,9.8
+2026-09-16,US,Emcor,EME,0,739.4600219726562,0.67,-10.9,0.16,13.84
+2026-09-16,US,Essex Property Trust,ESS,0,271.3399963378906,-4.11,-6.94,12.12,1.37
+2026-09-16,US,Erie Indemnity,ERIE,0,245.5800018310547,-3.91,2.43,-2.28,-22.81
+2026-09-16,US,Equifax,EFX,0,163.8000030517578,-13.41,3.2,-9.04,-36.15
+2026-09-16,US,Ecolab,ECL,0,274.0799865722656,-3.22,-1.63,3.03,0.08
+2026-09-16,US,Elevance Health,ELV,0,412.55999755859375,5.1,6.68,40.93,27.68
+2026-09-16,US,Edison International,EIX,0,54.810001373291016,1.54,-26.38,-25.1,-0.85
+2026-09-16,US,Everest Group,EG,0,377.7699890136719,0.83,5.75,15.58,7.86
+2026-09-16,US,Estée Lauder Companies (The),EL,0,95.5999984741211,-6.55,21.09,33.2,8.49
+2026-09-16,US,Equinix,EQIX,0,1016.1599731445312,-2.92,-2.52,3.66,29.74
+2026-09-16,US,EQT Corporation,EQT,0,50.40999984741211,-6.96,-5.19,-20.79,-7.39
+2026-09-16,US,EOG Resources,EOG,0,144.92999267578125,-0.02,11.72,0.25,29.26
+2026-09-16,US,Exelon,EXC,0,42.439998626708984,-2.93,-8.97,-13.42,-5.71
+2026-09-16,US,Evergy,EVRG,0,80.38999938964844,-0.78,-6.99,-1.87,5.75
+2026-09-16,US,Eversource Energy,ES,0,67.86000061035156,-3.25,-6.1,-2.05,-4.61
+2026-09-16,US,Expedia Group,EXPE,0,286.9700012207031,-9.51,12.15,24.29,34.25
+2026-09-16,US,Expand Energy,EXE,0,,,,,
+2026-09-16,US,FactSet,FDS,0,276.4100036621094,-11.84,20.14,27.38,-3.52
+2026-09-16,US,"F5, Inc.",FFIV,0,423.5899963378906,4.04,1.83,46.4,31.07
+2026-09-16,US,Expeditors International,EXPD,0,189.0399932861328,-0.32,15.99,31.98,54.21
+2026-09-16,US,FedEx Freight,FDXF,0,,,,0.0,0.0
+2026-09-16,US,Federal Realty Investment Trust,FRT,0,112.41999816894531,-3.11,-8.93,5.85,10.97
+2026-09-16,US,ExxonMobil,XOM,0,163.32000732421875,1.47,19.46,-3.74,44.85
+2026-09-16,US,First Solar,FSLR,0,191.07000732421875,-5.36,-19.02,-3.14,-13.36
+2026-09-16,US,Extra Space Storage,EXR,0,136.42999267578125,-3.31,-6.1,4.04,-3.2
+2026-09-16,US,Ferguson Enterprises,FERG,0,214.35000610351562,-4.53,-9.68,-8.11,-4.56
+2026-09-16,US,FedEx,FDX,0,301.7200012207031,-7.84,-3.64,5.13,58.79
+2026-09-16,US,Fidelity National Information Services,FIS,0,36.849998474121094,-9.61,-5.22,-21.45,-44.12
+2026-09-16,US,Fox Corporation (Class B),FOX,0,,,,,
+2026-09-16,US,Fifth Third Bancorp,FITB,0,52.40999984741211,-2.53,-7.03,12.81,17.64
+2026-09-16,US,Fair Isaac,FICO,0,991.3499755859375,-13.59,-17.03,-7.14,-33.76
+2026-09-16,US,FirstEnergy,FE,0,45.380001068115234,-1.05,-4.54,-10.42,-0.96
+2026-09-16,US,Fortinet,FTNT,0,171.77000427246094,0.49,11.81,110.19,104.29
+2026-09-16,US,Flex Ltd.,FLEX,0,107.9000015258789,-1.24,-33.42,64.83,86.13
+2026-09-16,US,Fox Corporation (Class A),FOXA,0,,,,,
+2026-09-16,US,Fastenal,FAST,0,49.029998779296875,-0.57,2.08,5.67,-0.02
+2026-09-16,US,Fortive,FTV,0,,,,,
+2026-09-16,US,Ford Motor Company,F,0,13.350000381469727,-4.23,-3.96,15.68,11.62
+2026-09-16,US,Gartner,IT,0,191.57000732421875,-3.3,47.79,20.99,-27.12
+2026-09-16,US,Franklin Resources,BEN,0,32.720001220703125,-4.19,-1.65,38.53,41.46
+2026-09-16,US,Freeport-McMoRan,FCX,0,69.23999786376953,-8.58,10.1,17.8,76.54
+2026-09-16,US,GE HealthCare,GEHC,0,,,,,
+2026-09-16,US,Garmin,GRMN,0,276.92999267578125,-2.53,16.58,19.36,12.47
+2026-09-16,US,GE Vernova,GEV,0,,,,,
+2026-09-16,US,GE Aerospace,GE,0,312.8999938964844,-6.79,-16.28,10.27,4.02
+2026-09-16,US,Fiserv,FISV,0,49.45000076293945,-7.24,0.82,-11.38,-61.65
+2026-09-16,US,Gen Digital,GEN,0,30.649999618530273,-1.13,23.14,62.77,7.96
+2026-09-16,US,Generac,GNRC,0,175.11000061035156,-5.54,-40.2,-10.35,4.61
+2026-09-16,US,General Motors,GM,0,84.29000091552734,-2.35,9.35,13.14,38.25
+2026-09-16,US,General Dynamics,GD,0,360.0,-3.06,1.63,4.89,5.57
+2026-09-16,US,General Mills,GIS,0,36.810001373291016,-10.66,5.78,-1.1,-26.99
+2026-09-16,US,Global Payments,GPN,0,86.48999786376953,-5.01,19.2,28.51,4.1
+2026-09-16,US,Genuine Parts Company,GPC,0,130.52000427246094,-3.8,10.63,23.42,-5.83
+2026-09-16,US,Gilead Sciences,GILD,0,147.67999267578125,0.92,16.89,5.96,33.05
+2026-09-16,US,GoDaddy,GDDY,0,,,,,
+2026-09-16,US,Globe Life,GL,0,172.97999572753906,0.18,-3.19,24.29,20.99
+2026-09-16,US,Halliburton,HAL,0,34.5099983215332,-6.35,1.65,-11.49,40.28
+2026-09-16,US,HCA Healthcare,HCA,0,430.42999267578125,3.86,10.4,-9.05,0.99
+2026-09-16,US,Hershey Company (The),HSY,0,170.7899932861328,-3.08,-2.66,-17.85,-8.69
+2026-09-16,US,Goldman Sachs,GS,0,937.97998046875,-8.57,-7.26,10.87,17.78
+2026-09-16,US,Hartford (The),HIG,0,134.94000244140625,-1.78,1.83,-0.21,1.16
+2026-09-16,US,Henry Schein,HSIC,0,86.7699966430664,-3.37,3.89,17.73,30.74
+2026-09-16,US,Honeywell Aerospace,HONA,0,,,,0.0,0.0
+2026-09-16,US,Hasbro,HAS,0,89.30000305175781,-5.1,8.12,-4.59,17.73
+2026-09-16,US,Hormel Foods,HRL,0,20.780000686645508,-4.9,-16.28,-8.26,-16.01
+2026-09-16,US,Hewlett Packard Enterprise,HPE,0,,,,,
+2026-09-16,US,Healthpeak Properties,DOC,0,20.350000381469727,-2.26,-4.91,23.86,6.27
+2026-09-16,US,Hubbell Incorporated,HUBB,0,439.07000732421875,-3.08,-16.08,-10.53,2.04
+2026-09-16,US,Howmet Aerospace,HWM,0,227.72999572753906,-7.03,-15.3,-1.18,16.05
+2026-09-16,US,Home Depot (The),HD,0,302.4700012207031,-7.74,-14.24,-8.03,-25.35
+2026-09-16,US,Humana,HUM,0,384.7200012207031,0.39,-3.15,121.88,47.87
+2026-09-16,US,Hilton Worldwide,HLT,0,,,,,
+2026-09-16,US,HP Inc.,HPQ,0,32.70000076293945,8.93,49.04,70.22,20.09
+2026-09-16,US,Honeywell Technologies,HON,0,207.66000366210938,-2.75,-7.25,-12.4,-0.2
+2026-09-16,US,Huntington Ingalls Industries,HII,0,278.0899963378906,-4.5,-0.64,-26.8,-3.41
+2026-09-16,US,IDEX Corporation,IEX,0,221.5,-3.12,-2.4,16.86,36.09
+2026-09-16,US,Idexx Laboratories,IDXX,0,513.6199951171875,-7.74,-2.44,-8.59,-19.61
+2026-09-16,US,Ingersoll Rand,IR,0,,,,,
+2026-09-16,US,Host Hotels & Resorts,HST,0,21.760000228881836,-0.78,-8.22,13.57,27.85
+2026-09-16,US,Huntington Bancshares,HBAN,0,15.819999694824219,-5.21,-10.77,1.09,-8.4
+2026-09-16,US,IBM,IBM,0,237.49000549316406,1.55,-15.55,-2.02,-15.83
+2026-09-16,US,Interactive Brokers,IBKR,0,86.73999786376953,-10.84,-0.34,29.33,26.06
+2026-09-16,US,Intel,INTC,0,101.05000305175781,12.89,-27.63,128.98,201.19
+2026-09-16,US,Incyte,INCY,0,124.75,1.24,10.05,32.54,47.09
+2026-09-16,US,International Flavors & Fragrances,IFF,0,84.4000015258789,-2.24,6.54,16.33,37.15
+2026-09-16,US,International Paper,IP,0,34.060001373291016,-10.2,-10.6,-4.59,-26.59
+2026-09-16,US,Intuitive Surgical,ISRG,0,382.2900085449219,1.44,-3.87,-17.07,-14.52
+2026-09-16,US,Insulet Corporation,PODD,0,140.60000610351562,-5.42,-7.65,-33.0,-54.46
+2026-09-16,US,Illinois Tool Works,ITW,0,267.3299865722656,-2.92,-1.16,2.7,2.52
+2026-09-16,US,Intercontinental Exchange,ICE,0,154.10000610351562,-4.11,25.17,-2.02,-8.54
+2026-09-16,US,IQVIA,IQV,0,,,,,
+2026-09-16,US,Iron Mountain,IRM,0,112.1500015258789,-2.77,-11.21,9.8,10.02
+2026-09-16,US,Invitation Homes,INVH,0,,,,,
+2026-09-16,US,Jabil,JBL,0,297.239990234375,-2.63,-22.89,11.9,36.87
+2026-09-16,US,Johnson Controls,JCI,0,140.47000122070312,1.61,-3.86,7.27,27.76
+2026-09-16,US,Jack Henry & Associates,JKHY,0,158.97999572753906,-5.32,15.42,0.59,6.75
+2026-09-16,US,Kenvue,KVUE,0,,,,,
+2026-09-16,US,Intuit,INTU,0,318.1300048828125,-11.46,21.89,-26.42,-53.42
+2026-09-16,US,Invesco,IVZ,0,30.079999923706055,-8.24,13.98,23.84,31.12
+2026-09-16,US,Jacobs Solutions,J,0,143.49000549316406,-3.73,13.88,12.74,-4.25
+2026-09-16,US,Keurig Dr Pepper,KDP,0,31.799999237060547,-0.19,-2.84,20.77,24.66
+2026-09-16,US,Kimberly-Clark,KMB,0,98.0999984741211,-9.12,-10.63,1.69,-21.1
+2026-09-16,US,KLA Corporation,KLAC,0,167.36000061035156,-4.61,-44.53,13.66,55.16
+2026-09-16,US,J.B. Hunt,JBHT,0,236.72999572753906,-10.83,-18.21,11.72,76.44
+2026-09-16,US,Johnson & Johnson,JNJ,0,267.2799987792969,0.54,5.24,9.34,44.15
+2026-09-16,US,JPMorgan Chase,JPM,0,348.9200134277344,-1.99,6.6,18.62,10.62
+2026-09-16,US,Keysight Technologies,KEYS,0,,,,,
+2026-09-16,US,Kimco Realty,KIM,0,22.59000015258789,-4.72,-10.89,0.53,3.39
+2026-09-16,US,Kraft Heinz,KHC,0,,,,,
+2026-09-16,US,Kinder Morgan,KMI,0,30.729999542236328,-4.68,-3.88,-8.35,8.55
+2026-09-16,US,Lam Research,LRCX,0,269.2300109863281,-10.7,-37.87,26.01,101.07
+2026-09-16,US,Leidos,LDOS,0,129.35000610351562,-7.75,25.62,-16.83,-31.55
+2026-09-16,US,Kroger,KR,0,61.13999938964844,6.26,10.1,-15.51,-9.3
+2026-09-16,US,Las Vegas Sands,LVS,0,41.060001373291016,-6.28,-11.11,-23.79,-23.67
+2026-09-16,US,Labcorp,LH,0,324.510009765625,-2.45,15.9,21.63,13.05
+2026-09-16,US,Linde plc,LIN,0,462.0899963378906,-5.62,-10.96,-6.79,-2.72
+2026-09-16,US,KKR & Co.,KKR,0,96.83999633789062,-11.74,5.51,4.69,-25.48
+2026-09-16,US,Lennox International,LII,0,361.0400085449219,-5.64,-36.99,-22.21,-31.8
+2026-09-16,US,KeyCorp,KEY,0,20.719999313354492,-4.12,-10.11,3.34,10.86
+2026-09-16,US,Live Nation Entertainment,LYV,0,171.1300048828125,-4.87,-6.54,12.21,4.73
+2026-09-16,US,LyondellBasell,LYB,0,64.9000015258789,-0.28,23.27,-19.44,32.34
+2026-09-16,US,Lululemon Athletica,LULU,0,95.9800033569336,-20.19,-15.94,-37.31,-46.06
+2026-09-16,US,Lockheed Martin,LMT,0,537.25,-4.27,5.45,-11.11,7.62
+2026-09-16,US,Lumentum,LITE,0,,,,,
+2026-09-16,US,Marathon Petroleum,MPC,0,413.9200134277344,10.88,61.9,69.51,114.76
+2026-09-16,US,Loews Corporation,L,0,108.79000091552734,0.46,-3.9,1.92,8.37
+2026-09-16,US,Marvell Technology,MRVL,0,229.7100067138672,8.53,-22.89,131.91,173.24
+2026-09-16,US,Marsh McLennan,MRSH,0,176.75999450683594,-6.87,6.05,1.91,-12.29
+2026-09-16,US,Lennar,LEN,0,78.36000061035156,-6.84,-13.4,-9.77,-37.83
+2026-09-16,US,Lilly (Eli),LLY,0,1137.8199462890625,-1.63,-5.14,23.71,49.12
+2026-09-16,US,Masco,MAS,0,68.27999877929688,-5.38,-16.09,13.1,-3.0
+2026-09-16,US,Martin Marietta Materials,MLM,0,496.760009765625,-4.23,-13.86,-15.61,-21.18
+2026-09-16,US,Mastercard,MA,0,567.75,-3.66,10.54,13.63,-0.19
+2026-09-16,US,M&T Bank,MTB,0,226.00999450683594,-3.39,-5.04,9.33,14.37
+2026-09-16,US,Lowe's,LOW,0,194.10000610351562,-5.18,-11.97,-17.85,-22.76
+2026-09-16,US,McCormick & Company,MKC,0,50.060001373291016,-7.67,-0.71,-0.75,-25.18
+2026-09-16,US,Marriott International,MAR,0,334.9700012207031,-1.99,-9.61,2.42,28.62
+2026-09-16,US,L3Harris,LHX,0,250.74000549316406,-5.83,-13.71,-27.35,-17.9
+2026-09-16,US,McDonald's,MCD,0,248.55999755859375,-5.68,-8.05,-20.02,-18.21
+2026-09-16,US,McKesson Corporation,MCK,0,887.2899780273438,0.22,17.43,2.53,14.85
+2026-09-16,US,Meta Platforms,META,0,,,,,
+2026-09-16,US,MetLife,MET,0,97.2300033569336,2.16,14.92,37.49,18.04
+2026-09-16,US,Microchip Technology,MCHP,0,69.58999633789062,-5.26,-23.7,7.71,8.36
+2026-09-16,US,Merck & Co.,MRK,0,144.91000366210938,-1.93,12.77,20.47,72.66
+2026-09-16,US,Medtronic,MDT,0,92.5999984741211,2.15,18.37,6.87,-2.77
+2026-09-16,US,Mondelez International,MDLZ,0,62.36000061035156,0.47,7.81,8.19,-0.18
+2026-09-16,US,Mettler Toledo,MTD,0,1378.68994140625,-1.88,7.92,9.32,12.31
+2026-09-16,US,Moderna,MRNA,0,,,,,
+2026-09-16,US,MGM Resorts,MGM,0,38.38999938964844,-7.18,-19.7,3.73,10.76
+2026-09-16,US,Micron Technology,MU,0,926.5499877929688,-3.36,-19.73,174.26,453.76
+2026-09-16,US,Moody's Corporation,MCO,0,465.29998779296875,-7.8,2.73,6.66,-2.35
+2026-09-16,US,Molson Coors Beverage Company,TAP,0,39.11000061035156,-1.63,0.39,-9.17,-13.57
+2026-09-16,US,Mid-America Apartment Communities,MAA,0,121.9000015258789,-5.39,-12.26,-0.18,-12.76
+2026-09-16,US,Morgan Stanley,MS,0,202.4199981689453,-5.11,-3.17,23.0,27.34
+2026-09-16,US,Mosaic Company (The),MOS,0,24.790000915527344,2.78,16.99,-2.78,-28.52
+2026-09-16,US,MSCI,MSCI,0,540.6099853515625,-5.26,-3.47,0.3,-4.72
+2026-09-16,US,Microsoft,MSFT,0,490.29998779296875,-3.35,31.44,32.45,-5.34
+2026-09-16,US,"Nasdaq, Inc.",NDAQ,0,88.76000213623047,-9.99,12.61,4.56,0.35
+2026-09-16,US,Netflix,NFLX,0,76.41000366210938,-5.72,7.02,-20.53,-36.27
+2026-09-16,US,Monster Beverage,MNST,0,44.56999969482422,-2.94,-7.26,23.02,32.43
+2026-09-16,US,NetApp,NTAP,0,191.49000549316406,3.35,23.73,87.02,61.65
+2026-09-16,US,News Corp (Class A),NWSA,0,,,,,
+2026-09-16,US,News Corp (Class B),NWS,0,,,,,
+2026-09-16,US,Motorola Solutions,MSI,0,460.5299987792969,-5.1,10.89,6.12,0.71
+2026-09-16,US,Monolithic Power Systems,MPWR,0,1147.6099853515625,-9.48,-16.98,4.96,24.65
+2026-09-16,US,Newmont,NEM,0,121.76000213623047,-3.41,30.36,12.48,44.42
+2026-09-16,US,"Nike, Inc.",NKE,0,35.779998779296875,-8.4,-12.84,-32.26,-48.69
+2026-09-16,US,Nordson Corporation,NDSN,0,309.0199890136719,-3.95,2.43,16.15,36.16
+2026-09-16,US,NextEra Energy,NEE,0,80.37000274658203,-2.39,-8.43,-13.47,6.46
+2026-09-16,US,Northern Trust,NTRS,0,176.63999938964844,-4.81,1.61,26.56,31.23
+2026-09-16,US,NiSource,NI,0,40.65999984741211,-0.64,-14.49,-12.86,-6.1
+2026-09-16,US,Norfolk Southern,NSC,0,317.0,-7.52,0.77,10.45,5.52
+2026-09-16,US,Norwegian Cruise Line Holdings,NCLH,0,,,,,
+2026-09-16,US,Northrop Grumman,NOC,0,530.780029296875,-1.65,4.22,-22.2,-12.89
+2026-09-16,US,NRG Energy,NRG,0,107.37999725341797,-2.49,-26.48,-26.52,-33.7
+2026-09-16,US,"NVR, Inc.",NVR,0,6186.43017578125,-2.04,-9.2,-6.12,-23.0
+2026-09-16,US,Nvidia,NVDA,0,213.89999389648438,-3.12,6.9,22.65,14.64
+2026-09-16,US,O'Reilly Automotive,ORLY,0,83.68000030517578,-5.77,-9.13,-9.35,-22.38
+2026-09-16,US,Nucor,NUE,0,260.67999267578125,4.42,17.03,54.16,92.48
+2026-09-16,US,Oracle Corporation,ORCL,0,143.16000366210938,-4.0,-2.31,-2.69,-49.1
+2026-09-16,US,NXP Semiconductors,NXPI,0,218.97999572753906,-2.52,-22.08,11.24,-3.84
+2026-09-16,US,Otis Worldwide,OTIS,0,,,,,
+2026-09-16,US,ON Semiconductor,ON,0,66.5999984741211,-10.11,-29.55,7.56,35.06
+2026-09-16,US,Old Dominion,ODFL,0,174.36000061035156,-12.8,-19.5,-10.77,23.85
+2026-09-16,US,Packaging Corporation of America,PKG,0,231.4499969482422,-1.06,-2.87,9.06,6.2
+2026-09-16,US,Paccar,PCAR,0,118.22000122070312,-4.76,-1.58,2.35,20.24
+2026-09-16,US,Omnicom Group,OMC,0,79.33000183105469,-9.37,8.92,5.34,-2.7
+2026-09-16,US,Palantir Technologies,PLTR,0,,,,,
+2026-09-16,US,Occidental Petroleum,OXY,0,59.36000061035156,-1.36,22.22,-8.68,25.63
+2026-09-16,US,Parker Hannifin,PH,0,918.75,-6.2,-6.07,2.63,21.18
+2026-09-16,US,Paramount Skydance Corporation,PSKY,0,11.140000343322754,2.11,12.98,23.5,-41.12
+2026-09-16,US,PayPal,PYPL,0,,,,,
+2026-09-16,US,Oneok,OKE,0,92.69999694824219,-3.45,6.63,2.56,27.04
+2026-09-16,US,PepsiCo,PEP,0,134.33999633789062,-4.28,-0.78,-13.49,-4.34
+2026-09-16,US,Philip Morris International,PM,0,191.7100067138672,2.35,5.97,15.95,18.19
+2026-09-16,US,Pfizer,PFE,0,27.459999084472656,-3.51,14.04,-2.21,7.77
+2026-09-16,US,Palo Alto Networks,PANW,0,,,,,
+2026-09-16,US,Phillips 66,PSX,0,,,,,
+2026-09-16,US,Principal Financial Group,PFG,0,116.63999938964844,5.88,8.22,29.44,40.68
+2026-09-16,US,PG&E Corporation,PCG,0,13.350000381469727,0.6,-20.63,-24.02,-11.47
+2026-09-16,US,Paychex,PAYX,0,116.72000122070312,-8.34,18.7,26.7,-7.92
+2026-09-16,US,Pinnacle West Capital,PNW,0,94.98999786376953,-2.71,-11.22,-5.72,5.94
+2026-09-16,US,PNC Financial Services,PNC,0,231.49000549316406,-3.4,-5.98,11.25,15.21
+2026-09-16,US,Pentair,PNR,0,56.459999084472656,-6.62,-26.35,-35.19,-49.02
+2026-09-16,US,PPG Industries,PPG,0,104.9800033569336,-6.41,-13.45,-1.78,-0.12
+2026-09-16,US,Procter & Gamble,PG,0,147.02000427246094,1.31,0.26,1.79,-4.31
+2026-09-16,US,Prologis,PLD,0,133.74000549316406,-4.42,-1.28,1.18,16.78
+2026-09-16,US,Prudential Financial,PRU,0,117.04000091552734,-0.48,8.44,19.81,12.82
+2026-09-16,US,Progressive Corporation,PGR,0,216.99000549316406,-0.5,-0.67,9.46,-12.13
+2026-09-16,US,Quanta Services,PWR,0,619.280029296875,2.01,-13.99,12.8,49.43
+2026-09-16,US,Qualcomm,QCOM,0,184.83999633789062,8.42,0.03,43.53,11.11
+2026-09-16,US,Quest Diagnostics,DGX,0,247.0800018310547,2.82,16.57,26.07,29.65
+2026-09-16,US,Public Storage,PSA,0,294.67999267578125,-4.01,-7.42,8.79,2.02
+2026-09-16,US,PPL Corporation,PPL,0,33.40999984741211,-2.11,-8.09,-12.54,-10.09
+2026-09-16,US,PulteGroup,PHM,0,117.55000305175781,-6.94,-14.33,-0.05,-11.03
+2026-09-16,US,Qnity Electronics,Q,0,,,,,0.0
+2026-09-16,US,Ralph Lauren Corporation,RL,0,338.3599853515625,-2.46,-15.71,-1.64,7.91
+2026-09-16,US,PTC Inc.,PTC,0,131.16000366210938,-15.78,15.45,-7.95,-35.4
+2026-09-16,US,Reddit,RDDT,0,,,,,
+2026-09-16,US,Regency Centers,REG,0,73.26000213623047,-2.02,-8.13,-3.17,0.49
+2026-09-16,US,Public Service Enterprise Group,PEG,0,70.38999938964844,-4.01,-13.27,-13.05,-15.66
+2026-09-16,US,RTX Corporation,RTX,0,196.8300018310547,-5.25,3.74,2.04,17.63
+2026-09-16,US,Realty Income,O,0,57.150001525878906,-6.74,-7.76,-6.59,-5.99
+2026-09-16,US,Raymond James Financial,RJF,0,164.57000732421875,-7.63,8.25,13.66,-4.65
+2026-09-16,US,Regions Financial Corporation,RF,0,28.469999313354492,-4.72,-5.73,9.0,7.96
+2026-09-16,US,Robinhood Markets,HOOD,0,,,,,
+2026-09-16,US,Regeneron Pharmaceuticals,REGN,0,774.6099853515625,-3.06,24.23,0.25,37.76
+2026-09-16,US,Republic Services,RSG,0,219.8000030517578,-0.51,3.15,0.36,-4.22
+2026-09-16,US,ResMed|,RMD,0,228.25,-4.94,17.12,1.68,-16.61
+2026-09-16,US,"Rollins, Inc.",ROL,0,33.529998779296875,-7.04,-19.67,-37.22,-42.92
+2026-09-16,US,Royal Caribbean Group,RCL,0,253.9199981689453,-5.51,-20.03,-7.73,-21.53
+2026-09-16,US,Rockwell Automation,ROK,0,414.9200134277344,-2.24,-16.19,15.62,18.71
+2026-09-16,US,Revvity,RVTY,0,145.72999572753906,13.26,30.98,66.34,66.26
+2026-09-16,US,Sandisk,SNDK,0,,,,,
+2026-09-16,US,Ross Stores,ROST,0,224.8000030517578,-1.64,5.61,3.77,47.52
+2026-09-16,US,S&P Global,SPGI,0,406.760009765625,-6.67,5.57,1.08,-11.66
+2026-09-16,US,SBA Communications,SBAC,0,180.02000427246094,-5.08,2.02,4.6,-6.89
+2026-09-16,US,Schlumberger,SLB,0,52.29999923706055,-12.98,12.5,1.77,52.17
+2026-09-16,US,Seagate Technology,STX,0,783.1799926757812,-5.46,-18.84,99.91,231.77
+2026-09-16,US,Roper Technologies,ROP,0,375.82000732421875,-11.5,11.06,6.21,-24.64
+2026-09-16,US,Salesforce,CRM,0,250.5399932861328,-2.72,59.93,34.22,5.71
+2026-09-16,US,Sherwin-Williams,SHW,0,321.4599914550781,-5.12,-6.64,0.28,-7.16
+2026-09-16,US,Skyworks Solutions,SWKS,0,85.58999633789062,27.73,26.24,59.83,11.18
+2026-09-16,US,Snap-on,SNA,0,372.9800109863281,-3.45,-7.31,2.69,7.63
+2026-09-16,US,Sempra,SRE,0,81.69999694824219,0.0,-11.88,-15.92,-9.2
+2026-09-16,US,J.M. Smucker Company (The),SJM,0,123.55999755859375,-5.79,9.83,28.12,13.78
+2026-09-16,US,Simon Property Group,SPG,0,202.94000244140625,-4.42,-9.26,8.8,8.14
+2026-09-16,US,ServiceNow,NOW,0,,,,,
+2026-09-16,US,Stryker Corporation,SYK,0,284.760009765625,-12.06,-9.55,-13.34,-22.97
+2026-09-16,US,Solventum,SOLV,0,,,,,
+2026-09-16,US,Steris,STE,0,209.89999389648438,-9.77,-0.32,-5.08,-15.17
+2026-09-16,US,Southwest Airlines,LUV,0,39.150001525878906,1.61,-23.86,4.21,22.69
+2026-09-16,US,Smurfit Westrock,SW,0,,,,,
+2026-09-16,US,Starbucks,SBUX,0,97.33999633789062,-8.39,-4.75,8.65,15.06
+2026-09-16,US,State Street Corporation,STT,0,182.89999389648438,-4.43,7.84,44.52,57.66
+2026-09-16,US,Southern Company,SO,0,86.2300033569336,-2.01,-9.9,-10.66,-9.01
+2026-09-16,US,Sysco,SYY,0,78.70999908447266,-2.92,-5.83,10.35,-4.41
+2026-09-16,US,Steel Dynamics,STLD,0,238.22999572753906,2.41,3.82,32.35,70.86
+2026-09-16,US,T. Rowe Price,TROW,0,102.4000015258789,-7.98,-9.93,13.6,-0.23
+2026-09-16,US,T-Mobile US,TMUS,0,176.25999450683594,-2.32,5.09,-16.08,-26.37
+2026-09-16,US,Stanley Black & Decker,SWK,0,89.05000305175781,-7.6,-5.39,25.32,19.8
+2026-09-16,US,Supermicro,SMCI,0,36.849998474121094,-1.15,25.64,61.84,-23.13
+2026-09-16,US,Target Corporation,TGT,0,154.67999267578125,-3.85,18.43,27.62,72.44
+2026-09-16,US,Synopsys,SNPS,0,378.4700012207031,-13.9,-15.15,-4.54,-23.29
+2026-09-16,US,"Tapestry, Inc.",TPR,0,117.94000244140625,-4.42,-19.43,-16.42,4.17
+2026-09-16,US,Targa Resources,TRGP,0,284.7699890136719,-3.02,6.2,13.58,69.97
+2026-09-16,US,Teledyne Technologies,TDY,0,601.0999755859375,-1.93,-9.87,-0.65,2.57
+2026-09-16,US,TE Connectivity,TEL,0,202.1999969482422,-1.49,0.29,-3.26,-7.89
+2026-09-16,US,Teradyne,TER,0,341.1499938964844,-2.48,-29.49,15.07,147.86
+2026-09-16,US,"Tesla, Inc.",TSLA,0,358.0799865722656,-2.68,-14.86,-3.68,-19.48
+2026-09-16,US,Trade Desk (The),TTD,0,,,,,
+2026-09-16,US,Texas Pacific Land Corporation,TPL,0,348.57000732421875,-6.88,-20.35,-26.55,12.0
+2026-09-16,US,Take-Two Interactive,TTWO,0,211.80999755859375,-3.59,-15.27,7.25,-18.02
+2026-09-16,US,Texas Instruments,TXN,0,260.6700134277344,-0.09,-12.55,34.27,41.88
+2026-09-16,US,Thermo Fisher Scientific,TMO,0,648.4299926757812,5.08,29.33,31.92,33.69
+2026-09-16,US,Tractor Supply,TSCO,0,32.779998779296875,-6.07,3.7,-27.64,-42.36
+2026-09-16,US,TJX Companies,TJX,0,122.83999633789062,-8.27,-18.92,-23.08,-15.01
+2026-09-16,US,TKO Group Holdings,TKO,0,192.42999267578125,5.38,-4.41,-4.57,-4.72
+2026-09-16,US,Synchrony Financial,SYF,0,,,,,
+2026-09-16,US,Trimble Inc.,TRMB,0,57.31999969482422,-4.37,12.0,-12.13,-29.8
+2026-09-16,US,Trane Technologies,TT,0,421.67999267578125,-5.11,-14.15,1.19,-0.07
+2026-09-16,US,Textron,TXT,0,80.70999908447266,0.19,-12.01,-7.82,-4.47
+2026-09-16,US,Travelers Companies (The),TRV,0,378.9200134277344,3.55,14.78,29.91,35.71
+2026-09-16,US,Ulta Beauty,ULTA,0,530.52001953125,-1.23,17.64,1.49,-2.97
+2026-09-16,US,Tyler Technologies,TYL,0,346.44000244140625,-6.93,18.46,1.19,-33.78
+2026-09-16,US,Tyson Foods,TSN,0,52.119998931884766,-5.48,-8.96,-18.65,-4.01
+2026-09-16,US,Truist Financial,TFC,0,48.439998626708984,-2.3,-2.77,5.37,5.95
+2026-09-16,US,TransDigm Group,TDG,0,1080.1099853515625,-7.82,-18.91,-6.8,-18.05
+2026-09-16,US,Uber,UBER,0,,,,,
+2026-09-16,US,Union Pacific Corporation,UNP,0,280.9200134277344,-6.57,3.28,15.79,18.85
+2026-09-16,US,"UDR, Inc.",UDR,0,34.400001525878906,-6.9,-13.83,1.84,-7.68
+2026-09-16,US,United Rentals,URI,0,1006.25,-3.06,-11.18,38.11,5.4
+2026-09-16,US,Universal Health Services,UHS,0,181.2100067138672,6.39,21.87,1.25,-11.36
+2026-09-16,US,United Airlines Holdings,UAL,0,106.30000305175781,-1.56,-21.83,15.46,10.16
+2026-09-16,US,U.S. Bancorp,USB,0,59.72999954223633,-3.0,-1.11,14.84,23.59
+2026-09-16,US,Verisk Analytics,VRSK,0,181.75,-6.21,1.24,-4.22,-27.74
+2026-09-16,US,United Parcel Service,UPS,0,98.7699966430664,-5.24,-8.12,0.4,18.24
+2026-09-16,US,Vertex Pharmaceuticals,VRTX,0,513.260009765625,-5.74,3.33,14.94,31.05
+2026-09-16,US,Veralto,VLTO,0,,,,,
+2026-09-16,US,Ventas,VTR,0,88.20999908447266,-3.25,-0.66,7.86,26.03
+2026-09-16,US,Verisign,VRSN,0,298.4599914550781,3.53,18.64,20.17,6.76
+2026-09-16,US,Veeva Systems,VEEV,0,,,,,
+2026-09-16,US,Verizon,VZ,0,49.7599983215332,-0.52,17.52,-0.88,13.22
+2026-09-16,US,Viatris,VTRS,0,17.020000457763672,3.09,7.18,25.98,71.92
+2026-09-16,US,Vici Properties,VICI,0,,,,,
+2026-09-16,US,Valero Energy,VLO,0,403.2799987792969,12.36,54.85,63.22,136.86
+2026-09-16,US,Wabtec,WAB,0,276.3699951171875,-3.34,2.51,10.59,37.86
+2026-09-16,US,Vistra Corp.,VST,0,,,,,
+2026-09-16,US,UnitedHealth Group,UNH,0,375.260009765625,-3.63,-9.71,38.68,8.68
+2026-09-16,US,Visa Inc.,V,0,370.92999267578125,-2.22,8.11,22.73,8.66
+2026-09-16,US,Vertiv,VRT,0,,,,,
+2026-09-16,US,Walmart,WMT,0,107.5,2.51,-5.09,-13.5,4.31
+2026-09-16,US,Waste Management,WM,0,214.0,-2.25,-3.98,-6.87,-3.09
+2026-09-16,US,Vivmark Residential,VMRK,0,62.9900016784668,-3.3,-7.27,6.49,-2.69
+2026-09-16,US,Warner Bros. Discovery,WBD,0,28.06999969482422,-1.61,5.29,2.22,43.73
+2026-09-16,US,Vulcan Materials Company,VMC,0,244.3000030517578,-9.38,-17.19,-10.28,-20.58
+2026-09-16,US,W. W. Grainger,GWW,0,1258.260009765625,-3.91,-7.51,15.35,32.04
+2026-09-16,US,W. R. Berkley Corporation,WRB,0,69.94999694824219,3.54,-0.82,5.54,-8.71
+2026-09-16,US,West Pharmaceutical Services,WST,0,362.010009765625,6.13,0.84,44.43,38.0
+2026-09-16,US,Welltower,WELL,0,234.5,-0.74,3.32,18.61,31.64
+2026-09-16,US,Waters Corporation,WAT,0,418.6400146484375,0.97,11.63,40.58,39.64
+2026-09-16,US,WEC Energy Group,WEC,0,103.37999725341797,-2.63,-11.47,-10.7,-9.78
+2026-09-16,US,Wells Fargo,WFC,0,87.05000305175781,0.76,5.34,9.35,3.85
+2026-09-16,US,"Williams-Sonoma, Inc.",WSM,0,218.1999969482422,-4.4,-6.39,19.67,11.64
+2026-09-16,US,Walt Disney Company (The),DIS,0,106.98999786376953,-0.52,11.16,11.01,-6.56
+2026-09-16,US,Willis Towers Watson,WTW,0,312.9100036621094,-7.57,19.72,7.64,-9.42
+2026-09-16,US,"Workday, Inc.",WDAY,0,,,,,
+2026-09-16,US,Wynn Resorts,WYNN,0,84.2300033569336,-7.72,-13.25,-17.06,-34.33
+2026-09-16,US,Zebra Technologies,ZBRA,0,341.17999267578125,-3.5,29.6,63.18,14.81
+2026-09-16,US,Xcel Energy,XEL,0,72.70999908447266,-3.94,-9.45,-8.47,-9.85
+2026-09-16,US,Western Digital,WDC,0,416.9700012207031,-7.45,-34.72,54.15,247.3
+2026-09-16,US,Weyerhaeuser,WY,0,21.809999465942383,-6.68,-8.9,-10.72,-12.02
+2026-09-16,US,Zoetis,ZTS,0,,,,,
+2026-09-16,US,Xylem Inc.,XYL,0,107.2699966430664,-2.58,-9.25,-10.23,-27.27
+2026-09-16,US,Williams Companies,WMB,0,70.9000015258789,-5.53,-4.63,-2.58,11.92
+2026-09-16,US,Yum! Brands,YUM,0,137.9600067138672,-10.01,-13.7,-11.27,-9.24
+2026-09-16,US,Zimmer Biomet,ZBH,0,96.77999877929688,-3.26,12.42,7.03,-1.75
