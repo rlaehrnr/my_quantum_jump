@@ -178,21 +178,25 @@ def get_mdd_history(equity_series):
     records = []
     peak_date, peak_val = df.index[0], df['equity'].iloc[0]
     trough_date, trough_val = peak_date, peak_val
+    drawdown_start_date = None
     in_dd = False
     for date, row in df.iterrows():
         val = row['equity']
         if val >= peak_val:
             if in_dd:
                 dd_pct = (trough_val / peak_val - 1) * 100
-                if dd_pct < -0.01: records.append({'MDD': dd_pct, '시작일': peak_date, '최저일': trough_date, '회복일': date})
+                if dd_pct < -0.01: records.append({'MDD': dd_pct, '시작일': drawdown_start_date, '최저일': trough_date, '회복일': date})
                 in_dd = False
+                drawdown_start_date = None
             peak_val, peak_date, trough_val, trough_date = val, date, val, date
         else:
+            if not in_dd:
+                drawdown_start_date = date
             in_dd = True
             if val < trough_val: trough_val, trough_date = val, date
     if in_dd:
         dd_pct = (trough_val / peak_val - 1) * 100
-        if dd_pct < -0.01: records.append({'MDD': dd_pct, '시작일': peak_date, '최저일': trough_date, '회복일': '진행중'})
+        if dd_pct < -0.01: records.append({'MDD': dd_pct, '시작일': drawdown_start_date, '최저일': trough_date, '회복일': '진행중'})
     res_df = pd.DataFrame(records)
     if res_df.empty: return pd.DataFrame(columns=['MDD', '기간', '회복기간'])
     res_df = res_df.sort_values('MDD').head(10).reset_index(drop=True)
