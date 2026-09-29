@@ -2,6 +2,8 @@ import pandas as pd
 import streamlit as st
 from datetime import datetime, timedelta
 
+from utils.kr_index import load_kr_index
+
 # ==========================================
 # 🇰🇷 한국 주식 전용 함수
 # ==========================================
@@ -27,8 +29,7 @@ def get_cycle_year(current_year):
 @st.cache_data(ttl="6h", show_spinner=False)
 def _load_kospi_index():
     """KOSPI 일별 종가 데이터를 받아서 캐시. 6시간마다 갱신."""
-    import FinanceDataReader as fdr
-    return fdr.DataReader('KS11', '2000-01-01', datetime.today())
+    return load_kr_index('KOSPI', '2000-01-01', datetime.today())
 
 
 @st.cache_data(ttl=3600, show_spinner=False)
@@ -40,11 +41,10 @@ def get_kospi_ma_all(target_date_str):
         (현재가, {4: 80일선, 5: 100일선, 6: 120일선, 10: 200일선, 12: 240일선})
         에러 시 (0, {})
     """
-    import FinanceDataReader as fdr
     target_date = pd.to_datetime(target_date_str)
     start_date = target_date - timedelta(days=450)
     try:
-        df = fdr.DataReader('KS11', start_date, target_date)
+        df = load_kr_index('KOSPI', start_date, target_date)
         if df.empty: return 0, {}
         curr_p = df['Close'].iloc[-1]
         mas = {
@@ -65,13 +65,12 @@ def get_kospi_ma_all(target_date_str):
 def get_kosdaq_ma_all(target_date_str):
     """
     특정 날짜 기준 KOSDAQ 현재가와 이동평균선 값들을 반환.
-    get_kospi_ma_all과 동일한 구조 (대상 지수만 KQ11).
+    get_kospi_ma_all과 동일한 구조 (대상 지수만 KOSDAQ).
     """
-    import FinanceDataReader as fdr
     target_date = pd.to_datetime(target_date_str)
     start_date = target_date - timedelta(days=450)
     try:
-        df = fdr.DataReader('KQ11', start_date, target_date)
+        df = load_kr_index('KOSDAQ', start_date, target_date)
         if df.empty: return 0, {}
         curr_p = df['Close'].iloc[-1]
         mas = {
@@ -98,12 +97,11 @@ def get_idx_kr(target_date_str):
       예) 5월 21일 기준 → 2월 말일 종가 대비 (2월, 3월, 4월 → 3개월 흐른 시점)
           1월 21일 기준 → 10월 말일 종가 대비
     """
-    import FinanceDataReader as fdr
     target_date = pd.to_datetime(target_date_str)
     # 3개월 전 월말까지 커버하려면 약 5개월 = 150일 이상 데이터 필요
     start_date = target_date - timedelta(days=180)
     try:
-        df = fdr.DataReader('KS11', start_date, target_date)
+        df = load_kr_index('KOSPI', start_date, target_date)
         if df.empty: return 0.0, 0.0
         
         curr_p = df['Close'].iloc[-1]

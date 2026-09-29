@@ -23,8 +23,15 @@ from datetime import date
 
 import FinanceDataReader as fdr
 
+from utils.kr_index import KR_INDEX_SYMBOLS
+
 CSV_PATH = os.path.join("data", "seasonality_monthly.csv")
-SRC = {"SP500": "US500", "NASDAQ": "IXIC", "KOSPI": "KS11", "KOSDAQ": "KQ11"}
+SRC = {
+    "SP500": "US500",
+    "NASDAQ": "IXIC",
+    "KOSPI": KR_INDEX_SYMBOLS["KOSPI"],
+    "KOSDAQ": KR_INDEX_SYMBOLS["KOSDAQ"],
+}
 ORDER = ["SP500", "NASDAQ", "KOSPI", "KOSDAQ"]
 MONTHS = [f"{m}월" for m in range(1, 13)]
 HEADER = ["지수", "연도", "사이클4", "사이클8"] + MONTHS

@@ -1,5 +1,6 @@
 import pandas as pd
 import FinanceDataReader as fdr
+from utils.kr_index import load_kr_index
 from datetime import datetime
 import os
 from concurrent.futures import ThreadPoolExecutor, as_completed
@@ -97,10 +98,10 @@ def generate_monthly_archive_kr():
     invest_year = today.year
     invest_month_str = today.strftime('%Y_%m')
     
-    # 한국 지수(KS11)를 기준으로 지난달 마지막 영업일 탐색
+    # 한국 지수를 기준으로 지난달 마지막 영업일 탐색
     first_day_of_current = today.replace(day=1)
     last_day_prev = first_day_of_current - pd.Timedelta(days=1)
-    df_idx = fdr.DataReader('KS11', last_day_prev - pd.Timedelta(days=10), last_day_prev)
+    df_idx = load_kr_index('KOSPI', last_day_prev - pd.Timedelta(days=10), last_day_prev)
     base_date = df_idx.index[-1]
     base_date_str = base_date.strftime('%Y-%m-%d')
     

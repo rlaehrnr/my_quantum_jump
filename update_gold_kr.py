@@ -9,7 +9,7 @@
     (접합점 레벨 비율보정). 전략은 '수익률'만 쓰므로 스팟 vs ETF 단위 차이는 무영향.
 
 소스 우선순위 (둘 다 Actions에서 동작):
-  1) FDR  fdr.DataReader('411060')   ← 기존 KR 파이프라인과 동일 백엔드(KS11 등 검증됨)
+  1) FDR  fdr.DataReader('411060')   ← 기존 KR 파이프라인과 동일 백엔드(Naver 원시세 검증)
   2) yfinance  '411060.KS'           ← FDR 실패 시 폴백
 
 안전장치:

@@ -3,6 +3,8 @@ import pandas as pd
 import numpy as np
 from datetime import datetime, timedelta, timezone
 
+from utils.kr_index import load_kr_index
+
 st.set_page_config(page_title="퀀트 종합 대시보드", layout="wide", page_icon="📊")
 
 st.markdown("""
@@ -266,7 +268,7 @@ def _smallcap_status():
     try:
         now = datetime.now(timezone(timedelta(hours=9)))
         today = now.date()
-        idx = fdr.DataReader('KS11', datetime.today() - timedelta(days=12))
+        idx = load_kr_index('KOSPI', datetime.today() - timedelta(days=12))
         last_dt = idx.index[-1].date() if not idx.empty else None
         trading_now = (now.weekday() < 5) and (9 * 60 <= now.hour * 60 + now.minute <= 15 * 60 + 30)
         if (last_dt is not None and last_dt >= today) or trading_now:
