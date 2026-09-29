@@ -464,6 +464,21 @@ def get_strategy_stocks_korea(df):
     return df.copy(), df_perf, df_spec
 
 
+KOREA_GOLD_DEFENSE_MA_MONTHS = 6
+GOLD_CHART_URL = "https://m.stock.naver.com/fchart/marketindex/metals/M04020000"
+
+
+def get_gold_defense_allocation(gold_curr, gold_ma_6):
+    """금이 6개월선 아래면 현금 100, 그 외에는 금 100."""
+    gold_below_6 = (gold_curr > 0) and (gold_curr < gold_ma_6)
+    return "현금 100" if gold_below_6 else "금 100"
+
+
+def get_gold_chart_link(display_value):
+    """네이버 국내 금 현재가 차트 링크에 화면 표시값을 붙인다."""
+    return f"{GOLD_CHART_URL}#{display_value}"
+
+
 def get_korea_market_status(df_month):
     """월간(저번달 말 선정) 데이터 한 달치로 '이번달 투자/중지'를 판정한다.
 
@@ -476,7 +491,7 @@ def get_korea_market_status(df_month):
       - 하락장:      1개월 & 3개월 수익률이 음수인 종목이 각각 100개 이상
       - 6개월선 이탈: KOSPI 종가 < 120일(6개월) 이동평균
       - 둘 중 하나라도 참이면 투자 중지
-    방어 시 금 배분: 금이 6개월선 위→금100 / 6M~12M→금50:현금50 / 12M 아래→현금100
+    방어 시 금 배분: 금이 6개월선 이상→금100 / 6개월선 아래→현금100
 
     Args:
         df_month: 한 투자월치 월간 데이터 (종목선정일·1/3/6/12개월(%) 포함)
@@ -502,9 +517,9 @@ def get_korea_market_status(df_month):
     is_below_ma = (kospi_curr > 0) and (kospi_curr < kospi_mas.get(6, 0))
 
     gold_curr, gold_mas = get_gold_ma_all(base_date)
-    gold_below_6 = (gold_curr > 0) and (gold_curr < gold_mas.get(6, 0))
-    gold_below_12 = (gold_curr > 0) and (gold_curr < gold_mas.get(12, 0))
-    defense_alloc = "현금 100" if gold_below_12 else ("금 50 : 현금 50" if gold_below_6 else "금 100")
+    defense_alloc = get_gold_defense_allocation(
+        gold_curr, gold_mas.get(KOREA_GOLD_DEFENSE_MA_MONTHS, 0)
+    )
 
     stop = is_bad_market or is_below_ma
     reason = (("하락장" if is_bad_market else "")
@@ -535,7 +550,7 @@ def get_korea_market_status(df_month):
 def run_backtest_k200(df, start_year, end_year, ma_months, apply_timing, 
                      rank_p, rank_s, perf_pct, spec_12m_pct,
                      trading_cost_pct=0.25, gold_returns=None, use_gold=False,
-                     use_gold_ma=False, gold_ma_months=10):
+                     use_gold_ma=False, gold_ma_months=KOREA_GOLD_DEFENSE_MA_MONTHS):
     """
     Args:
         df: 한국 데이터프레임

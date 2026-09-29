@@ -7,7 +7,7 @@ import os
 st.set_page_config(page_title="KOSPI 200 모멘텀", layout="wide")
 
 from utils.data_loader import load_archive_data, get_folder_hash
-from utils.calculator import get_cycle_year, PRESIDENTIAL_DANGEROUS_MONTHS, get_kospi_ma_all, get_kosdaq_ma_all, get_strategy_stocks_korea, run_backtest_k200, get_idx_kr, get_gold_returns, get_kospi_benchmark_stats, get_gold_ma_all, get_korea_market_status
+from utils.calculator import get_cycle_year, PRESIDENTIAL_DANGEROUS_MONTHS, get_kospi_ma_all, get_kosdaq_ma_all, get_strategy_stocks_korea, run_backtest_k200, get_idx_kr, get_gold_returns, get_kospi_benchmark_stats, get_gold_ma_all, get_korea_market_status, get_gold_defense_allocation, get_gold_chart_link, KOREA_GOLD_DEFENSE_MA_MONTHS
 from utils.ui_components import inject_custom_css, apply_korea_styling, style_kospi_ma, get_styled_stats, get_mdd_history, get_monthly_heatmap, ma_cfg, main_cfg, generate_excel_report_cached, render_vix_widget, style_ma_with_gold, ma_cfg_gold
 from utils.data_loader import load_archive_data, get_folder_hash, load_daily_data
 
@@ -53,7 +53,7 @@ years_list = sorted(df_master['투자연도'].unique().astype(int))
 min_y, max_y = min(years_list), max(years_list)
 
 @st.cache_data(show_spinner=False)
-def cached_run_backtest_korea(df, start_year, end_year, ma_months, apply_timing, rank_p, rank_s, perf_pct, spec_12m_pct, trading_cost_pct=0.25, use_gold=False, use_gold_ma=False, gold_ma_months=10, _gold_returns=None):
+def cached_run_backtest_korea(df, start_year, end_year, ma_months, apply_timing, rank_p, rank_s, perf_pct, spec_12m_pct, trading_cost_pct=0.25, use_gold=False, use_gold_ma=False, gold_ma_months=KOREA_GOLD_DEFENSE_MA_MONTHS, _gold_returns=None):
     return run_backtest_k200(df, start_year, end_year, ma_months, apply_timing, rank_p, rank_s, perf_pct, spec_12m_pct, trading_cost_pct=trading_cost_pct, gold_returns=_gold_returns, use_gold=use_gold, use_gold_ma=use_gold_ma, gold_ma_months=gold_ma_months)
 
 tab1, tab2, tab3 = st.tabs(["📅 월별 상세 분석", "🕒 실시간 데일리 순위", "📈 전략 조합 백테스트"])
@@ -83,7 +83,7 @@ with tab1:
         ma_df = pd.DataFrame([
             {'지수_L': "https://m.stock.naver.com/domestic/index/KOSPI/total#KOSPI", '현재가_L': f"https://m.stock.naver.com/fchart/domestic/index/KOSPI#{kospi_curr:,.2f}", 'base_price': round(kospi_curr, 2), '4개월선': _fmt_ma(kospi_mas.get(4, 0)), '5개월선': _fmt_ma(kospi_mas.get(5, 0)), '6개월선': _fmt_ma(kospi_mas.get(6, 0)), '10개월선': _fmt_ma(kospi_mas.get(10, 0)), '12개월선': _fmt_ma(kospi_mas.get(12, 0))},
             {'지수_L': "https://m.stock.naver.com/domestic/index/KOSDAQ/total#KOSDAQ", '현재가_L': f"https://m.stock.naver.com/fchart/domestic/index/KOSDAQ#{kosdaq_curr:,.2f}", 'base_price': round(kosdaq_curr, 2), '4개월선': _fmt_ma(kosdaq_mas.get(4, 0)), '5개월선': _fmt_ma(kosdaq_mas.get(5, 0)), '6개월선': _fmt_ma(kosdaq_mas.get(6, 0)), '10개월선': _fmt_ma(kosdaq_mas.get(10, 0)), '12개월선': _fmt_ma(kosdaq_mas.get(12, 0))},
-            {'지수_L': "https://m.stock.naver.com/marketindex/metals/M04020000#국내 금(KRX)", '현재가_L': f"https://m.stock.naver.com/marketindex/metals/M04020000#{gold_curr:,.0f}", 'base_price': round(gold_curr, 0), '4개월선': _fmt_ma(gold_mas.get(4, 0), True), '5개월선': _fmt_ma(gold_mas.get(5, 0), True), '6개월선': _fmt_ma(gold_mas.get(6, 0), True), '10개월선': _fmt_ma(gold_mas.get(10, 0), True), '12개월선': _fmt_ma(gold_mas.get(12, 0), True)}
+            {'지수_L': "https://m.stock.naver.com/marketindex/metals/M04020000#국내 금(KRX)", '현재가_L': get_gold_chart_link(f"{gold_curr:,.0f}"), 'base_price': round(gold_curr, 0), '4개월선': _fmt_ma(gold_mas.get(4, 0), True), '5개월선': _fmt_ma(gold_mas.get(5, 0), True), '6개월선': _fmt_ma(gold_mas.get(6, 0), True), '10개월선': _fmt_ma(gold_mas.get(10, 0), True), '12개월선': _fmt_ma(gold_mas.get(12, 0), True)}
         ])
         st.dataframe(style_ma_with_gold(ma_df), use_container_width=True, hide_index=True, column_config=ma_cfg_gold)
         
@@ -179,7 +179,7 @@ with tab2:
         ma_df_d = pd.DataFrame([
             {'지수_L': "https://m.stock.naver.com/domestic/index/KOSPI/total#KOSPI", '현재가_L': f"https://m.stock.naver.com/fchart/domestic/index/KOSPI#{kospi_curr_d:,.2f}", 'base_price': round(kospi_curr_d, 2), '4개월선': _fmt_ma(kospi_mas_d.get(4, 0)), '5개월선': _fmt_ma(kospi_mas_d.get(5, 0)), '6개월선': _fmt_ma(kospi_mas_d.get(6, 0)), '10개월선': _fmt_ma(kospi_mas_d.get(10, 0)), '12개월선': _fmt_ma(kospi_mas_d.get(12, 0))},
             {'지수_L': "https://m.stock.naver.com/domestic/index/KOSDAQ/total#KOSDAQ", '현재가_L': f"https://m.stock.naver.com/fchart/domestic/index/KOSDAQ#{kosdaq_curr_d:,.2f}", 'base_price': round(kosdaq_curr_d, 2), '4개월선': _fmt_ma(kosdaq_mas_d.get(4, 0)), '5개월선': _fmt_ma(kosdaq_mas_d.get(5, 0)), '6개월선': _fmt_ma(kosdaq_mas_d.get(6, 0)), '10개월선': _fmt_ma(kosdaq_mas_d.get(10, 0)), '12개월선': _fmt_ma(kosdaq_mas_d.get(12, 0))},
-            {'지수_L': "https://m.stock.naver.com/marketindex/metals/M04020000#국내 금(KRX)", '현재가_L': f"https://m.stock.naver.com/marketindex/metals/M04020000#{gold_curr_d:,.0f}", 'base_price': round(gold_curr_d, 0), '4개월선': _fmt_ma(gold_mas_d.get(4, 0), True), '5개월선': _fmt_ma(gold_mas_d.get(5, 0), True), '6개월선': _fmt_ma(gold_mas_d.get(6, 0), True), '10개월선': _fmt_ma(gold_mas_d.get(10, 0), True), '12개월선': _fmt_ma(gold_mas_d.get(12, 0), True)}
+            {'지수_L': "https://m.stock.naver.com/marketindex/metals/M04020000#국내 금(KRX)", '현재가_L': get_gold_chart_link(f"{gold_curr_d:,.0f}"), 'base_price': round(gold_curr_d, 0), '4개월선': _fmt_ma(gold_mas_d.get(4, 0), True), '5개월선': _fmt_ma(gold_mas_d.get(5, 0), True), '6개월선': _fmt_ma(gold_mas_d.get(6, 0), True), '10개월선': _fmt_ma(gold_mas_d.get(10, 0), True), '12개월선': _fmt_ma(gold_mas_d.get(12, 0), True)}
         ])
         st.dataframe(style_ma_with_gold(ma_df_d), use_container_width=True, hide_index=True, column_config=ma_cfg_gold)
         
@@ -197,10 +197,10 @@ with tab2:
 
         is_below_ma_d = (kospi_curr_d > 0) and (kospi_curr_d < kospi_mas_d.get(6, 0))
         is_bad_market_d = (neg_1m_d >= 100) and (neg_3m_d >= 100)
-        # 🥇 방어 시 금 배분: 금이 6개월선 위→금100 / 6M~12M→금50:현금50 / 12M 아래→현금100
-        gold_below_6_d = (gold_curr_d > 0) and (gold_curr_d < gold_mas_d.get(6, 0))
-        gold_below_12_d = (gold_curr_d > 0) and (gold_curr_d < gold_mas_d.get(12, 0))
-        defense_alloc_d = "현금 100" if gold_below_12_d else ("금 50 : 현금 50" if gold_below_6_d else "금 100")
+        # 🥇 방어 시 금 배분: 금이 6개월선 이상→금100 / 6개월선 아래→현금100
+        defense_alloc_d = get_gold_defense_allocation(
+            gold_curr_d, gold_mas_d.get(KOREA_GOLD_DEFENSE_MA_MONTHS, 0)
+        )
         status_d, box_d, text_d = (f"🛑 투자 중지 ({defense_alloc_d})", "#FFEBEE", "#C62828") if (is_bad_market_d or is_below_ma_d) else ("✅ 투자 진행", "#E8F5E9", "#2E7D32")
         reason_desc_d = ("하락장" if is_bad_market_d else "") + (" + " if is_bad_market_d and is_below_ma_d else "") + ("6개월선 이탈" if is_below_ma_d else "")
         if not is_bad_market_d and not is_below_ma_d: reason_desc_d = "안전"
@@ -253,7 +253,7 @@ with tab3:
     c1, c_ma, c_gma, c_cost = st.columns([1, 1, 1, 1])
     with c1: start_year, end_year = st.slider("📅 테스트 기간", min_y, max_y, (min_y, max_y), key='t3_yr')
     with c_ma: ma_months_t3 = st.slider("📉 마켓타이밍 (개월선)", 1, 12, 6, key='t3_ma')
-    with c_gma: gold_ma_months_t3 = st.slider("🥇 금 이동평균 (개월선)", 1, 12, 6, key='t3_gold_ma_n', disabled=not (use_gold_t3 and use_gold_ma_t3))
+    with c_gma: gold_ma_months_t3 = st.slider("🥇 금 이동평균 (개월선)", 1, 12, KOREA_GOLD_DEFENSE_MA_MONTHS, key='t3_gold_ma_n', disabled=not (use_gold_t3 and use_gold_ma_t3))
     with c_cost: trading_cost_pct_t3 = st.slider("💰 거래비용(편도%)", 0.0, 0.5, 0.25, 0.05, key='t3_cost')
 
     st.markdown("<hr style='margin: 10px 0px;'>", unsafe_allow_html=True)
