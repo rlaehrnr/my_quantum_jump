@@ -43,17 +43,27 @@ def fetch_krx_listing(market, ref_date_str):
     })
 
 # ==========================================
-# 🇰🇷 한국 시장 유효 영업일 추출 (KOSPI 지수 기준)
+# 🇰🇷 한국 시장 유효 영업일 추출 (KRX 리스팅 캐시 기준)
+# KS11 지수 조회는 종목별 주가보다 늦게 갱신될 수 있어 기준일과 실제 가격일이
+# 달라졌다. 종목 풀을 만드는 것과 같은 KRX 캐시에서 최신 영업일을 구한다.
 # ==========================================
 def get_last_business_day_kr():
-    try:
-        df = fdr.DataReader('KS11', datetime.today() - timedelta(days=14))
-        valid_days = df[df['Volume'] > 1000] 
-        if not valid_days.empty:
-            return valid_days.index[-1].strftime('%Y-%m-%d')
-    except:
-        pass
-    return datetime.today().strftime('%Y-%m-%d')
+    now = datetime.today()
+    base = pd.Timestamp(now).normalize()
+    # 장중에도 당일 캐시 파일이 생기지만 아직 완결된 일봉이 아니다.
+    # 종가 확정과 캐시 반영 여유를 두고 16시 전에는 전 영업일부터 찾는다.
+    if now.hour < 16:
+        base -= pd.Timedelta(days=1)
+    for back in range(0, 11):
+        day = (base - pd.Timedelta(days=back)).strftime('%Y-%m-%d')
+        url = f"{FDR_CACHE_BASE}/{day}.csv"
+        try:
+            sample = pd.read_csv(url, nrows=1)
+        except Exception:
+            continue
+        if not sample.empty:
+            return day
+    raise RuntimeError(f"KRX 영업일 조회 실패 (기준일 {base.strftime('%Y-%m-%d')} 부근 파일 없음)")
 
 def get_end_of_month(dt, months_ago):
     first_of_current = dt.replace(day=1)
@@ -78,6 +88,7 @@ def process_ticker_kr(row, start_date, today, dates, real_base_date_str):
     
     try:
         df_hist = fdr.DataReader(code, start_date, today)
+        df_hist = df_hist[df_hist.index <= pd.to_datetime(real_base_date_str)]
         if df_hist.empty: return None
         
         curr_price = df_hist['Close'].iloc[-1]
@@ -175,6 +186,7 @@ def update_daily_momentum_kr():
                 if df_h.empty:
                     try: df_h = fdr.DataReader(code, csv_base_date, today)
                     except: pass
+                df_h = df_h[df_h.index <= pd.to_datetime(real_base_date_str)]
                 
                 if not df_h.empty:
                     curr_p = df_h['Close'].iloc[-1]
