@@ -201,15 +201,12 @@ def get_mdd_history(equity_series):
     if res_df.empty: return pd.DataFrame(columns=['MDD', '기간', '회복기간'])
     res_df = res_df.sort_values('MDD').head(10).reset_index(drop=True)
     def calc_months(s, e):
-        """💡 [수정] 정확한 일수 기반 개월 계산. 1개월 미만은 일 단위로 표시."""
+        """월별 데이터의 시작월부터 회복월까지 달력상 월수 차이를 계산한다."""
         if e == '진행중':
             return '진행중'
         sd, ed = pd.to_datetime(s), pd.to_datetime(e)
-        days = (ed - sd).days
-        if days < 30:
-            return f"{days}일"
-        months = days / 30.44  # 평균 한 달 일수
-        return f"{months:.1f}개월"
+        months = (ed.year - sd.year) * 12 + (ed.month - sd.month)
+        return f"{months}개월"
     res_df['기간'] = res_df.apply(lambda r: f"{r['시작일']} ~ {r['최저일']}", axis=1)
     res_df['회복기간'] = res_df.apply(lambda r: calc_months(r['시작일'], r['회복일']), axis=1)
     res_df['MDD'] = res_df['MDD'].apply(lambda x: f"{x:.2f}%")
