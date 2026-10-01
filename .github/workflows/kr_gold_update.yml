@@ -33,4 +33,21 @@ jobs:
         git config --local user.email "action@github.com"
         git config --local user.name "GitHub Action Bot"
         git add data/krx_gold_recent.csv
-        git diff --quiet && git diff --staged --quiet || (git commit -m "🤖 [KR] KRX 금(411060) 데이터 자동 갱신" && git push)
+        if git diff --cached --quiet; then
+          echo "변경 없음 — 커밋 건너뜀"
+          exit 0
+        fi
+        git commit -m "🤖 [KR] KRX 금(411060) 데이터 자동 갱신"
+        for attempt in 1 2 3 4 5; do
+          if git pull --rebase origin main && git push origin main; then
+            exit 0
+          fi
+          # 실제 파일 충돌은 덮어쓰지 않고 실패로 알린다.
+          if [ -d .git/rebase-merge ] || [ -d .git/rebase-apply ]; then
+            git rebase --abort
+            exit 1
+          fi
+          sleep 5
+        done
+        echo "::error::원격 반영 5회 실패 — 다음 예약 또는 수동 재실행 필요"
+        exit 1

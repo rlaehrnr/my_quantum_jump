@@ -2,7 +2,8 @@ name: US Monthly Archive
 
 on:
   schedule:
-    - cron: '15 23 28-31 * *'  # 💡 UTC 23시 15분 = 한국 시간 아침 8시 15분 (데일리 로봇과 15분 간격 두기)
+    # KST 매월 1일 06/07/08시 반복 시도. 정각 혼잡을 피하고 09시 전 반영 목표.
+    - cron: '31 21,22,23 28-31 * *'
   workflow_dispatch:
 
 jobs:
@@ -51,6 +52,21 @@ jobs:
         git config --local user.email "action@github.com"
         git config --local user.name "GitHub Action Bot"
         git add .
-        git commit -m "🤖 [US] 매월 1일 미국 모멘텀 아카이브 자동 생성 완료" || echo "No changes to commit"
-        git pull origin main --rebase
-        git push
+        if git diff --cached --quiet; then
+          echo "변경 없음 — 커밋 건너뜀"
+          exit 0
+        fi
+        git commit -m "🤖 [US] 매월 1일 미국 모멘텀 아카이브 자동 생성 완료"
+        for attempt in 1 2 3 4 5; do
+          if git pull --rebase origin main && git push origin main; then
+            exit 0
+          fi
+          # 실제 파일 충돌은 덮어쓰지 않고 실패로 알린다.
+          if [ -d .git/rebase-merge ] || [ -d .git/rebase-apply ]; then
+            git rebase --abort
+            exit 1
+          fi
+          sleep 5
+        done
+        echo "::error::원격 반영 5회 실패 — 다음 예약 또는 수동 재실행 필요"
+        exit 1

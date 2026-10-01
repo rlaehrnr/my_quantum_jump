@@ -2,9 +2,9 @@ name: Snowball Data Update (Daily)
 
 on:
   schedule:
-    # 💡 매월 1일 UTC 06:00 = 한국 시간 매월 1일 오후 3시
-    #    (미국 시장 전월 말 마감 데이터가 반영된 후 실행)
-    - cron: '0 22 * * *'   # 매일 UTC 22:00 (미국 마감 후) = KST 익일 07:00
+    # 매일 KST 07:01. 월초에는 06:01/08:01 추가 시도 (미국 마감 후).
+    - cron: '1 22 * * *'
+    - cron: '1 21,23 28-31,1,2 * *'
   workflow_dispatch:   # 수동 실행 버튼
 
 jobs:
@@ -35,4 +35,21 @@ jobs:
         git config --local user.email "action@github.com"
         git config --local user.name "GitHub Action Bot"
         git add data/snowball/
-        git diff --quiet && git diff --staged --quiet || (git commit -m "🤖 [Snowball] 데이터 자동 갱신 (월말 자료·일별 재조정 반영)" && git push)
+        if git diff --cached --quiet; then
+          echo "변경 없음 — 커밋 건너뜀"
+          exit 0
+        fi
+        git commit -m "🤖 [Snowball] 데이터 자동 갱신 (월말 자료·일별 재조정 반영)"
+        for attempt in 1 2 3 4 5; do
+          if git pull --rebase origin main && git push origin main; then
+            exit 0
+          fi
+          # 실제 파일 충돌은 덮어쓰지 않고 실패로 알린다.
+          if [ -d .git/rebase-merge ] || [ -d .git/rebase-apply ]; then
+            git rebase --abort
+            exit 1
+          fi
+          sleep 5
+        done
+        echo "::error::원격 반영 5회 실패 — 다음 예약 또는 수동 재실행 필요"
+        exit 1
