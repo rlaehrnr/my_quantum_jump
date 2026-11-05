@@ -1,0 +1,1510 @@
+{
+  "fixed_candidates": [
+    "baseline",
+    "portfolio_75_cash25",
+    "stock_75_cash25",
+    "perfect75_horse25",
+    "vol_target15",
+    "index_ma3",
+    "gold_ma3",
+    "cash_defense_no_gold",
+    "no_gold_extension"
+  ],
+  "max_drawdown_peak": "2010-10",
+  "max_drawdown_trough": "2014-03",
+  "drawdown_contributions": {
+    "stock": {
+      "months": 23,
+      "compound_pct": -27.205457880495466,
+      "log_contribution": -0.3175292044818352
+    },
+    "금": {
+      "months": 9,
+      "compound_pct": -14.75402639593989,
+      "log_contribution": -0.15962930139076636
+    },
+    "현금": {
+      "months": 9,
+      "compound_pct": 0.0,
+      "log_contribution": 0.0
+    }
+  },
+  "variants": {
+    "baseline": {
+      "full": {
+        "months": 202,
+        "cagr_pct": 43.3263228255332,
+        "monthly_mdd_pct": -37.945583839610784,
+        "worst_month_pct": -15.483333333333334,
+        "final_multiple": 428.0425795861376
+      },
+      "segments": {
+        "2010-01~2013-12": {
+          "months": 48,
+          "cagr_pct": -5.348534181973063,
+          "monthly_mdd_pct": -35.758143312307055,
+          "worst_month_pct": -15.483333333333334,
+          "final_multiple": 0.802618888785408
+        },
+        "2014-01~2019-12": {
+          "months": 72,
+          "cagr_pct": 26.86126767994079,
+          "monthly_mdd_pct": -13.103680246505542,
+          "worst_month_pct": -11.256666666666666,
+          "final_multiple": 4.168446971275317
+        },
+        "2020-01~2026-10": {
+          "months": 82,
+          "cagr_pct": 103.39578494007769,
+          "monthly_mdd_pct": -16.223105099894035,
+          "worst_month_pct": -12.201666666666666,
+          "final_multiple": 127.93910711834813
+        },
+        "2014-01~2026-10": {
+          "months": 154,
+          "cagr_pct": 63.11419636580485,
+          "monthly_mdd_pct": -16.223105099894035,
+          "worst_month_pct": -12.201666666666666,
+          "final_multiple": 533.3073835751467
+        }
+      },
+      "years": {
+        "2010": {
+          "months": 12,
+          "cagr_pct": 18.249230095894973,
+          "monthly_mdd_pct": -16.41449587002251,
+          "worst_month_pct": -15.483333333333334,
+          "final_multiple": 1.1824923009589496
+        },
+        "2011": {
+          "months": 12,
+          "cagr_pct": -27.287461662368656,
+          "monthly_mdd_pct": -27.287461662368656,
+          "worst_month_pct": -11.939166666666669,
+          "final_multiple": 0.7271253833763135
+        },
+        "2012": {
+          "months": 12,
+          "cagr_pct": 2.263741477888631,
+          "monthly_mdd_pct": -9.519166666666669,
+          "worst_month_pct": -9.519166666666669,
+          "final_multiple": 1.0226374147788864
+        },
+        "2013": {
+          "months": 12,
+          "cagr_pct": -8.719066970163382,
+          "monthly_mdd_pct": -24.33295456898367,
+          "worst_month_pct": -11.004166666666666,
+          "final_multiple": 0.9128093302983662
+        },
+        "2014": {
+          "months": 12,
+          "cagr_pct": 23.770997316626417,
+          "monthly_mdd_pct": -5.823138520950313,
+          "worst_month_pct": -3.43888362239324,
+          "final_multiple": 1.2377099731662642
+        },
+        "2015": {
+          "months": 12,
+          "cagr_pct": 38.13579599061567,
+          "monthly_mdd_pct": -13.103680246505542,
+          "worst_month_pct": -11.256666666666666,
+          "final_multiple": 1.3813579599061567
+        },
+        "2016": {
+          "months": 12,
+          "cagr_pct": 19.018711162605612,
+          "monthly_mdd_pct": -8.567504571973462,
+          "worst_month_pct": -7.399383983572893,
+          "final_multiple": 1.190187111626056
+        },
+        "2017": {
+          "months": 12,
+          "cagr_pct": 25.554547250656086,
+          "monthly_mdd_pct": -3.5799164679449356,
+          "worst_month_pct": -3.052742616033754,
+          "final_multiple": 1.255545472506561
+        },
+        "2018": {
+          "months": 12,
+          "cagr_pct": 26.15482674870481,
+          "monthly_mdd_pct": -6.559150746656338,
+          "worst_month_pct": -2.8991666666666664,
+          "final_multiple": 1.2615482674870482
+        },
+        "2019": {
+          "months": 12,
+          "cagr_pct": 29.32949898666722,
+          "monthly_mdd_pct": -8.607034198600115,
+          "worst_month_pct": -4.110228982115993,
+          "final_multiple": 1.2932949898666721
+        },
+        "2020": {
+          "months": 12,
+          "cagr_pct": 278.15112094989547,
+          "monthly_mdd_pct": -7.119166666666667,
+          "worst_month_pct": -7.119166666666667,
+          "final_multiple": 3.7815112094989547
+        },
+        "2021": {
+          "months": 12,
+          "cagr_pct": 74.17815700554495,
+          "monthly_mdd_pct": -14.467916766387246,
+          "worst_month_pct": -12.201666666666666,
+          "final_multiple": 1.7417815700554495
+        },
+        "2022": {
+          "months": 12,
+          "cagr_pct": 6.407545786811648,
+          "monthly_mdd_pct": -8.71274044740567,
+          "worst_month_pct": -4.4159751037344375,
+          "final_multiple": 1.0640754578681164
+        },
+        "2023": {
+          "months": 12,
+          "cagr_pct": 99.69608403349196,
+          "monthly_mdd_pct": -7.786768202178206,
+          "worst_month_pct": -7.255833333333334,
+          "final_multiple": 1.9969608403349195
+        },
+        "2024": {
+          "months": 12,
+          "cagr_pct": 77.90055282843579,
+          "monthly_mdd_pct": -11.64679169240449,
+          "worst_month_pct": -11.110833333333334,
+          "final_multiple": 1.779005528284358
+        },
+        "2025": {
+          "months": 12,
+          "cagr_pct": 69.50070835269416,
+          "monthly_mdd_pct": -8.768900312500001,
+          "worst_month_pct": -4.557500000000001,
+          "final_multiple": 1.6950070835269415
+        },
+        "2026": {
+          "months": 10,
+          "cagr_pct": 278.4287563277396,
+          "monthly_mdd_pct": 0.0,
+          "worst_month_pct": 0.0,
+          "final_multiple": 3.0314711680212048
+        }
+      }
+    },
+    "portfolio_75_cash25": {
+      "full": {
+        "months": 202,
+        "cagr_pct": 32.4481824752633,
+        "monthly_mdd_pct": -28.7994761475291,
+        "worst_month_pct": -11.6125,
+        "final_multiple": 113.3550966053611
+      },
+      "segments": {
+        "2010-01~2013-12": {
+          "months": 48,
+          "cagr_pct": -3.440941671740632,
+          "monthly_mdd_pct": -27.391924303134928,
+          "worst_month_pct": -11.6125,
+          "final_multiple": 0.8693048186652053
+        },
+        "2014-01~2019-12": {
+          "months": 72,
+          "cagr_pct": 20.086200837141767,
+          "monthly_mdd_pct": -9.87233211259866,
+          "worst_month_pct": -8.442499999999999,
+          "final_multiple": 2.9988768502624676
+        },
+        "2020-01~2026-10": {
+          "months": 82,
+          "cagr_pct": 73.68116821800187,
+          "monthly_mdd_pct": -12.250156319584216,
+          "worst_month_pct": -9.15125,
+          "final_multiple": 43.48208220088632
+        },
+        "2014-01~2026-10": {
+          "months": 154,
+          "cagr_pct": 46.15919859461624,
+          "monthly_mdd_pct": -12.250156319584216,
+          "worst_month_pct": -9.15125,
+          "final_multiple": 130.39740971344767
+        }
+      },
+      "years": {
+        "2010": {
+          "months": 12,
+          "cagr_pct": 14.504522457797837,
+          "monthly_mdd_pct": -12.328851722774631,
+          "worst_month_pct": -11.6125,
+          "final_multiple": 1.1450452245779783
+        },
+        "2011": {
+          "months": 12,
+          "cagr_pct": -20.864419081688716,
+          "monthly_mdd_pct": -20.864419081688716,
+          "worst_month_pct": -8.954375000000002,
+          "final_multiple": 0.7913558091831129
+        },
+        "2012": {
+          "months": 12,
+          "cagr_pct": 1.9581566144631415,
+          "monthly_mdd_pct": -7.139375000000001,
+          "worst_month_pct": -7.139375000000001,
+          "final_multiple": 1.0195815661446315
+        },
+        "2013": {
+          "months": 12,
+          "cagr_pct": -5.907354899364114,
+          "monthly_mdd_pct": -18.69827174875049,
+          "worst_month_pct": -8.253125,
+          "final_multiple": 0.9409264510063589
+        },
+        "2014": {
+          "months": 12,
+          "cagr_pct": 17.61879900441516,
+          "monthly_mdd_pct": -4.383274847233284,
+          "worst_month_pct": -2.5791627167949303,
+          "final_multiple": 1.1761879900441516
+        },
+        "2015": {
+          "months": 12,
+          "cagr_pct": 28.535854223769036,
+          "monthly_mdd_pct": -9.87233211259866,
+          "worst_month_pct": -8.442499999999999,
+          "final_multiple": 1.2853585422376903
+        },
+        "2016": {
+          "months": 12,
+          "cagr_pct": 14.610399608561613,
+          "monthly_mdd_pct": -6.472805806688055,
+          "worst_month_pct": -5.5495379876796695,
+          "final_multiple": 1.146103996085616
+        },
+        "2017": {
+          "months": 12,
+          "cagr_pct": 18.795790722044142,
+          "monthly_mdd_pct": -2.6881296758592845,
+          "worst_month_pct": -2.2895569620253156,
+          "final_multiple": 1.1879579072204414
+        },
+        "2018": {
+          "months": 12,
+          "cagr_pct": 19.82753481908679,
+          "monthly_mdd_pct": -4.948450792699649,
+          "worst_month_pct": -2.174375,
+          "final_multiple": 1.198275348190868
+        },
+        "2019": {
+          "months": 12,
+          "cagr_pct": 21.583852096364556,
+          "monthly_mdd_pct": -6.5009984142779595,
+          "worst_month_pct": -3.082671736586995,
+          "final_multiple": 1.2158385209636455
+        },
+        "2020": {
+          "months": 12,
+          "cagr_pct": 181.72851265544654,
+          "monthly_mdd_pct": -5.339375,
+          "worst_month_pct": -5.339375,
+          "final_multiple": 2.817285126554465
+        },
+        "2021": {
+          "months": 12,
+          "cagr_pct": 54.18851008175338,
+          "monthly_mdd_pct": -10.910976895635658,
+          "worst_month_pct": -9.15125,
+          "final_multiple": 1.5418851008175338
+        },
+        "2022": {
+          "months": 12,
+          "cagr_pct": 4.873684380084619,
+          "monthly_mdd_pct": -6.572096693158665,
+          "worst_month_pct": -3.311981327800828,
+          "final_multiple": 1.0487368438008462
+        },
+        "2023": {
+          "months": 12,
+          "cagr_pct": 71.90036732116526,
+          "monthly_mdd_pct": -5.847864461381963,
+          "worst_month_pct": -5.4418750000000005,
+          "final_multiple": 1.7190036732116527
+        },
+        "2024": {
+          "months": 12,
+          "cagr_pct": 56.42493169111723,
+          "monthly_mdd_pct": -8.747654940052337,
+          "worst_month_pct": -8.333125,
+          "final_multiple": 1.5642493169111722
+        },
+        "2025": {
+          "months": 12,
+          "cagr_pct": 49.67089539815334,
+          "monthly_mdd_pct": -6.61438142578125,
+          "worst_month_pct": -3.4181250000000007,
+          "final_multiple": 1.4967089539815335
+        },
+        "2026": {
+          "months": 10,
+          "cagr_pct": 181.8701123162305,
+          "monthly_mdd_pct": 0.0,
+          "worst_month_pct": 0.0,
+          "final_multiple": 2.371596807826867
+        }
+      }
+    },
+    "stock_75_cash25": {
+      "full": {
+        "months": 202,
+        "cagr_pct": 33.26597838287142,
+        "monthly_mdd_pct": -31.720079769518957,
+        "worst_month_pct": -11.6125,
+        "final_multiple": 125.73072394808095
+      },
+      "segments": {
+        "2010-01~2013-12": {
+          "months": 48,
+          "cagr_pct": -4.12498988955323,
+          "monthly_mdd_pct": -27.98897071107266,
+          "worst_month_pct": -11.6125,
+          "final_multiple": 0.8449318689096981
+        },
+        "2014-01~2019-12": {
+          "months": 72,
+          "cagr_pct": 20.172683502409157,
+          "monthly_mdd_pct": -10.348084785742754,
+          "worst_month_pct": -8.442499999999999,
+          "final_multiple": 3.0118584377756257
+        },
+        "2020-01~2026-10": {
+          "months": 82,
+          "cagr_pct": 76.95832565932673,
+          "monthly_mdd_pct": -11.915377033043553,
+          "worst_month_pct": -9.15125,
+          "final_multiple": 49.40662292468013
+        },
+        "2014-01~2026-10": {
+          "months": 154,
+          "cagr_pct": 47.6709414036131,
+          "monthly_mdd_pct": -11.915377033043553,
+          "worst_month_pct": -9.15125,
+          "final_multiple": 148.8057541376965
+        }
+      },
+      "years": {
+        "2010": {
+          "months": 12,
+          "cagr_pct": 15.030457779035638,
+          "monthly_mdd_pct": -12.586309450344483,
+          "worst_month_pct": -11.6125,
+          "final_multiple": 1.1503045777903564
+        },
+        "2011": {
+          "months": 12,
+          "cagr_pct": -22.542697204441822,
+          "monthly_mdd_pct": -22.542697204441822,
+          "worst_month_pct": -8.954375000000002,
+          "final_multiple": 0.7745730279555818
+        },
+        "2012": {
+          "months": 12,
+          "cagr_pct": 3.3107444999958573,
+          "monthly_mdd_pct": -7.139375000000001,
+          "worst_month_pct": -7.139375000000001,
+          "final_multiple": 1.0331074449999587
+        },
+        "2013": {
+          "months": 12,
+          "cagr_pct": -8.208813917238494,
+          "monthly_mdd_pct": -20.68687134070038,
+          "worst_month_pct": -9.11495792166711,
+          "final_multiple": 0.9179118608276151
+        },
+        "2014": {
+          "months": 12,
+          "cagr_pct": 16.40681804839947,
+          "monthly_mdd_pct": -5.227074796311045,
+          "worst_month_pct": -3.43888362239324,
+          "final_multiple": 1.1640681804839947
+        },
+        "2015": {
+          "months": 12,
+          "cagr_pct": 28.142412098126766,
+          "monthly_mdd_pct": -10.348084785742754,
+          "worst_month_pct": -8.442499999999999,
+          "final_multiple": 1.2814241209812676
+        },
+        "2016": {
+          "months": 12,
+          "cagr_pct": 14.756463300092891,
+          "monthly_mdd_pct": -7.627477614813898,
+          "worst_month_pct": -7.399383983572893,
+          "final_multiple": 1.1475646330009288
+        },
+        "2017": {
+          "months": 12,
+          "cagr_pct": 17.839150037785096,
+          "monthly_mdd_pct": -3.4717642949614818,
+          "worst_month_pct": -3.052742616033754,
+          "final_multiple": 1.178391500377851
+        },
+        "2018": {
+          "months": 12,
+          "cagr_pct": 19.643017438300745,
+          "monthly_mdd_pct": -5.861678371392689,
+          "worst_month_pct": -2.174375,
+          "final_multiple": 1.1964301743830075
+        },
+        "2019": {
+          "months": 12,
+          "cagr_pct": 24.798431955154825,
+          "monthly_mdd_pct": -8.607034198600115,
+          "worst_month_pct": -4.110228982115993,
+          "final_multiple": 1.2479843195515483
+        },
+        "2020": {
+          "months": 12,
+          "cagr_pct": 190.08184393021097,
+          "monthly_mdd_pct": -5.339375,
+          "worst_month_pct": -5.339375,
+          "final_multiple": 2.90081843930211
+        },
+        "2021": {
+          "months": 12,
+          "cagr_pct": 53.57787276910275,
+          "monthly_mdd_pct": -11.44133986345171,
+          "worst_month_pct": -9.15125,
+          "final_multiple": 1.5357787276910275
+        },
+        "2022": {
+          "months": 12,
+          "cagr_pct": 4.8388021695029435,
+          "monthly_mdd_pct": -8.71274044740567,
+          "worst_month_pct": -4.4159751037344375,
+          "final_multiple": 1.0483880216950294
+        },
+        "2023": {
+          "months": 12,
+          "cagr_pct": 76.87907109829803,
+          "monthly_mdd_pct": -5.983194281842618,
+          "worst_month_pct": -5.4418750000000005,
+          "final_multiple": 1.7687907109829801
+        },
+        "2024": {
+          "months": 12,
+          "cagr_pct": 62.28903426107021,
+          "monthly_mdd_pct": -8.88583158673645,
+          "worst_month_pct": -8.333125,
+          "final_multiple": 1.6228903426107022
+        },
+        "2025": {
+          "months": 12,
+          "cagr_pct": 55.384409744506385,
+          "monthly_mdd_pct": -6.61438142578125,
+          "worst_month_pct": -3.4181250000000007,
+          "final_multiple": 1.5538440974450638
+        },
+        "2026": {
+          "months": 10,
+          "cagr_pct": 181.8701123162305,
+          "monthly_mdd_pct": 0.0,
+          "worst_month_pct": 0.0,
+          "final_multiple": 2.371596807826867
+        }
+      }
+    },
+    "perfect75_horse25": {
+      "full": {
+        "months": 202,
+        "cagr_pct": 39.69284850806356,
+        "monthly_mdd_pct": -30.540155686742022,
+        "worst_month_pct": -14.772499999999999,
+        "final_multiple": 277.82111469116074
+      },
+      "segments": {
+        "2010-01~2013-12": {
+          "months": 48,
+          "cagr_pct": -1.4347397735397844,
+          "monthly_mdd_pct": -29.640878519502884,
+          "worst_month_pct": -14.772499999999999,
+          "final_multiple": 0.9438337248401125
+        },
+        "2014-01~2019-12": {
+          "months": 72,
+          "cagr_pct": 24.372356959286744,
+          "monthly_mdd_pct": -13.547578360409883,
+          "worst_month_pct": -11.709999999999999,
+          "final_multiple": 3.7012054064388744
+        },
+        "2020-01~2026-10": {
+          "months": 82,
+          "cagr_pct": 89.72555832495327,
+          "monthly_mdd_pct": -14.619049936112566,
+          "worst_month_pct": -11.618750000000002,
+          "final_multiple": 79.52919201464152
+        },
+        "2014-01~2026-10": {
+          "months": 154,
+          "cagr_pct": 55.732573945339944,
+          "monthly_mdd_pct": -14.619049936112566,
+          "worst_month_pct": -11.709999999999999,
+          "final_multiple": 294.35387545430655
+        }
+      },
+      "years": {
+        "2010": {
+          "months": 12,
+          "cagr_pct": 24.70517873837762,
+          "monthly_mdd_pct": -14.772499999999999,
+          "worst_month_pct": -14.772499999999999,
+          "final_multiple": 1.247051787383776
+        },
+        "2011": {
+          "months": 12,
+          "cagr_pct": -23.404228496400265,
+          "monthly_mdd_pct": -23.404228496400265,
+          "worst_month_pct": -10.691249999999998,
+          "final_multiple": 0.7659577150359973
+        },
+        "2012": {
+          "months": 12,
+          "cagr_pct": 3.043904169665649,
+          "monthly_mdd_pct": -8.43375,
+          "worst_month_pct": -8.43375,
+          "final_multiple": 1.0304390416966565
+        },
+        "2013": {
+          "months": 12,
+          "cagr_pct": -4.107663161946283,
+          "monthly_mdd_pct": -19.147707348920388,
+          "worst_month_pct": -10.233749999999999,
+          "final_multiple": 0.9589233683805372
+        },
+        "2014": {
+          "months": 12,
+          "cagr_pct": 20.223366092896303,
+          "monthly_mdd_pct": -7.584976556856731,
+          "worst_month_pct": -4.29375,
+          "final_multiple": 1.202233660928963
+        },
+        "2015": {
+          "months": 12,
+          "cagr_pct": 51.61441020608263,
+          "monthly_mdd_pct": -13.547578360409883,
+          "worst_month_pct": -11.709999999999999,
+          "final_multiple": 1.5161441020608264
+        },
+        "2016": {
+          "months": 12,
+          "cagr_pct": 13.435595329113946,
+          "monthly_mdd_pct": -7.399383983572893,
+          "worst_month_pct": -7.399383983572893,
+          "final_multiple": 1.1343559532911394
+        },
+        "2017": {
+          "months": 12,
+          "cagr_pct": 20.860998455402857,
+          "monthly_mdd_pct": -4.062565717527813,
+          "worst_month_pct": -3.052742616033754,
+          "final_multiple": 1.2086099845540286
+        },
+        "2018": {
+          "months": 12,
+          "cagr_pct": 20.87816281180475,
+          "monthly_mdd_pct": -7.104859227676072,
+          "worst_month_pct": -3.4662499999999996,
+          "final_multiple": 1.2087816281180475
+        },
+        "2019": {
+          "months": 12,
+          "cagr_pct": 22.526616407014505,
+          "monthly_mdd_pct": -8.607034198600115,
+          "worst_month_pct": -4.110228982115993,
+          "final_multiple": 1.225266164070145
+        },
+        "2020": {
+          "months": 12,
+          "cagr_pct": 212.57943011458102,
+          "monthly_mdd_pct": -6.128750000000002,
+          "worst_month_pct": -6.128750000000002,
+          "final_multiple": 3.12579430114581
+        },
+        "2021": {
+          "months": 12,
+          "cagr_pct": 59.92608687427025,
+          "monthly_mdd_pct": -14.619049936112566,
+          "worst_month_pct": -10.872499999999999,
+          "final_multiple": 1.5992608687427026
+        },
+        "2022": {
+          "months": 12,
+          "cagr_pct": 4.798749140975913,
+          "monthly_mdd_pct": -8.71274044740567,
+          "worst_month_pct": -4.4159751037344375,
+          "final_multiple": 1.047987491409759
+        },
+        "2023": {
+          "months": 12,
+          "cagr_pct": 102.49920854595632,
+          "monthly_mdd_pct": -3.434742468142291,
+          "worst_month_pct": -3.0387499999999994,
+          "final_multiple": 2.024992085459563
+        },
+        "2024": {
+          "months": 12,
+          "cagr_pct": 64.48856662404664,
+          "monthly_mdd_pct": -12.151645869080308,
+          "worst_month_pct": -11.618750000000002,
+          "final_multiple": 1.6448856662404663
+        },
+        "2025": {
+          "months": 12,
+          "cagr_pct": 68.66959097079723,
+          "monthly_mdd_pct": -8.824958453125001,
+          "worst_month_pct": -5.111250000000001,
+          "final_multiple": 1.6866959097079723
+        },
+        "2026": {
+          "months": 10,
+          "cagr_pct": 229.63545135143607,
+          "monthly_mdd_pct": -1.3587499999999992,
+          "worst_month_pct": -1.3587499999999992,
+          "final_multiple": 2.7020596192282684
+        }
+      }
+    },
+    "vol_target15": {
+      "full": {
+        "months": 202,
+        "cagr_pct": 25.285423163144447,
+        "monthly_mdd_pct": -23.155455821525155,
+        "worst_month_pct": -15.483333333333334,
+        "final_multiple": 44.46235828108867
+      },
+      "segments": {
+        "2010-01~2013-12": {
+          "months": 48,
+          "cagr_pct": 1.4506404866225426,
+          "monthly_mdd_pct": -23.155455821525155,
+          "worst_month_pct": -15.483333333333334,
+          "final_multiple": 1.0593004891075937
+        },
+        "2014-01~2019-12": {
+          "months": 72,
+          "cagr_pct": 25.75210063391361,
+          "monthly_mdd_pct": -8.525000293662405,
+          "worst_month_pct": -5.871100014857427,
+          "final_multiple": 3.9544991900773345
+        },
+        "2020-01~2026-10": {
+          "months": 82,
+          "cagr_pct": 41.29573350901586,
+          "monthly_mdd_pct": -7.973194158017319,
+          "worst_month_pct": -3.8375,
+          "final_multiple": 10.614067133431687
+        },
+        "2014-01~2026-10": {
+          "months": 154,
+          "cagr_pct": 33.80287760304855,
+          "monthly_mdd_pct": -10.909326674536683,
+          "worst_month_pct": -5.871100014857427,
+          "final_multiple": 41.97331988258207
+        }
+      },
+      "years": {
+        "2010": {
+          "months": 12,
+          "cagr_pct": 18.249230095894973,
+          "monthly_mdd_pct": -16.41449587002251,
+          "worst_month_pct": -15.483333333333334,
+          "final_multiple": 1.1824923009589496
+        },
+        "2011": {
+          "months": 12,
+          "cagr_pct": -14.327697072703357,
+          "monthly_mdd_pct": -14.327697072703357,
+          "worst_month_pct": -6.009133471904934,
+          "final_multiple": 0.8567230292729664
+        },
+        "2012": {
+          "months": 12,
+          "cagr_pct": 2.0540919502879103,
+          "monthly_mdd_pct": -7.064765483829227,
+          "worst_month_pct": -7.064765483829227,
+          "final_multiple": 1.0205409195028792
+        },
+        "2013": {
+          "months": 12,
+          "cagr_pct": 2.4589703139661787,
+          "monthly_mdd_pct": -13.096098632843882,
+          "worst_month_pct": -9.463281714496528,
+          "final_multiple": 1.0245897031396618
+        },
+        "2014": {
+          "months": 12,
+          "cagr_pct": 26.544589101285947,
+          "monthly_mdd_pct": -3.0012980821292934,
+          "worst_month_pct": -1.8196587296228472,
+          "final_multiple": 1.2654458910128594
+        },
+        "2015": {
+          "months": 12,
+          "cagr_pct": 35.93919102426978,
+          "monthly_mdd_pct": -6.751594167844344,
+          "worst_month_pct": -5.871100014857427,
+          "final_multiple": 1.359391910242698
+        },
+        "2016": {
+          "months": 12,
+          "cagr_pct": 13.891155322601577,
+          "monthly_mdd_pct": -4.516516702619526,
+          "worst_month_pct": -3.2754299492056043,
+          "final_multiple": 1.1389115532260157
+        },
+        "2017": {
+          "months": 12,
+          "cagr_pct": 22.55899542849707,
+          "monthly_mdd_pct": -3.5799164679449356,
+          "worst_month_pct": -3.052742616033754,
+          "final_multiple": 1.2255899542849706
+        },
+        "2018": {
+          "months": 12,
+          "cagr_pct": 28.486967730170328,
+          "monthly_mdd_pct": -3.1949645697327953,
+          "worst_month_pct": -1.4096320368766226,
+          "final_multiple": 1.2848696773017032
+        },
+        "2019": {
+          "months": 12,
+          "cagr_pct": 28.176662422054637,
+          "monthly_mdd_pct": -8.525000293662405,
+          "worst_month_pct": -4.110228982115993,
+          "final_multiple": 1.2817666242205463
+        },
+        "2020": {
+          "months": 12,
+          "cagr_pct": 109.16885024502173,
+          "monthly_mdd_pct": -2.6065333572327805,
+          "worst_month_pct": -2.6065333572327805,
+          "final_multiple": 2.0916885024502174
+        },
+        "2021": {
+          "months": 12,
+          "cagr_pct": 14.502781132831748,
+          "monthly_mdd_pct": -3.562573315377754,
+          "worst_month_pct": -2.8437575416714154,
+          "final_multiple": 1.1450278113283174
+        },
+        "2022": {
+          "months": 12,
+          "cagr_pct": 1.1684210706428124,
+          "monthly_mdd_pct": -7.610062600177006,
+          "worst_month_pct": -3.4094260136914185,
+          "final_multiple": 1.011684210706428
+        },
+        "2023": {
+          "months": 12,
+          "cagr_pct": 67.51611196843048,
+          "monthly_mdd_pct": -3.8375,
+          "worst_month_pct": -3.8375,
+          "final_multiple": 1.6751611196843048
+        },
+        "2024": {
+          "months": 12,
+          "cagr_pct": 18.998893327358623,
+          "monthly_mdd_pct": -3.0090962644412937,
+          "worst_month_pct": -2.864245370957944,
+          "final_multiple": 1.1899889332735862
+        },
+        "2025": {
+          "months": 12,
+          "cagr_pct": 36.41622165754695,
+          "monthly_mdd_pct": -5.276944274426857,
+          "worst_month_pct": -2.6793721380114373,
+          "final_multiple": 1.3641622165754694
+        },
+        "2026": {
+          "months": 10,
+          "cagr_pct": 77.20254214488992,
+          "monthly_mdd_pct": 0.0,
+          "worst_month_pct": 0.0,
+          "final_multiple": 1.61086182674554
+        }
+      }
+    },
+    "index_ma3": {
+      "full": {
+        "months": 202,
+        "cagr_pct": 31.08365722607222,
+        "monthly_mdd_pct": -38.634132863240005,
+        "worst_month_pct": -15.483333333333334,
+        "final_multiple": 95.22125901780004
+      },
+      "segments": {
+        "2010-01~2013-12": {
+          "months": 48,
+          "cagr_pct": -4.5175097065174565,
+          "monthly_mdd_pct": -38.634132863240005,
+          "worst_month_pct": -15.483333333333334,
+          "final_multiple": 0.8311797414937362
+        },
+        "2014-01~2019-12": {
+          "months": 72,
+          "cagr_pct": 21.890004254327195,
+          "monthly_mdd_pct": -9.904255096864391,
+          "worst_month_pct": -7.399383983572893,
+          "final_multiple": 3.2795069320317296
+        },
+        "2020-01~2026-10": {
+          "months": 82,
+          "cagr_pct": 68.2048823477883,
+          "monthly_mdd_pct": -29.729828397800784,
+          "worst_month_pct": -12.201666666666666,
+          "final_multiple": 34.93256024132915
+        },
+        "2014-01~2026-10": {
+          "months": 154,
+          "cagr_pct": 44.69202510528134,
+          "monthly_mdd_pct": -29.729828397800784,
+          "worst_month_pct": -12.201666666666666,
+          "final_multiple": 114.56157346505495
+        }
+      },
+      "years": {
+        "2010": {
+          "months": 12,
+          "cagr_pct": 18.249230095894973,
+          "monthly_mdd_pct": -16.41449587002251,
+          "worst_month_pct": -15.483333333333334,
+          "final_multiple": 1.1824923009589496
+        },
+        "2011": {
+          "months": 12,
+          "cagr_pct": -31.86312968303139,
+          "monthly_mdd_pct": -31.86312968303139,
+          "worst_month_pct": -11.939166666666667,
+          "final_multiple": 0.6813687031696861
+        },
+        "2012": {
+          "months": 12,
+          "cagr_pct": 4.2455664318209365,
+          "monthly_mdd_pct": -9.519166666666667,
+          "worst_month_pct": -9.519166666666667,
+          "final_multiple": 1.0424556643182095
+        },
+        "2013": {
+          "months": 12,
+          "cagr_pct": -1.040645740946306,
+          "monthly_mdd_pct": -17.96795118103913,
+          "worst_month_pct": -11.004166666666666,
+          "final_multiple": 0.9895935425905369
+        },
+        "2014": {
+          "months": 12,
+          "cagr_pct": 13.963489361338555,
+          "monthly_mdd_pct": -5.823138520950313,
+          "worst_month_pct": -3.43888362239324,
+          "final_multiple": 1.1396348936133855
+        },
+        "2015": {
+          "months": 12,
+          "cagr_pct": 55.65765990754122,
+          "monthly_mdd_pct": -3.8557046979865723,
+          "worst_month_pct": -3.8557046979865723,
+          "final_multiple": 1.5565765990754123
+        },
+        "2016": {
+          "months": 12,
+          "cagr_pct": 19.018711162605612,
+          "monthly_mdd_pct": -8.567504571973462,
+          "worst_month_pct": -7.399383983572893,
+          "final_multiple": 1.190187111626056
+        },
+        "2017": {
+          "months": 12,
+          "cagr_pct": 25.554547250656086,
+          "monthly_mdd_pct": -3.5799164679449356,
+          "worst_month_pct": -3.052742616033754,
+          "final_multiple": 1.255545472506561
+        },
+        "2018": {
+          "months": 12,
+          "cagr_pct": -3.4381588390788296,
+          "monthly_mdd_pct": -6.559150746656338,
+          "worst_month_pct": -2.8991666666666664,
+          "final_multiple": 0.9656184116092117
+        },
+        "2019": {
+          "months": 12,
+          "cagr_pct": 28.120637416936532,
+          "monthly_mdd_pct": -8.607034198600115,
+          "worst_month_pct": -4.110228982115993,
+          "final_multiple": 1.2812063741693653
+        },
+        "2020": {
+          "months": 12,
+          "cagr_pct": 205.4676412727273,
+          "monthly_mdd_pct": -7.225205618055556,
+          "worst_month_pct": -7.119166666666667,
+          "final_multiple": 3.054676412727273
+        },
+        "2021": {
+          "months": 12,
+          "cagr_pct": 22.940323002697117,
+          "monthly_mdd_pct": -14.84946049482768,
+          "worst_month_pct": -12.201666666666666,
+          "final_multiple": 1.2294032300269713
+        },
+        "2022": {
+          "months": 12,
+          "cagr_pct": -13.008223709304945,
+          "monthly_mdd_pct": -25.36957033949228,
+          "worst_month_pct": -11.4175,
+          "final_multiple": 0.8699177629069506
+        },
+        "2023": {
+          "months": 12,
+          "cagr_pct": 99.69608403349197,
+          "monthly_mdd_pct": -7.786768202178206,
+          "worst_month_pct": -7.255833333333334,
+          "final_multiple": 1.9969608403349197
+        },
+        "2024": {
+          "months": 12,
+          "cagr_pct": 77.90055282843579,
+          "monthly_mdd_pct": -11.64679169240449,
+          "worst_month_pct": -11.110833333333334,
+          "final_multiple": 1.779005528284358
+        },
+        "2025": {
+          "months": 12,
+          "cagr_pct": 62.36563917420335,
+          "monthly_mdd_pct": -8.768900312500001,
+          "worst_month_pct": -4.557500000000001,
+          "final_multiple": 1.6236563917420335
+        },
+        "2026": {
+          "months": 10,
+          "cagr_pct": 109.73070686329417,
+          "monthly_mdd_pct": -3.9360136907143124,
+          "worst_month_pct": -3.9360136907143124,
+          "final_multiple": 1.8537522186051965
+        }
+      }
+    },
+    "gold_ma3": {
+      "full": {
+        "months": 202,
+        "cagr_pct": 42.33928896543199,
+        "monthly_mdd_pct": -35.465339640937735,
+        "worst_month_pct": -15.483333333333334,
+        "final_multiple": 381.03716101745954
+      },
+      "segments": {
+        "2010-01~2013-12": {
+          "months": 48,
+          "cagr_pct": -5.81083348194836,
+          "monthly_mdd_pct": -35.465339640937735,
+          "worst_month_pct": -15.483333333333334,
+          "final_multiple": 0.7870527040242651
+        },
+        "2014-01~2019-12": {
+          "months": 72,
+          "cagr_pct": 27.527313570252417,
+          "monthly_mdd_pct": -13.103680246505542,
+          "worst_month_pct": -11.256666666666666,
+          "final_multiple": 4.301493459184193
+        },
+        "2020-01~2026-10": {
+          "months": 82,
+          "cagr_pct": 99.61663008905188,
+          "monthly_mdd_pct": -16.223105099894035,
+          "worst_month_pct": -12.201666666666666,
+          "final_multiple": 112.54967636860877
+        },
+        "2014-01~2026-10": {
+          "months": 154,
+          "cagr_pct": 61.88922217281275,
+          "monthly_mdd_pct": -16.223105099894035,
+          "worst_month_pct": -12.201666666666666,
+          "final_multiple": 484.13169673286836
+        }
+      },
+      "years": {
+        "2010": {
+          "months": 12,
+          "cagr_pct": 15.429766312238318,
+          "monthly_mdd_pct": -18.407458543369643,
+          "worst_month_pct": -15.483333333333334,
+          "final_multiple": 1.1542976631223831
+        },
+        "2011": {
+          "months": 12,
+          "cagr_pct": -26.956050036404246,
+          "monthly_mdd_pct": -26.956050036404246,
+          "worst_month_pct": -11.939166666666667,
+          "final_multiple": 0.7304394996359576
+        },
+        "2012": {
+          "months": 12,
+          "cagr_pct": 2.2637414778886336,
+          "monthly_mdd_pct": -9.519166666666667,
+          "worst_month_pct": -9.519166666666667,
+          "final_multiple": 1.0226374147788864
+        },
+        "2013": {
+          "months": 12,
+          "cagr_pct": -8.719066970163382,
+          "monthly_mdd_pct": -24.33295456898367,
+          "worst_month_pct": -11.004166666666666,
+          "final_multiple": 0.9128093302983662
+        },
+        "2014": {
+          "months": 12,
+          "cagr_pct": 28.123955691355608,
+          "monthly_mdd_pct": -3.43888362239324,
+          "worst_month_pct": -3.43888362239324,
+          "final_multiple": 1.2812395569135562
+        },
+        "2015": {
+          "months": 12,
+          "cagr_pct": 38.13579599061567,
+          "monthly_mdd_pct": -13.103680246505542,
+          "worst_month_pct": -11.256666666666666,
+          "final_multiple": 1.3813579599061567
+        },
+        "2016": {
+          "months": 12,
+          "cagr_pct": 17.525341523379037,
+          "monthly_mdd_pct": -7.617310524834609,
+          "worst_month_pct": -7.399383983572893,
+          "final_multiple": 1.1752534152337903
+        },
+        "2017": {
+          "months": 12,
+          "cagr_pct": 22.974864539627998,
+          "monthly_mdd_pct": -3.5799164679449356,
+          "worst_month_pct": -3.052742616033754,
+          "final_multiple": 1.22974864539628
+        },
+        "2018": {
+          "months": 12,
+          "cagr_pct": 27.713601933880337,
+          "monthly_mdd_pct": -5.404591061136143,
+          "worst_month_pct": -2.8991666666666664,
+          "final_multiple": 1.2771360193388033
+        },
+        "2019": {
+          "months": 12,
+          "cagr_pct": 31.673283431752417,
+          "monthly_mdd_pct": -6.950757685400236,
+          "worst_month_pct": -4.110228982115993,
+          "final_multiple": 1.3167328343175242
+        },
+        "2020": {
+          "months": 12,
+          "cagr_pct": 278.15112094989547,
+          "monthly_mdd_pct": -7.119166666666667,
+          "worst_month_pct": -7.119166666666667,
+          "final_multiple": 3.7815112094989547
+        },
+        "2021": {
+          "months": 12,
+          "cagr_pct": 74.17815700554495,
+          "monthly_mdd_pct": -14.467916766387246,
+          "worst_month_pct": -12.201666666666666,
+          "final_multiple": 1.7417815700554495
+        },
+        "2022": {
+          "months": 12,
+          "cagr_pct": 4.3107725650089375,
+          "monthly_mdd_pct": -10.51156664818209,
+          "worst_month_pct": -4.4159751037344375,
+          "final_multiple": 1.0431077256500894
+        },
+        "2023": {
+          "months": 12,
+          "cagr_pct": 99.69608403349197,
+          "monthly_mdd_pct": -7.786768202178206,
+          "worst_month_pct": -7.255833333333334,
+          "final_multiple": 1.9969608403349197
+        },
+        "2024": {
+          "months": 12,
+          "cagr_pct": 72.1522395553234,
+          "monthly_mdd_pct": -11.64679169240449,
+          "worst_month_pct": -11.110833333333334,
+          "final_multiple": 1.721522395553234
+        },
+        "2025": {
+          "months": 12,
+          "cagr_pct": 69.50070835269416,
+          "monthly_mdd_pct": -8.768900312500001,
+          "worst_month_pct": -4.557500000000001,
+          "final_multiple": 1.6950070835269415
+        },
+        "2026": {
+          "months": 10,
+          "cagr_pct": 245.68673528946658,
+          "monthly_mdd_pct": -7.26390154968094,
+          "worst_month_pct": -7.26390154968094,
+          "final_multiple": 2.8112680868691817
+        }
+      }
+    },
+    "cash_defense_no_gold": {
+      "full": {
+        "months": 202,
+        "cagr_pct": 38.063866906173175,
+        "monthly_mdd_pct": -39.072152987443445,
+        "worst_month_pct": -29.35666666666667,
+        "final_multiple": 228.04149976475827
+      },
+      "segments": {
+        "2010-01~2013-12": {
+          "months": 48,
+          "cagr_pct": -0.18409825289556025,
+          "monthly_mdd_pct": -27.860893758893294,
+          "worst_month_pct": -15.483333333333334,
+          "final_multiple": 0.9926563802377412
+        },
+        "2014-01~2019-12": {
+          "months": 72,
+          "cagr_pct": 21.373012127782086,
+          "monthly_mdd_pct": -39.072152987443445,
+          "worst_month_pct": -29.35666666666667,
+          "final_multiple": 3.196927445644574
+        },
+        "2020-01~2026-10": {
+          "months": 82,
+          "cagr_pct": 86.93056454846945,
+          "monthly_mdd_pct": -12.418967541666666,
+          "worst_month_pct": -12.201666666666666,
+          "final_multiple": 71.85916562330455
+        },
+        "2014-01~2026-10": {
+          "months": 154,
+          "cagr_pct": 52.7533612229731,
+          "monthly_mdd_pct": -39.072152987443445,
+          "worst_month_pct": -29.35666666666667,
+          "final_multiple": 229.7285388022614
+        }
+      },
+      "years": {
+        "2010": {
+          "months": 12,
+          "cagr_pct": 15.98178546246346,
+          "monthly_mdd_pct": -15.483333333333334,
+          "worst_month_pct": -15.483333333333334,
+          "final_multiple": 1.1598178546246345
+        },
+        "2011": {
+          "months": 12,
+          "cagr_pct": -13.836558862021189,
+          "monthly_mdd_pct": -20.457584611111113,
+          "worst_month_pct": -11.939166666666667,
+          "final_multiple": 0.8616344113797881
+        },
+        "2012": {
+          "months": 12,
+          "cagr_pct": -3.091778841771719,
+          "monthly_mdd_pct": -12.455732548999375,
+          "worst_month_pct": -9.519166666666667,
+          "final_multiple": 0.9690822115822828
+        },
+        "2013": {
+          "months": 12,
+          "cagr_pct": 2.500383724034768,
+          "monthly_mdd_pct": -15.032625823313984,
+          "worst_month_pct": -11.004166666666666,
+          "final_multiple": 1.0250038372403476
+        },
+        "2014": {
+          "months": 12,
+          "cagr_pct": 36.92495085452353,
+          "monthly_mdd_pct": -2.4691666666666663,
+          "worst_month_pct": -2.4691666666666663,
+          "final_multiple": 1.3692495085452354
+        },
+        "2015": {
+          "months": 12,
+          "cagr_pct": 39.61080704872259,
+          "monthly_mdd_pct": -11.256666666666666,
+          "worst_month_pct": -11.256666666666666,
+          "final_multiple": 1.396108070487226
+        },
+        "2016": {
+          "months": 12,
+          "cagr_pct": -22.9050643305863,
+          "monthly_mdd_pct": -30.630000093069448,
+          "worst_month_pct": -29.35666666666667,
+          "final_multiple": 0.770949356694137
+        },
+        "2017": {
+          "months": 12,
+          "cagr_pct": 32.98383053203118,
+          "monthly_mdd_pct": -10.945833333333333,
+          "worst_month_pct": -10.945833333333333,
+          "final_multiple": 1.3298383053203118
+        },
+        "2018": {
+          "months": 12,
+          "cagr_pct": 50.83746776075648,
+          "monthly_mdd_pct": -2.8991666666666664,
+          "worst_month_pct": -2.8991666666666664,
+          "final_multiple": 1.5083746776075648
+        },
+        "2019": {
+          "months": 12,
+          "cagr_pct": 8.142704623402782,
+          "monthly_mdd_pct": -14.0625,
+          "worst_month_pct": -14.0625,
+          "final_multiple": 1.0814270462340279
+        },
+        "2020": {
+          "months": 12,
+          "cagr_pct": 235.77817246771858,
+          "monthly_mdd_pct": -7.119166666666667,
+          "worst_month_pct": -7.119166666666667,
+          "final_multiple": 3.357781724677186
+        },
+        "2021": {
+          "months": 12,
+          "cagr_pct": 76.91808601126706,
+          "monthly_mdd_pct": -12.418967541666666,
+          "worst_month_pct": -12.201666666666666,
+          "final_multiple": 1.7691808601126706
+        },
+        "2022": {
+          "months": 12,
+          "cagr_pct": 6.266666666666667,
+          "monthly_mdd_pct": 0.0,
+          "worst_month_pct": 0.0,
+          "final_multiple": 1.0626666666666666
+        },
+        "2023": {
+          "months": 12,
+          "cagr_pct": 88.58432233091767,
+          "monthly_mdd_pct": -7.255833333333334,
+          "worst_month_pct": -7.255833333333334,
+          "final_multiple": 1.8858432233091766
+        },
+        "2024": {
+          "months": 12,
+          "cagr_pct": 36.822854197161426,
+          "monthly_mdd_pct": -11.110833333333334,
+          "worst_month_pct": -11.110833333333334,
+          "final_multiple": 1.3682285419716143
+        },
+        "2025": {
+          "months": 12,
+          "cagr_pct": 45.526721504517624,
+          "monthly_mdd_pct": -8.768900312500001,
+          "worst_month_pct": -4.557500000000001,
+          "final_multiple": 1.4552672150451762
+        },
+        "2026": {
+          "months": 10,
+          "cagr_pct": 278.4287563277396,
+          "monthly_mdd_pct": 0.0,
+          "worst_month_pct": -0.0,
+          "final_multiple": 3.0314711680212048
+        }
+      }
+    },
+    "no_gold_extension": {
+      "full": {
+        "months": 202,
+        "cagr_pct": 41.004234903550966,
+        "monthly_mdd_pct": -39.35263080567357,
+        "worst_month_pct": -29.35666666666667,
+        "final_multiple": 325.1431678262437
+      },
+      "segments": {
+        "2010-01~2013-12": {
+          "months": 48,
+          "cagr_pct": -3.534295097574857,
+          "monthly_mdd_pct": -32.08547877200649,
+          "worst_month_pct": -15.483333333333334,
+          "final_multiple": 0.8659479105711321
+        },
+        "2014-01~2019-12": {
+          "months": 72,
+          "cagr_pct": 22.091478530395822,
+          "monthly_mdd_pct": -39.35263080567357,
+          "worst_month_pct": -29.35666666666667,
+          "final_multiple": 3.3121661811203817
+        },
+        "2020-01~2026-10": {
+          "months": 82,
+          "cagr_pct": 99.82704006575656,
+          "monthly_mdd_pct": -14.467916766387246,
+          "worst_month_pct": -12.201666666666666,
+          "final_multiple": 113.36284733269343
+        },
+        "2014-01~2026-10": {
+          "months": 154,
+          "cagr_pct": 58.71458817147196,
+          "monthly_mdd_pct": -39.35263080567357,
+          "worst_month_pct": -29.35666666666667,
+          "final_multiple": 375.4765891308601
+        }
+      },
+      "years": {
+        "2010": {
+          "months": 12,
+          "cagr_pct": 18.249230095894973,
+          "monthly_mdd_pct": -16.41449587002251,
+          "worst_month_pct": -15.483333333333334,
+          "final_multiple": 1.1824923009589496
+        },
+        "2011": {
+          "months": 12,
+          "cagr_pct": -23.13053384370205,
+          "monthly_mdd_pct": -23.13053384370205,
+          "worst_month_pct": -11.939166666666669,
+          "final_multiple": 0.7686946615629795
+        },
+        "2012": {
+          "months": 12,
+          "cagr_pct": 2.263741477888631,
+          "monthly_mdd_pct": -9.519166666666669,
+          "worst_month_pct": -9.519166666666669,
+          "final_multiple": 1.0226374147788864
+        },
+        "2013": {
+          "months": 12,
+          "cagr_pct": -6.842483121958324,
+          "monthly_mdd_pct": -22.77736622666436,
+          "worst_month_pct": -11.004166666666666,
+          "final_multiple": 0.9315751687804168
+        },
+        "2014": {
+          "months": 12,
+          "cagr_pct": 31.430359200570315,
+          "monthly_mdd_pct": -5.823138520950313,
+          "worst_month_pct": -3.43888362239324,
+          "final_multiple": 1.3143035920057031
+        },
+        "2015": {
+          "months": 12,
+          "cagr_pct": 38.13579599061567,
+          "monthly_mdd_pct": -13.103680246505542,
+          "worst_month_pct": -11.256666666666666,
+          "final_multiple": 1.3813579599061567
+        },
+        "2016": {
+          "months": 12,
+          "cagr_pct": -21.287538804830625,
+          "monthly_mdd_pct": -31.898336187534067,
+          "worst_month_pct": -29.35666666666667,
+          "final_multiple": 0.7871246119516937
+        },
+        "2017": {
+          "months": 12,
+          "cagr_pct": 28.79842009285911,
+          "monthly_mdd_pct": -10.945833333333333,
+          "worst_month_pct": -10.945833333333333,
+          "final_multiple": 1.2879842009285911
+        },
+        "2018": {
+          "months": 12,
+          "cagr_pct": 50.00019158465583,
+          "monthly_mdd_pct": -4.980908888373361,
+          "worst_month_pct": -2.8991666666666664,
+          "final_multiple": 1.5000019158465583
+        },
+        "2019": {
+          "months": 12,
+          "cagr_pct": 19.967704036010023,
+          "monthly_mdd_pct": -14.0625,
+          "worst_month_pct": -14.0625,
+          "final_multiple": 1.1996770403601003
+        },
+        "2020": {
+          "months": 12,
+          "cagr_pct": 278.15112094989547,
+          "monthly_mdd_pct": -7.119166666666667,
+          "worst_month_pct": -7.119166666666667,
+          "final_multiple": 3.7815112094989547
+        },
+        "2021": {
+          "months": 12,
+          "cagr_pct": 74.17815700554495,
+          "monthly_mdd_pct": -14.467916766387246,
+          "worst_month_pct": -12.201666666666666,
+          "final_multiple": 1.7417815700554495
+        },
+        "2022": {
+          "months": 12,
+          "cagr_pct": 6.407545786811648,
+          "monthly_mdd_pct": -8.71274044740567,
+          "worst_month_pct": -4.4159751037344375,
+          "final_multiple": 1.0640754578681164
+        },
+        "2023": {
+          "months": 12,
+          "cagr_pct": 103.24504644022728,
+          "monthly_mdd_pct": -7.786768202178206,
+          "worst_month_pct": -7.255833333333334,
+          "final_multiple": 2.032450464402273
+        },
+        "2024": {
+          "months": 12,
+          "cagr_pct": 54.87963151993929,
+          "monthly_mdd_pct": -11.64679169240449,
+          "worst_month_pct": -11.110833333333334,
+          "final_multiple": 1.5487963151993929
+        },
+        "2025": {
+          "months": 12,
+          "cagr_pct": 69.50070835269416,
+          "monthly_mdd_pct": -8.768900312500001,
+          "worst_month_pct": -4.557500000000001,
+          "final_multiple": 1.6950070835269415
+        },
+        "2026": {
+          "months": 10,
+          "cagr_pct": 278.4287563277396,
+          "monthly_mdd_pct": 0.0,
+          "worst_month_pct": 0.0,
+          "final_multiple": 3.0314711680212048
+        }
+      }
+    }
+  },
+  "exposure": {
+    "vol_target15_mean": 0.6192103379932293,
+    "vol_target15_min": 0.2105631329645764,
+    "extension_months": 15
+  },
+  "posthoc_references": {
+    "portfolio50_cash50": {
+      "weight": 0.5,
+      "months": 202,
+      "cagr_pct": 21.568543181496928,
+      "monthly_mdd_pct": -19.29138888710942,
+      "worst_month_pct": -7.741666666666667,
+      "final_multiple": 26.780812031741455
+    },
+    "constant_mean_vol_exposure_posthoc": {
+      "weight": 0.6192103379932293,
+      "months": 202,
+      "cagr_pct": 26.753280354084982,
+      "monthly_mdd_pct": -23.859045222609403,
+      "worst_month_pct": -9.587440066595168,
+      "final_multiple": 54.09369669772032
+    }
+  },
+  "input_sha256": {
+    "reconstructed_stocks.csv": "6aa154bcf96f7593584c4bf69c5e16b16e6de534a8072afe9a9b6e31b41b5f81",
+    "source_kospi_complete.csv": "591fdc81d3c69f943804d9af3fec1d133065a06ad2d8723d288aae7f4a1c181a",
+    "gold_monthly.csv": "8702f6c33c664e18e983e4aadd9a51fb3dcd1e935714c44b9cd8d7e2c0441a66",
+    "monthly_returns.csv": "aa31f20a5d30b5b961eb3e2d62cf64bc857ac29866f53d4c0ea0e3171320af23"
+  },
+  "limitations": [
+    "같은 과거구간을 본 뒤 제안한 탐색으로 표본외 검증 아님",
+    "초기 금프록시·기업행동/상폐정산 미검증 한계 동일",
+    "월별비중은 엔진의 순수익/내재비용에 비례 적용, 현금이자0, 정밀 체결비용 미반영",
+    "고정비중·변동성목표가 미래MDD 상한을 보장하지 않음",
+    "후보 조합이나 격자 최적화 없음; 라이브 수정 없음"
+  ]
+}
