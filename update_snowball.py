@@ -18,7 +18,7 @@ import os
 import sys
 import pandas as pd
 import numpy as np
-from datetime import datetime
+from datetime import datetime, timedelta
 
 MONTHLY_DIR = 'data/snowball/monthly'
 
@@ -205,10 +205,37 @@ def _http_get(url, timeout=20):
     return r.text
 
 
-def fetch_div_multpl():
+def select_dividend_monthly_observations(raw_series, completed_through):
+    """완료된 관측치만 월별 배당수익률로 고른다.
+
+    multpl은 월말이 휴장일일 때 마지막 거래일 값과 달력 월말 추정치를 함께
+    싣는다. 전자를 우선하되, 과거 월봉처럼 월말 행 하나만 있는 경우에는 그
+    값을 보존한다. 아직 도래하지 않은 날짜의 추정치는 사용하지 않는다.
+    """
+    if raw_series is None or raw_series.empty:
+        return pd.Series(dtype=float)
+
+    s = raw_series.copy()
+    s.index = pd.to_datetime(s.index)
+    s = s[~s.index.duplicated(keep='last')].sort_index()
+    cutoff = pd.Timestamp(completed_through).normalize()
+    s = s[s.index.normalize() <= cutoff]
+    if s.empty:
+        return pd.Series(dtype=float)
+
+    selected = {}
+    for month, values in s.groupby(s.index.to_period('M'), sort=True):
+        weekday_values = values[values.index.dayofweek < 5]
+        # 같은 달에 거래일 값이 있으면 달력 월말 추정치보다 그것을 쓴다.
+        chosen = weekday_values.iloc[-1] if not weekday_values.empty else values.iloc[-1]
+        selected[month] = chosen
+    return pd.Series(selected, dtype=float).sort_index()
+
+
+def fetch_div_multpl(completed_through=None):
     """
     multpl.com에서 월별 배당수익률 테이블 파싱.
-    Returns: Series(index=Timestamp(월말), values=배당%) 또는 None
+    Returns: Series(index=Period(월), values=배당%) 또는 None
     """
     from bs4 import BeautifulSoup
     html = _http_get("https://www.multpl.com/s-p-500-dividend-yield/table/by-month")
@@ -230,10 +257,12 @@ def fetch_div_multpl():
     if not records:
         return None
     s = pd.Series({d: v for d, v in records}).sort_index()
-    return s
+    if completed_through is None:
+        completed_through = datetime.now().date() - timedelta(days=1)
+    return select_dividend_monthly_observations(s, completed_through)
 
 
-def fetch_div_dqydj():
+def fetch_div_dqydj(completed_through=None):
     """
     dqydj.com에서 배당수익률 파싱 (테이블 또는 임베디드 데이터).
     Returns: Series 또는 None
@@ -254,7 +283,10 @@ def fetch_div_dqydj():
                 except (ValueError, TypeError):
                     continue
         if len(records) > 12:  # 충분한 데이터가 있는 테이블
-            return pd.Series({d: v for d, v in records}).sort_index()
+            s = pd.Series({d: v for d, v in records}).sort_index()
+            if completed_through is None:
+                completed_through = datetime.now().date() - timedelta(days=1)
+            return select_dividend_monthly_observations(s, completed_through)
     return None
 
 
@@ -266,12 +298,16 @@ def update_dividend():
     """
     print("💰 S&P 500 배당수익률 수집 시작...")
     
+    # 매일 KST 07:01에 실행한다. 직전 KST 날짜까지는 미국 장 마감이 끝난
+    # 상태이므로, 그 뒤 날짜(소스가 미리 제시한 월말 추정치)는 제외한다.
+    completed_through = datetime.now().date() - timedelta(days=1)
     new_series = None
     for name, fn in [('multpl', fetch_div_multpl), ('dqydj', fetch_div_dqydj)]:
         try:
-            s = fn()
+            s = fn(completed_through=completed_through)
             if s is not None and len(s) > 0:
-                print(f"  ✅ {name}로 {len(s)}개 데이터 수집 (최근 {s.index[-1].date()}={s.iloc[-1]}%)")
+                latest_date = s.index[-1].to_timestamp(how='end').date()
+                print(f"  ✅ {name}로 {len(s)}개 데이터 수집 (최근 {latest_date}={s.iloc[-1]}%)")
                 new_series = s
                 break
             else:
@@ -300,12 +336,18 @@ def update_dividend():
     
     # 월 단위로 병합 (새 데이터 우선)
     new_monthly = new_series.copy()
-    new_monthly.index = pd.to_datetime(new_monthly.index).to_period('M')
+    if isinstance(new_monthly.index, pd.PeriodIndex):
+        new_monthly.index = new_monthly.index.asfreq('M')
+    else:
+        new_monthly.index = pd.to_datetime(new_monthly.index).to_period('M')
     new_monthly = new_monthly[~new_monthly.index.duplicated(keep='last')]
     
     if existing is not None and len(existing) > 0:
         existing.index = pd.to_datetime(existing.index).to_period('M')
         existing = existing[~existing.index.duplicated(keep='last')]
+        # 이전 로직이 현월의 미래 추정치를 저장했을 수 있다. 이번 수집값으로
+        # 현월을 다시 만들기 위해 기존 현월·미래월 값은 베이스에서 제거한다.
+        existing = existing[existing.index < pd.Period(completed_through, freq='M')]
         # 기존을 베이스로, 새 데이터로 덮어쓰기 (combine_first 반대 방향)
         merged = new_monthly.combine_first(existing).sort_index()
     else:
