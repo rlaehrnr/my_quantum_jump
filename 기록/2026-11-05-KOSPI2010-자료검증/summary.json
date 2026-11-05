@@ -1,0 +1,33 @@
+{
+  "status": "research_only_not_live",
+  "start": "2010-01",
+  "end": "2014-01",
+  "months": 49,
+  "rows": 9800,
+  "overlap_codes": 200,
+  "overlap_return_max_difference_pp": 4.5600000000000005,
+  "overlap_return_mean_difference_pp": 0.023849999999999986,
+  "corporate_action_affected_stock_months": 66,
+  "missing_momentum": {
+    "1개월(%)": 32,
+    "3개월(%)": 100,
+    "6개월(%)": 205,
+    "12개월(%)": 427
+  },
+  "source_sha256": {
+    "marcap-2008.parquet": "b56e7c327bb1a0ea7433d622fab91b22882d0691af780f05b2e3ddf4ee77de84",
+    "marcap-2009.parquet": "a51254e74576110d306f33e94188d30f210b1205b1788bc97227751a6d9779c3",
+    "marcap-2010.parquet": "ff6add46f32dbd1bbf8223ba4551a784ab4e9f46b85229b41e661c07b4c10323",
+    "marcap-2011.parquet": "f0b06750856c0f31583833128517f0457e47cdd1256ad69f6231343881ea0269",
+    "marcap-2012.parquet": "e9a6e7cfaa8f1adf490ec82fd8aebd9ff5852559b459aa4f744a007bdb09a200",
+    "marcap-2013.parquet": "6796b4985ed9e3bec36e597a5e06bfc5f2ebd526d7f3d3b87c53f618b649de9b",
+    "marcap-2014.parquet": "4e8ec59dd7bbc6a58ba4d3e90f271e6eb5fd87b603a4360247c016497eefe351"
+  },
+  "limitations": [
+    "월말 거래량 0 종목 제외는 과거 2014-02 접합에 맞춘 연구 가정; 현 로봇과는 차이 있음",
+    "KRX 기준가격 연결은 배당·인적분할 수령주식·상장폐지 정산을 포함한 총수익이 아님",
+    "가격 누락 시 직전 관측값 사용; 거래정지/상장폐지 개별 검산 필요",
+    "기존 2014 초반 모멘텀 결측을 고치지 않음; 완전 일치 재현 주장은 불가",
+    "2014년 이전 금 프록시 검증·연결 및 전체 전략 성과 검증은 후속"
+  ]
+}
