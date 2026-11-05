@@ -1,0 +1,99 @@
+{
+  "results": {
+    "2": {
+      "ensemble": {
+        "months": 202,
+        "cagr_pct": 43.3263228255332,
+        "monthly_mdd_pct": -37.94558383961078,
+        "worst_month_pct": -15.483333333333334,
+        "final_multiple": 428.0425795861376
+      },
+      "running_horse": {
+        "months": 202,
+        "cagr_pct": 48.644911210091045,
+        "monthly_mdd_pct": -52.4180590992849,
+        "worst_month_pct": -24.46,
+        "final_multiple": 790.42215802456
+      },
+      "segments": {
+        "2010-01~2013-12": {
+          "months": 48,
+          "cagr_pct": -5.348534181973062,
+          "monthly_mdd_pct": -35.758143312307055,
+          "worst_month_pct": -15.483333333333334,
+          "final_multiple": 0.802618888785408
+        },
+        "2014-01~2019-12": {
+          "months": 72,
+          "cagr_pct": 26.86126767994079,
+          "monthly_mdd_pct": -13.103680246505542,
+          "worst_month_pct": -11.256666666666666,
+          "final_multiple": 4.168446971275317
+        },
+        "2020-01~2026-10": {
+          "months": 82,
+          "cagr_pct": 103.39578494007769,
+          "monthly_mdd_pct": -16.223105099894035,
+          "worst_month_pct": -12.201666666666666,
+          "final_multiple": 127.93910711834813
+        }
+      }
+    },
+    "4": {
+      "ensemble": {
+        "months": 202,
+        "cagr_pct": 37.007592000921676,
+        "monthly_mdd_pct": -36.62236260365147,
+        "worst_month_pct": -16.984583333333333,
+        "final_multiple": 200.38628563035363
+      },
+      "running_horse": {
+        "months": 202,
+        "cagr_pct": 37.40240281978818,
+        "monthly_mdd_pct": -49.79628254135999,
+        "worst_month_pct": -18.1175,
+        "final_multiple": 210.3315938853756
+      },
+      "segments": {
+        "2010-01~2013-12": {
+          "months": 48,
+          "cagr_pct": -4.009426771773203,
+          "monthly_mdd_pct": -32.87553913161022,
+          "worst_month_pct": -16.984583333333333,
+          "final_multiple": 0.8490130009609738
+        },
+        "2014-01~2019-12": {
+          "months": 72,
+          "cagr_pct": 24.49277005472779,
+          "monthly_mdd_pct": -13.10000829519567,
+          "worst_month_pct": -11.252916666666664,
+          "final_multiple": 3.7227578021363885
+        },
+        "2020-01~2026-10": {
+          "months": 82,
+          "cagr_pct": 83.53560288759152,
+          "monthly_mdd_pct": -16.288151872409582,
+          "worst_month_pct": -13.830416666666666,
+          "final_multiple": 63.39994368095184
+        }
+      }
+    }
+  },
+  "top4_better_months": 39,
+  "top4_worse_months": 53,
+  "same_months": 110,
+  "independent_trade_aggregation_max_error": 0.0,
+  "baseline_reproduced": true,
+  "input_sha256": {
+    "reconstructed_stocks.csv": "6aa154bcf96f7593584c4bf69c5e16b16e6de534a8072afe9a9b6e31b41b5f81",
+    "source_kospi_complete.csv": "591fdc81d3c69f943804d9af3fec1d133065a06ad2d8723d288aae7f4a1c181a",
+    "gold_monthly.csv": "8702f6c33c664e18e983e4aadd9a51fb3dcd1e935714c44b9cd8d7e2c0441a66"
+  },
+  "assumptions": [
+    "퍼펙트1~6 고정, 달리는말1~2/1~4만 비교",
+    "필터·금방어·비용·202개월 입력 동일",
+    "기간 구간분석은 연속운용 월수익을 잘라 초기원금1로 환산",
+    "인적분할/상폐정산 미검증 및 2014이전 금프록시 한계 동일",
+    "사후 비교이며 독립 표본외 검증 아님; 라이브 변경 없음"
+  ]
+}
