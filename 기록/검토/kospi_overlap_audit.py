@@ -21,7 +21,7 @@ MOM = ['1개월(%)','3개월(%)','6개월(%)','12개월(%)']
 ENS = '앙상블 (50:50 전략)'
 
 
-def reconstruct(source_dir):
+def reconstruct(source_dir, end_month='2026-09'):
     monthly, manifest = [], {}
     for year in range(2008, 2027):
         path = source_dir / f'marcap-{year}.parquet'
@@ -50,7 +50,7 @@ def reconstruct(source_dir):
     rows=[]
     for month, snapshot in m.groupby('month'):
         invest = month+1
-        if not pd.Period('2010-01') <= invest <= pd.Period('2026-09'):
+        if not pd.Period('2010-01') <= invest <= pd.Period(end_month):
             continue
         snapshot = snapshot[(snapshot.Volume>0)&(snapshot.Close>0)&(snapshot.Marcap>0)]
         snapshot = snapshot.sort_values('Marcap',ascending=False).head(200)
@@ -150,8 +150,8 @@ def main():
     folder=ROOT/'기록/2026-11-05-KOSPI2010-자료검증'
     # 현재 Naver 경로가 최근 3000행만 주면 2011을 포함하지 못한다.
     # 2011 진단은 예비 실험 당시 저장해 둔 Yahoo 지수를 사용한다.
-    diagnostic_idx=pd.read_csv(folder/'source_kospi.csv',index_col=0,parse_dates=True)
-    diagnostic_idx.index=pd.to_datetime(diagnostic_idx.index,utc=True).tz_localize(None).normalize()
+    diagnostic_idx=pd.read_csv(folder/'source_kospi.csv',index_col=0)
+    diagnostic_idx.index=pd.to_datetime(diagnostic_idx.index.astype(str).str[:10])
     detail=pd.read_csv(folder/'research_details.csv'); y=detail[detail['투자월'].str.startswith('2011')].copy()
     atk=ENS+' · 공격시_수익률(%)'
     diag={'actual_annual':float(((1+y[ENS]/100).prod()-1)*100),'always_attack_annual':float(((1+y[atk]/100).prod()-1)*100)}

@@ -1,0 +1,135 @@
+{
+  "period": [
+    "2010-01",
+    "2026-10"
+  ],
+  "months": 202,
+  "stats": {
+    "🔥 퍼펙트 상승 (1~6위)": {
+      "cagr_pct": 35.422203269314934,
+      "monthly_mdd_pct": -25.82356619714319,
+      "final_multiple": 164.73260570283986,
+      "october_2026_return_pct": 0.0
+    },
+    "🐎 달리는 말 (1~2위)": {
+      "cagr_pct": 48.644911210091045,
+      "monthly_mdd_pct": -52.4180590992849,
+      "final_multiple": 790.42215802456,
+      "october_2026_return_pct": 0.0
+    },
+    "앙상블 (50:50 전략)": {
+      "cagr_pct": 43.3263228255332,
+      "monthly_mdd_pct": -37.94558383961078,
+      "final_multiple": 428.0425795861376,
+      "october_2026_return_pct": 0.0
+    },
+    "앙상블 (달리는말 우선 50:50)": {
+      "cagr_pct": 41.65984641806218,
+      "monthly_mdd_pct": -30.027943652537882,
+      "final_multiple": 351.5501099241446,
+      "october_2026_return_pct": 0.0
+    },
+    "통합 전략 (중복 제외 1/N)": {
+      "cagr_pct": 38.23733090062355,
+      "monthly_mdd_pct": -22.25816845999272,
+      "final_multiple": 232.912727006193,
+      "october_2026_return_pct": 0.0
+    },
+    "통합 전략 (중복 인정 1/N)": {
+      "cagr_pct": 39.792090737078745,
+      "monthly_mdd_pct": -29.70480168624999,
+      "final_multiple": 281.162311059695,
+      "october_2026_return_pct": 0.0
+    }
+  },
+  "stock_source_manifest": {
+    "marcap-2008.parquet": {
+      "sha256": "b56e7c327bb1a0ea7433d622fab91b22882d0691af780f05b2e3ddf4ee77de84",
+      "invalid_reference_rows": 0
+    },
+    "marcap-2009.parquet": {
+      "sha256": "a51254e74576110d306f33e94188d30f210b1205b1788bc97227751a6d9779c3",
+      "invalid_reference_rows": 8
+    },
+    "marcap-2010.parquet": {
+      "sha256": "ff6add46f32dbd1bbf8223ba4551a784ab4e9f46b85229b41e661c07b4c10323",
+      "invalid_reference_rows": 0
+    },
+    "marcap-2011.parquet": {
+      "sha256": "f0b06750856c0f31583833128517f0457e47cdd1256ad69f6231343881ea0269",
+      "invalid_reference_rows": 0
+    },
+    "marcap-2012.parquet": {
+      "sha256": "e9a6e7cfaa8f1adf490ec82fd8aebd9ff5852559b459aa4f744a007bdb09a200",
+      "invalid_reference_rows": 0
+    },
+    "marcap-2013.parquet": {
+      "sha256": "6796b4985ed9e3bec36e597a5e06bfc5f2ebd526d7f3d3b87c53f618b649de9b",
+      "invalid_reference_rows": 0
+    },
+    "marcap-2014.parquet": {
+      "sha256": "4e8ec59dd7bbc6a58ba4d3e90f271e6eb5fd87b603a4360247c016497eefe351",
+      "invalid_reference_rows": 0
+    },
+    "marcap-2015.parquet": {
+      "sha256": "c6f3bbf8ef800cf7dc4fcdc7e6acc57d770a2c1d2f7f3753b032b9d9f3b7a970",
+      "invalid_reference_rows": 0
+    },
+    "marcap-2016.parquet": {
+      "sha256": "947746ac36de3b3385f4335a6a051fba49007f50dbefe3e0589ec77a3e03f0e2",
+      "invalid_reference_rows": 0
+    },
+    "marcap-2017.parquet": {
+      "sha256": "a8a40c5013238e2be8e13d52d306e77667efeef5aaeed16fdad38ed27b7755a4",
+      "invalid_reference_rows": 0
+    },
+    "marcap-2018.parquet": {
+      "sha256": "a03348ab0747972c6a353f52c636494abf216392d401cde823b6388e23f1c443",
+      "invalid_reference_rows": 0
+    },
+    "marcap-2019.parquet": {
+      "sha256": "7d2f4018558b9409485da83c7f539692ecbb2be206f7a800cc0f3f84cbdbe503",
+      "invalid_reference_rows": 0
+    },
+    "marcap-2020.parquet": {
+      "sha256": "565f55ef141f58b3ec74c7ccb733fc551b7c6e30fbc7a1da59a78c23e7230806",
+      "invalid_reference_rows": 0
+    },
+    "marcap-2021.parquet": {
+      "sha256": "ede65acaaa9ee61f56564f6a66840133ff4bbab9d2dbc21437f41b4c8d20199e",
+      "invalid_reference_rows": 0
+    },
+    "marcap-2022.parquet": {
+      "sha256": "179650f5d1bd6abecb03d1b8eddf5f59c5ca6a0402e7bf2578635790b9ca811c",
+      "invalid_reference_rows": 0
+    },
+    "marcap-2023.parquet": {
+      "sha256": "08f96990358f5afc4e17321613cef7126e2f0bd4290b82db952b7808d87f9c22",
+      "invalid_reference_rows": 0
+    },
+    "marcap-2024.parquet": {
+      "sha256": "b0c38943e67637d5faf88429880092cf0f46a394be39860dd3bcd0b04231bccb",
+      "invalid_reference_rows": 0
+    },
+    "marcap-2025.parquet": {
+      "sha256": "2bfd93c217eb74263bc5020b23fa6debb6b02531c11eaccc2826639bc191559e",
+      "invalid_reference_rows": 0
+    },
+    "marcap-2026.parquet": {
+      "sha256": "6b067e380de3e12d8ee08372e070073f178268246882f7f2b2ea521093da07a4",
+      "invalid_reference_rows": 0
+    }
+  },
+  "index_join": "2014-08-12",
+  "index_prefix_scale": 1.0000000143508725,
+  "gold_proxy_join": "2014-03-24",
+  "gold_proxy_scale": 1.0158419163067915,
+  "assumptions": [
+    "월말 MDD; 최초 원금1 포함",
+    "편도0.25%·엔진 왕복0.5% 비용",
+    "KRX 금 개장 전 국제금x환율 대체값, 미국/FX 관측 1달력일 지연",
+    "과거지수 Yahoo+현재Naver 접합, 120거래일 초기 이력 확보",
+    "종목 기업행동 기준가격 방식, 배당/인적분할 신주/상폐정산 미검증 예외 존재",
+    "라이브 코드와 아카이브는 변경하지 않음"
+  ]
+}
