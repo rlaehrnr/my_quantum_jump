@@ -1593,11 +1593,11 @@ STRAT_META = [
 ]
 
 
-@st.cache_data(ttl="1h", show_spinner=False)
 def build_all_strategy_returns(cost_rate):
-    """7개 전략의 월별 순수익률을 한 프레임으로 (index=보유월 문자열).
+    """6개 전략의 월별 순수익률을 한 프레임으로 (index=보유월 문자열).
 
-    각 탭이 쓰는 것과 동일한 신호·백테스트 함수를 그대로 호출한다.
+    각 탭과 같은 데이터·신호·백테스트 캐시를 재사용한다. 합산에는 별도 캐시를
+    두지 않아 원본이 갱신된 실행에서 새 월이 바로 반영된다.
     비어 있는 달(전략마다 시작 시점이 다름)은 NaN.
     """
     ko_p = load_ko_prices()
@@ -1624,7 +1624,6 @@ def build_all_strategy_returns(cost_rate):
     return pd.DataFrame(out).sort_index()
 
 
-@st.cache_data(ttl="1h", show_spinner=False)
 def build_current_states():
     """전략별 '이번 달' 국면(공격/방어). 추천 비중의 국면 기울기에 쓴다."""
     ko_p = load_ko_prices(); pen_p = load_pen_prices()
@@ -1805,10 +1804,10 @@ def render_combined():
                "전체 자산이 실제로 얼마나 움직였는지 한 화면에서 보입니다.")
 
     cost_pct = st.number_input("거래비용 (%/교체)", 0.0, 1.0, 0.25, 0.05,
-                               key="comb_cost", help="7개 전략에 동일 적용")
+                               key="comb_cost", help="모든 전략에 동일 적용")
     cost_rate = cost_pct / 100.0
 
-    with st.spinner("7개 전략 백테스트 중..."):
+    with st.spinner("전략별 월수익률 계산 중..."):
         R = build_all_strategy_returns(cost_rate)
     if R.empty:
         st.error("전략 수익률을 계산할 수 없습니다.")
@@ -2004,6 +2003,8 @@ def render_combined():
                    f"그 이전은 당시 가용한 전략끼리 비중을 재정규화해 계산했습니다.")
     c1, c2, c3, c4, c5, c6 = st.columns(6)
     base = s_full or s_all
+    span = base['ret'].index
+    latest_month = span[-1]
     c1.metric("CAGR", f"{base['cagr']*100:.1f}%")
     c2.metric("MDD", f"{base['mdd']*100:.1f}%", delta_color="inverse")
     c3.metric("Sortino", f"{base['sortino']:.2f}",
@@ -2013,15 +2014,15 @@ def render_combined():
               help="상승·하락 변동성을 똑같이 위험으로 본다. 참고용.")
     c5.metric("누적 수익", f"{base['cum']*100:,.0f}%")
     c6.metric("승률", f"{base['win']*100:.0f}%", delta=f"{base['n']}개월")
+    st.caption(f"성과 집계 기간 **{span[0]}~{latest_month}** · {base['n']}개월 · "
+               f"최근 확정월 수익률 **{base['ret'].iloc[-1]:+.2%}**")
     if first_full and s_all:
-        st.caption(f"※ 위 지표는 전 전략 공통구간({first_full}~) 기준입니다. "
-                   f"전체 구간({s_all['n']}개월) 기준으로는 "
+        st.caption(f"※ 가용 전략을 포함한 전체 구간({s_all['n']}개월) 기준으로는 "
                    f"CAGR {s_all['cagr']*100:.1f}% · MDD {s_all['mdd']*100:.1f}% · "
                    f"Sortino {s_all['sortino']:.2f} · Sharpe {s_all['sharpe']:.2f}.")
 
     # ---- 개별 vs 통합 비교표 ----
     st.markdown("#### 3️⃣ 개별 전략 vs 통합 (공통구간, 같은 자로 비교)")
-    span = base['ret'].index
     rows = []
     nmap = dict((k, n) for k, n, _ in STRAT_META)
     for key in W:
@@ -2031,15 +2032,15 @@ def render_combined():
         rows.append({'전략': nmap[key], '비중': f"{W[key]*100:.1f}%",
                      'CAGR': s['cagr']*100, 'MDD': s['mdd']*100,
                      'Sortino': s['sortino'], 'Sharpe': s['sharpe'],
-                     '2026-07': R.loc['2026-07', key]*100 if '2026-07' in R.index else np.nan})
+                     latest_month: R.loc[latest_month, key]*100})
     rows.append({'전략': '★ 통합 포트', '비중': '100%',
                  'CAGR': base['cagr']*100, 'MDD': base['mdd']*100,
                  'Sortino': base['sortino'], 'Sharpe': base['sharpe'],
-                 '2026-07': port.get('2026-07', np.nan)*100})
+                 latest_month: base['ret'].iloc[-1]*100})
     cmp_df = pd.DataFrame(rows)
     st.dataframe(
         cmp_df.style.format({'CAGR': '{:.2f}%', 'MDD': '{:.2f}%', 'Sortino': '{:.2f}',
-                             'Sharpe': '{:.2f}', '2026-07': '{:.2f}%'})
+                             'Sharpe': '{:.2f}', latest_month: '{:.2f}%'}, na_rep='—')
         .apply(lambda s: ['font-weight:800; background-color:rgba(59,130,246,.15)'
                           if v == '★ 통합 포트' else '' for v in cmp_df['전략']], axis=0),
         width="stretch", hide_index=True, key="comb_cmp")
