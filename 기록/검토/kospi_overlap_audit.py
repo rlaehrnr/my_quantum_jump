@@ -16,17 +16,25 @@ ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT))
 from utils import calculator as c
 from utils.archive_store import load_frames
+from utils.data_loader import normalize_stock_code
 
 MOM = ['1개월(%)','3개월(%)','6개월(%)','12개월(%)']
 ENS = '앙상블 (50:50 전략)'
 
 
-def reconstruct(source_dir, end_month='2026-09'):
+def reconstruct(source_dir, end_month='2026-09', start_month='2010-01'):
+    start = pd.Period(start_month, freq='M')
+    end = pd.Period(end_month, freq='M')
+    source_year = min(2008, (start - 13).year)
     monthly, manifest = [], {}
-    for year in range(2008, 2027):
+    for year in range(source_year, end.year + 1):
         path = source_dir / f'marcap-{year}.parquet'
         d = pd.read_parquet(path)
-        d = d[(d.MarketId == 'STK') & d.Code.str.endswith('0')].copy()
+        d = d[d.MarketId == 'STK'].copy()
+        # 2000년 원천에서 5930 → 005930으로 표기가 바뀐다. 같은 이력을 이어야 한다.
+        code_map = {code: normalize_stock_code(code) for code in d.Code.unique()}
+        d['Code'] = d.Code.map(code_map)
+        d = d[d.Code.str.endswith('0')].copy()
         d = d.sort_values(['Code','Date'])
         d['month'] = d.Date.dt.to_period('M')
         reference = d.Close - d.Changes
@@ -41,7 +49,7 @@ def reconstruct(source_dir, end_month='2026-09'):
         manifest[path.name] = {'sha256':hashlib.sha256(path.read_bytes()).hexdigest(),'invalid_reference_rows':int((~valid).sum())}
         print(f'집계 {year}', flush=True)
     m = pd.concat(monthly, ignore_index=True)
-    grid = pd.period_range('2008-01','2026-12',freq='M')
+    grid = pd.period_range(f'{source_year}-01', f'{end.year}-12', freq='M')
     f = m.pivot(index='month',columns='Code',values='month_factor').reindex(grid)
     level = f.cumprod()
     retmaps = {n:(level/level.shift(n)-1)*100 for n in [1,3,6,12]}
@@ -50,7 +58,7 @@ def reconstruct(source_dir, end_month='2026-09'):
     rows=[]
     for month, snapshot in m.groupby('month'):
         invest = month+1
-        if not pd.Period('2010-01') <= invest <= pd.Period(end_month):
+        if not start <= invest <= end:
             continue
         snapshot = snapshot[(snapshot.Volume>0)&(snapshot.Close>0)&(snapshot.Marcap>0)]
         snapshot = snapshot.sort_values('Marcap',ascending=False).head(200)

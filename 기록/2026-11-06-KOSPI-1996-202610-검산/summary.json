@@ -1,0 +1,370 @@
+{
+  "months": 365,
+  "source_manifest": {
+    "marcap-1995.parquet": {
+      "sha256": "24d354d939e2f13a3076f85b9515d5e42e2ddfc03016f8c629ec360c5ec3eee0",
+      "invalid_reference_rows": 0
+    },
+    "marcap-1996.parquet": {
+      "sha256": "d37d03a8582c2be6a8bd2d615b28b6e86c70ed9a818264b9962a8132ad4292b1",
+      "invalid_reference_rows": 0
+    },
+    "marcap-1997.parquet": {
+      "sha256": "f055cccac6b8daa331998d653010abb153373861e48007ee1297f99e8168d236",
+      "invalid_reference_rows": 0
+    },
+    "marcap-1998.parquet": {
+      "sha256": "2a0c91876d44267133aece1ada92e3873db3d4e4dcd58491eb8438cd1a0cbf99",
+      "invalid_reference_rows": 831
+    },
+    "marcap-1999.parquet": {
+      "sha256": "e6b8d791cdd40aeb8a4960ad842e762401c4c4fd4879690f05e668ba25bb5a72",
+      "invalid_reference_rows": 43
+    },
+    "marcap-2000.parquet": {
+      "sha256": "2b130e1cfdbe475f25dd429fb8754a094d5c6ca3fbef376de14dde3093faca9c",
+      "invalid_reference_rows": 2
+    },
+    "marcap-2001.parquet": {
+      "sha256": "995af4b9fb9d16640d2079ea4b75ef3c6fae2e779a0ff6c4378185af749eebf0",
+      "invalid_reference_rows": 0
+    },
+    "marcap-2002.parquet": {
+      "sha256": "c43d2550b8cc81b2f8c0602ecbaa2754d2601405200ccc76ad4ee62b316fbf58",
+      "invalid_reference_rows": 0
+    },
+    "marcap-2003.parquet": {
+      "sha256": "ab88a3937e8665f4690a5caadd291f80116cbaea829c0b4f609760e9d85526d8",
+      "invalid_reference_rows": 0
+    },
+    "marcap-2004.parquet": {
+      "sha256": "a4443aa39a80b7ee0f22ac923102316690a5481d4b863d6067b8ea728ec1ed02",
+      "invalid_reference_rows": 0
+    },
+    "marcap-2005.parquet": {
+      "sha256": "9e8e5e642c5e821eaf268703c347c5c444c529ba26b8b7c302e6ff95f3113344",
+      "invalid_reference_rows": 4
+    },
+    "marcap-2006.parquet": {
+      "sha256": "f0b98d9b5d058213a357e87665d6558d3da835b47e05758f16b2325a38034c24",
+      "invalid_reference_rows": 2
+    },
+    "marcap-2007.parquet": {
+      "sha256": "c6f7e19ebbf7dfdaca1c4542c540d9924e36ae9d99ac77bbe03fd58a1e0b56e5",
+      "invalid_reference_rows": 0
+    },
+    "marcap-2008.parquet": {
+      "sha256": "b56e7c327bb1a0ea7433d622fab91b22882d0691af780f05b2e3ddf4ee77de84",
+      "invalid_reference_rows": 0
+    },
+    "marcap-2009.parquet": {
+      "sha256": "a51254e74576110d306f33e94188d30f210b1205b1788bc97227751a6d9779c3",
+      "invalid_reference_rows": 8
+    }
+  },
+  "additional_source_sha256": {
+    "ks11-1995.csv": "bceb806c5c381d77ab70fac18fbbdc513170e692a26bff62b1baa10e7778ce4b",
+    "ks11-1996.csv": "ad365d87ed0f522e4b45ac3e364236368f3727fc04a5ca4095d731480836b374",
+    "ks11-1997.csv": "712e8c6bf6e23a642f6a2bd2521a83c7c26290850f3d7d5dfd12747952636813",
+    "ks11-1998.csv": "4beb0d316246f16e943c6cad936c39b389d4fb3972ad2e08ebcee092dd21e638",
+    "ks11-1999.csv": "a9f87a3530d7829107cb056e262810ded1eeccacbca72bfeac2194d7f50379fd",
+    "ks11-2000.csv": "732cc4e53c66e4cbfff4275ab9a5835903be60c28020f825da3df3e3a9b184c7",
+    "ks11-2001.csv": "b20275af5363babae10332f83fb437b612ba775b4f03cb6b06732822bafc1fc6",
+    "ks11-2002.csv": "b0e2eefe68909c10c89a00d0d2a91838b722065bdad8f35d89db74e862385538",
+    "ks11-2003.csv": "6195c87f0e699bd761b06ad3043857d3c39408cdc1dd04ccea68a7f1b02ec423",
+    "ks11-2004.csv": "1053b2dce36ea7071e28f6f79361cf50baa4cbefe78d2bdc3fbe77d42bf071e4",
+    "ks11-2005.csv": "8d108f33b0c2f13d06ff6ec89c0b285df1921ef2a2882f3033d7bc2d42905bf6",
+    "ks11-2006.csv": "9b92831ba69651b052b0d1ed2a769bc3f05481459cbfad1aa16ed791ce5eb8fc",
+    "ks11-2007.csv": "fc65edfd5c79b160b60e2c86b7c9ffba9a14597f7f694c1297dd7e2a2a481478",
+    "ks11-2008.csv": "66cebe49c09eeb040678a87ace2aeb093f8c53172722449064bd932659b000e1",
+    "gold-boe.csv": "30c8672ae0c906ce3992c101b2e5bbc22b88548adafb67a2ac9fdb8e4bec92ad",
+    "dexkous.csv": "0f427cb813286969ca0b725f0b80c5ac9cce1a15277270efc25117ee5e54475b"
+  },
+  "index_join": "2008-01-02",
+  "index_scale": 0.9999999880064199,
+  "gold_join": "2008-01-03",
+  "gold_scale": 1.0287096091219787,
+  "missing_forward_rows": 27,
+  "missing_held": [],
+  "overlap_2010_onward_max_delta_pp": 12.602002654638197,
+  "overlap_2010_onward_changed_months": [
+    "2010-01"
+  ],
+  "stats": {
+    "1996-06~2026-10": {
+      "🔥 퍼펙트 상승 (1~6위)": {
+        "months": 365,
+        "cagr_pct": 23.161731054638416,
+        "monthly_mdd_pct": -65.07552026394805,
+        "worst_month_pct": -32.16166666666666,
+        "final_multiple": 564.9002588136163
+      },
+      "🐎 달리는 말 (1~2위)": {
+        "months": 365,
+        "cagr_pct": 19.630097468882557,
+        "monthly_mdd_pct": -91.64630620200283,
+        "worst_month_pct": -47.32,
+        "final_multiple": 233.1563354843895
+      },
+      "앙상블 (50:50 전략)": {
+        "months": 365,
+        "cagr_pct": 22.928402717852958,
+        "monthly_mdd_pct": -79.6246986388216,
+        "worst_month_pct": -33.905833333333334,
+        "final_multiple": 533.2394327292711
+      },
+      "앙상블 (달리는말 우선 50:50)": {
+        "months": 365,
+        "cagr_pct": 23.37947777910227,
+        "monthly_mdd_pct": -76.16003027376615,
+        "worst_month_pct": -31.162,
+        "final_multiple": 596.08160193536
+      },
+      "통합 전략 (중복 제외 1/N)": {
+        "months": 365,
+        "cagr_pct": 23.960694103491534,
+        "monthly_mdd_pct": -67.66694005816848,
+        "worst_month_pct": -29.517142857142854,
+        "final_multiple": 687.6830400857706
+      },
+      "통합 전략 (중복 인정 1/N)": {
+        "months": 365,
+        "cagr_pct": 23.47639292105017,
+        "monthly_mdd_pct": -72.82433053635135,
+        "worst_month_pct": -30.30875,
+        "final_multiple": 610.4892134759442
+      },
+      "KOSPI 지수(%)": {
+        "months": 365,
+        "cagr_pct": 6.263200837029782,
+        "monthly_mdd_pct": -67.0154691116057,
+        "worst_month_pct": -27.247299531764302,
+        "final_multiple": 6.3457020548694905
+      },
+      "drawdown": {
+        "peak": "1999-04",
+        "trough": "2005-04"
+      }
+    },
+    "1996-06~2009-12": {
+      "🔥 퍼펙트 상승 (1~6위)": {
+        "months": 163,
+        "cagr_pct": 9.190361490180772,
+        "monthly_mdd_pct": -65.07552026394805,
+        "worst_month_pct": -32.16166666666666,
+        "final_multiple": 3.3011870017854514
+      },
+      "🐎 달리는 말 (1~2위)": {
+        "months": 163,
+        "cagr_pct": -10.271129866453357,
+        "monthly_mdd_pct": -91.64630620200283,
+        "worst_month_pct": -47.32,
+        "final_multiple": 0.22943642749965223
+      },
+      "앙상블 (50:50 전략)": {
+        "months": 163,
+        "cagr_pct": 0.5963452787624706,
+        "monthly_mdd_pct": -79.6246986388216,
+        "worst_month_pct": -33.905833333333334,
+        "final_multiple": 1.08411392300756
+      },
+      "앙상블 (달리는말 우선 50:50)": {
+        "months": 163,
+        "cagr_pct": 3.0434884954063115,
+        "monthly_mdd_pct": -76.16003027376615,
+        "worst_month_pct": -31.162,
+        "final_multiple": 1.5026661845612608
+      },
+      "통합 전략 (중복 제외 1/N)": {
+        "months": 163,
+        "cagr_pct": 7.742636266763528,
+        "monthly_mdd_pct": -67.66694005816848,
+        "worst_month_pct": -29.517142857142854,
+        "final_multiple": 2.7537945490194886
+      },
+      "통합 전략 (중복 인정 1/N)": {
+        "months": 163,
+        "cagr_pct": 5.196173802498074,
+        "monthly_mdd_pct": -72.82433053635135,
+        "worst_month_pct": -30.30875,
+        "final_multiple": 1.9899060471694487
+      },
+      "KOSPI 지수(%)": {
+        "months": 163,
+        "cagr_pct": 4.688487649103125,
+        "monthly_mdd_pct": -67.0154691116057,
+        "worst_month_pct": -27.247299531764302,
+        "final_multiple": 1.8633470239543184
+      },
+      "drawdown": {
+        "peak": "1999-04",
+        "trough": "2005-04"
+      }
+    },
+    "1997-01~1998-12": {
+      "🔥 퍼펙트 상승 (1~6위)": {
+        "months": 24,
+        "cagr_pct": 40.77228231966918,
+        "monthly_mdd_pct": -29.358140558094554,
+        "worst_month_pct": -23.906666666666666,
+        "final_multiple": 1.9816835469488645
+      },
+      "🐎 달리는 말 (1~2위)": {
+        "months": 24,
+        "cagr_pct": 6.668641908366448,
+        "monthly_mdd_pct": -48.07136763815417,
+        "worst_month_pct": -28.53,
+        "final_multiple": 1.1378199166575311
+      },
+      "앙상블 (50:50 전략)": {
+        "months": 24,
+        "cagr_pct": 25.120594686572172,
+        "monthly_mdd_pct": -29.851760949844547,
+        "worst_month_pct": -22.820833333333333,
+        "final_multiple": 1.5655163214721473
+      },
+      "앙상블 (달리는말 우선 50:50)": {
+        "months": 24,
+        "cagr_pct": 24.503293721493996,
+        "monthly_mdd_pct": -30.21683627481539,
+        "worst_month_pct": -23.222499999999997,
+        "final_multiple": 1.5501070147500606
+      },
+      "통합 전략 (중복 제외 1/N)": {
+        "months": 24,
+        "cagr_pct": 32.429923846874765,
+        "monthly_mdd_pct": -29.31481718188172,
+        "worst_month_pct": -23.860000000000003,
+        "final_multiple": 1.753768473008905
+      },
+      "통합 전략 (중복 인정 1/N)": {
+        "months": 24,
+        "cagr_pct": 33.251997500271926,
+        "monthly_mdd_pct": -28.854119493761264,
+        "worst_month_pct": -23.36375,
+        "final_multiple": 1.7756094837812475
+      },
+      "KOSPI 지수(%)": {
+        "months": 24,
+        "cagr_pct": -7.064432279397187,
+        "monthly_mdd_pct": -60.6379745497311,
+        "worst_month_pct": -27.247299531764302,
+        "final_multiple": 0.8637019747550752
+      },
+      "drawdown": {
+        "peak": "1998-02",
+        "trough": "1998-11"
+      }
+    },
+    "2008-01~2008-12": {
+      "🔥 퍼펙트 상승 (1~6위)": {
+        "months": 12,
+        "cagr_pct": -10.273638915591238,
+        "monthly_mdd_pct": -23.957965731178486,
+        "worst_month_pct": -13.125276031703436,
+        "final_multiple": 0.8972636108440876
+      },
+      "🐎 달리는 말 (1~2위)": {
+        "months": 12,
+        "cagr_pct": 16.2111956549121,
+        "monthly_mdd_pct": -23.957965731178486,
+        "worst_month_pct": -13.125276031703436,
+        "final_multiple": 1.162111956549121
+      },
+      "앙상블 (50:50 전략)": {
+        "months": 12,
+        "cagr_pct": 2.9687783696604306,
+        "monthly_mdd_pct": -23.957965731178486,
+        "worst_month_pct": -13.125276031703436,
+        "final_multiple": 1.0296877836966043
+      },
+      "앙상블 (달리는말 우선 50:50)": {
+        "months": 12,
+        "cagr_pct": -3.5046465121146313,
+        "monthly_mdd_pct": -23.957965731178486,
+        "worst_month_pct": -13.125276031703436,
+        "final_multiple": 0.9649535348788537
+      },
+      "통합 전략 (중복 제외 1/N)": {
+        "months": 12,
+        "cagr_pct": -11.95429315512609,
+        "monthly_mdd_pct": -23.957965731178486,
+        "worst_month_pct": -13.125276031703436,
+        "final_multiple": 0.880457068448739
+      },
+      "통합 전략 (중복 인정 1/N)": {
+        "months": 12,
+        "cagr_pct": -3.6524302729654043,
+        "monthly_mdd_pct": -23.957965731178486,
+        "worst_month_pct": -13.125276031703436,
+        "final_multiple": 0.963475697270346
+      },
+      "KOSPI 지수(%)": {
+        "months": 12,
+        "cagr_pct": -40.72783624070722,
+        "monthly_mdd_pct": -43.27905970399833,
+        "worst_month_pct": -23.134399572164675,
+        "final_multiple": 0.5927216375929278
+      },
+      "drawdown": {
+        "peak": "2008-06",
+        "trough": "2008-12"
+      }
+    },
+    "2010-01~2026-10": {
+      "🔥 퍼펙트 상승 (1~6위)": {
+        "months": 202,
+        "cagr_pct": 35.72860484063871,
+        "monthly_mdd_pct": -25.823566197143204,
+        "worst_month_pct": -16.656666666666666,
+        "final_multiple": 171.12034504803555
+      },
+      "🐎 달리는 말 (1~2위)": {
+        "months": 202,
+        "cagr_pct": 50.88037796017075,
+        "monthly_mdd_pct": -52.41805909928491,
+        "worst_month_pct": -18.835,
+        "final_multiple": 1016.21324052713
+      },
+      "앙상블 (50:50 전략)": {
+        "months": 202,
+        "cagr_pct": 44.51459925688243,
+        "monthly_mdd_pct": -37.94558383961079,
+        "worst_month_pct": -12.888333333333332,
+        "final_multiple": 491.86660314254874
+      },
+      "앙상블 (달리는말 우선 50:50)": {
+        "months": 202,
+        "cagr_pct": 42.67995464942838,
+        "monthly_mdd_pct": -30.027943652537896,
+        "worst_month_pct": -12.867999999999999,
+        "final_multiple": 396.6826485214347
+      },
+      "통합 전략 (중복 제외 1/N)": {
+        "months": 202,
+        "cagr_pct": 38.810773710360536,
+        "monthly_mdd_pct": -22.25816845999272,
+        "worst_month_pct": -14.474285714285713,
+        "final_multiple": 249.72198464501497
+      },
+      "통합 전략 (중복 인정 1/N)": {
+        "months": 202,
+        "cagr_pct": 40.51846321639794,
+        "monthly_mdd_pct": -29.704801686250008,
+        "worst_month_pct": -14.7725,
+        "final_multiple": 306.79298369103276
+      },
+      "KOSPI 지수(%)": {
+        "months": 202,
+        "cagr_pct": 7.551136984714795,
+        "monthly_mdd_pct": -34.61634128881177,
+        "worst_month_pct": -22.19116897580128,
+        "final_multiple": 3.4055395872546077
+      },
+      "drawdown": {
+        "peak": "2010-10",
+        "trough": "2014-03"
+      }
+    }
+  }
+}
