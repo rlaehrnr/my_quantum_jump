@@ -1,0 +1,38 @@
+{
+  "start": "2014-01",
+  "last_raw_day": "2026-11-03",
+  "last_confirmed_day": "2026-10-30",
+  "completed_through": "2026-10",
+  "completed_months": 154,
+  "latest_signal_month": "2026-11",
+  "roster_months": 155,
+  "roster_rows": 31000,
+  "months_changed_by_volume_filter": 84,
+  "rows_excluded_by_volume_filter": 133,
+  "disappeared_codes_for_review": 38,
+  "price_event_candidates": 233,
+  "missing_existing_forward_rows": 3,
+  "universe_definition": "당시 KOSPI 보통주 시총200; 거래량0도 포함; 동일 시총은 종목코드 오름차순.",
+  "limitations": [
+    "거래량0은 거래정지 확정 정보가 아니며 미체결·매도불가 처리는 별도 검토.",
+    "코드가 사라진 것은 상폐 확정 정보가 아니며 합병·코드교체·시장변경을 조사.",
+    "기업행동·배당·상폐 정산과 미확정 11월의 수익률을 최종 계산하지 않음.",
+    "원천 최종관측일은 사후 점검용이며 과거 종목 선택 조건으로 사용하지 않음."
+  ],
+  "source_sha256": {
+    "marcap-2013.parquet": "6796b4985ed9e3bec36e597a5e06bfc5f2ebd526d7f3d3b87c53f618b649de9b",
+    "marcap-2014.parquet": "4e8ec59dd7bbc6a58ba4d3e90f271e6eb5fd87b603a4360247c016497eefe351",
+    "marcap-2015.parquet": "c6f3bbf8ef800cf7dc4fcdc7e6acc57d770a2c1d2f7f3753b032b9d9f3b7a970",
+    "marcap-2016.parquet": "947746ac36de3b3385f4335a6a051fba49007f50dbefe3e0589ec77a3e03f0e2",
+    "marcap-2017.parquet": "a8a40c5013238e2be8e13d52d306e77667efeef5aaeed16fdad38ed27b7755a4",
+    "marcap-2018.parquet": "a03348ab0747972c6a353f52c636494abf216392d401cde823b6388e23f1c443",
+    "marcap-2019.parquet": "7d2f4018558b9409485da83c7f539692ecbb2be206f7a800cc0f3f84cbdbe503",
+    "marcap-2020.parquet": "565f55ef141f58b3ec74c7ccb733fc551b7c6e30fbc7a1da59a78c23e7230806",
+    "marcap-2021.parquet": "ede65acaaa9ee61f56564f6a66840133ff4bbab9d2dbc21437f41b4c8d20199e",
+    "marcap-2022.parquet": "179650f5d1bd6abecb03d1b8eddf5f59c5ca6a0402e7bf2578635790b9ca811c",
+    "marcap-2023.parquet": "08f96990358f5afc4e17321613cef7126e2f0bd4290b82db952b7808d87f9c22",
+    "marcap-2024.parquet": "b0c38943e67637d5faf88429880092cf0f46a394be39860dd3bcd0b04231bccb",
+    "marcap-2025.parquet": "2bfd93c217eb74263bc5020b23fa6debb6b02531c11eaccc2826639bc191559e",
+    "marcap-2026.parquet": "6b067e380de3e12d8ee08372e070073f178268246882f7f2b2ea521093da07a4"
+  }
+}
