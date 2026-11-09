@@ -44,6 +44,7 @@ from utils.snowball import (
     mamtax_live_ticker, mamtax_live_name,
 )
 from utils.ui_components import inject_custom_css, get_monthly_heatmap, get_mdd_history
+from utils.portfolio_report import build_combined_monthly, build_combined_excel, common_portfolio_months
 
 st.set_page_config(page_title="스노우볼 포트", page_icon="❄️", layout="wide")
 inject_custom_css()
@@ -1593,7 +1594,7 @@ STRAT_META = [
 ]
 
 
-def build_all_strategy_returns(cost_rate):
+def build_all_strategy_returns(cost_rate, include_defense=False):
     """6개 전략의 월별 순수익률을 한 프레임으로 (index=보유월 문자열).
 
     각 탭과 같은 데이터·신호·백테스트 캐시를 재사용한다. 합산에는 별도 캐시를
@@ -1604,11 +1605,12 @@ def build_all_strategy_returns(cost_rate):
     pen_p = load_pen_prices()
     ss_p = load_ssopen_prices()
     mp = load_mamtax_prices()
-    out = {}
+    out, regimes = {}, {}
 
     def _put(key, bt):
         if bt is not None and not bt.empty:
             out[key] = bt.set_index('hold_month')['ret_strategy']
+            regimes[key] = bt.set_index('hold_month')['defensive'].astype('boolean')
 
     _put('meritz',  run_backtest(prices, compute_signals(prices, div_yield), cost=cost_rate))
     _put('so',      run_backtest_so(prices, compute_signals_so(prices), cost=cost_rate))
@@ -1621,7 +1623,10 @@ def build_all_strategy_returns(cost_rate):
     if not mp.empty:
         _put('mamtax', run_backtest_mamtax(mp, compute_signals_mamtax(mp, prices), cost=cost_rate))
 
-    return pd.DataFrame(out).sort_index()
+    returns = pd.DataFrame(out).sort_index()
+    if include_defense:
+        return returns, pd.DataFrame(regimes).reindex(returns.index)
+    return returns
 
 
 def build_current_states():
@@ -1803,12 +1808,11 @@ def render_combined():
     st.caption("탭별로 보면 그달 제일 아픈 숫자만 보입니다. 계좌 비중을 넣으면 "
                "전체 자산이 실제로 얼마나 움직였는지 한 화면에서 보입니다.")
 
-    cost_pct = st.number_input("거래비용 (%/교체)", 0.0, 1.0, 0.25, 0.05,
-                               key="comb_cost", help="모든 전략에 동일 적용")
-    cost_rate = cost_pct / 100.0
+    # 위젯 변경값은 rerun 전에 session_state에 반영된다.
+    cost_rate = float(st.session_state.get('comb_cost', 0.25) or 0.0) / 100.0
 
     with st.spinner("전략별 월수익률 계산 중..."):
-        R = build_all_strategy_returns(cost_rate)
+        R, regimes = build_all_strategy_returns(cost_rate, include_defense=True)
     if R.empty:
         st.error("전략 수익률을 계산할 수 없습니다.")
         return
@@ -1877,10 +1881,13 @@ def render_combined():
     st.caption("금액을 넣으면 비율이, 비율을 넣으면 금액이 자동으로 따라옵니다. "
                "총액을 바꾸면 비율을 유지한 채 금액만 스케일됩니다. 단위는 **만원**.")
 
-    tcol, _sp = st.columns([1, 3])
+    tcol, _sp, fee_col = st.columns([2, 5, 1.3])
     with tcol:
         st.number_input("총 투자금액 (만원)", min_value=0.0, step=100.0,
                         key='comb_total', on_change=_from_pct, format="%.0f")
+    with fee_col:
+        st.number_input("교체비용 (%)", 0.0, 1.0, 0.25, 0.05,
+                        key='comb_cost', format='%.2f', help='모든 전략에 동일 적용 · 빈 값은 0%')
 
     st.markdown("<div style='font-size:12px; color:#9CA3AF; margin:2px 0;'>금액 (만원)</div>",
                 unsafe_allow_html=True)
@@ -1896,17 +1903,16 @@ def render_combined():
                             key=f'pct_{k}', on_change=_from_pct, args=(k,),
                             format="%.1f", label_visibility='collapsed')
 
-    raw = {k: float(st.session_state.get(f'pct_{k}', 0) or 0) for k in KEYS}
+    raw = {k: _sv(f'amt_{k}') for k in KEYS}
     tot = sum(raw.values())
     if tot <= 0:
-        st.warning("비중을 하나 이상 0보다 크게 넣어주세요.")
+        st.warning("계좌 금액을 하나 이상 0보다 크게 넣어주세요.")
         return
     W = {k: v / tot for k, v in raw.items() if v > 0}
-    st.caption(f"입력 비중 합계 {tot:.1f}%"
-               + ("" if abs(tot - 100) < 0.05 else " — 100%가 아니어서 정규화해 계산합니다."))
+    st.caption(f"입력 금액 합계 {tot:,.1f}만원 · 금액에서 계산한 비중으로 매월 재배분합니다.")
 
     # ---- 이번달 추천 비중 ----
-    with st.expander("🎯 이번달 추천 비중 (10% 단위)", expanded=True):
+    with st.expander("🎯 이번달 추천 비중 (10% 단위)", expanded=False):
         states = build_current_states()
         aggr = st.slider(
             "수익 반영 강도", 0.0, 1.0, 0.5, 0.1, key="comb_aggr",
@@ -1984,42 +1990,71 @@ def render_combined():
     # ---- 합산 ----
     # 전략마다 시작월이 다르다. 그달 존재하는 전략들끼리 비중을 다시 정규화해
     # '없는 전략은 현금'이 아니라 '있는 것들에 비례 배분'으로 처리한다.
-    sub = R[list(W)]
-    wser = pd.Series(W)
-    mask = sub.notna()
-    wsum = mask.mul(wser, axis=1).sum(axis=1)
-    port = sub.fillna(0).mul(wser, axis=1).sum(axis=1) / wsum.replace(0, np.nan)
-    port = port.dropna()
+    monthly, effective, contributions = build_combined_monthly(R, regimes, W)
+    port = monthly['종합전략']
+    span = common_portfolio_months(R, list(W))
+    if len(span) < 2:
+        st.info('선택한 전략의 연속 공통 이력이 2개월 이상 필요합니다.')
+        return
 
-    full = mask.all(axis=1)
-    first_full = full[full].index[0] if full.any() else None
-
-    s_all = _port_stats(port)
-    s_full = _port_stats(port[port.index >= first_full]) if first_full else None
-
-    st.markdown("#### 2️⃣ 통합 성과")
-    if first_full:
-        st.caption(f"⏳ 선택한 전략이 모두 존재하는 건 **{first_full}**부터입니다. "
-                   f"그 이전은 당시 가용한 전략끼리 비중을 재정규화해 계산했습니다.")
-    c1, c2, c3, c4, c5, c6 = st.columns(6)
-    base = s_full or s_all
-    span = base['ret'].index
+    st.markdown("#### 2️⃣ 종합전략 성과 · 입력 금액 비중 기준")
+    st.caption('선택한 전략의 월수익률이 모두 존재하는 연속 공통 구간으로 계산합니다.')
+    base = _port_stats(port.loc[span])
     latest_month = span[-1]
+    monthly = monthly.loc[span].copy()
+    monthly['자산배수'] = base['equity']
+    monthly['누적수익률'] = base['equity'] - 1
+    monthly['낙폭'] = base['dd']
+    effective = effective.loc[span]
+    contributions = contributions.loc[span]
+    offense_ratio = monthly['공격투자비율'].mean()
+    defense_ratio = monthly['방어투자비율'].mean()
+    c1, c2, c3, c4, c5, c6 = st.columns(6)
     c1.metric("CAGR", f"{base['cagr']*100:.1f}%")
-    c2.metric("MDD", f"{base['mdd']*100:.1f}%", delta_color="inverse")
-    c3.metric("Sortino", f"{base['sortino']:.2f}",
-              help="하락 편차만 위험으로 보는 지표. 상승 급등을 벌주지 않아 "
-                   "수익 분포가 비대칭인 이 전략들에는 Sharpe보다 공정하다.")
-    c4.metric("Sharpe", f"{base['sharpe']:.2f}",
-              help="상승·하락 변동성을 똑같이 위험으로 본다. 참고용.")
-    c5.metric("누적 수익", f"{base['cum']*100:,.0f}%")
+    c2.metric("누적수익률", f"{base['cum']*100:,.1f}%")
+    c3.metric("MDD", f"{base['mdd']*100:.1f}%", delta_color="inverse")
+    c4.metric("공격투자비율", f"{offense_ratio:.1%}")
+    c5.metric("방어투자비율", f"{defense_ratio:.1%}")
     c6.metric("승률", f"{base['win']*100:.0f}%", delta=f"{base['n']}개월")
+    extra_stats = pd.DataFrame([{
+        '평균 월수익률': base['ret'].mean(), '최고 월수익률': base['ret'].max(),
+        '최저 월수익률': base['ret'].min(), 'Sharpe': base['sharpe'], 'Sortino': base['sortino']}])
+    st.dataframe(extra_stats.style.format({'평균 월수익률': '{:+.2%}', '최고 월수익률': '{:+.2%}',
+                 '최저 월수익률': '{:+.2%}', 'Sharpe': '{:.2f}', 'Sortino': '{:.2f}'}),
+                 hide_index=True, width='stretch', key='comb_extra_stats')
     st.caption(f"성과 집계 기간 **{span[0]}~{latest_month}** · {base['n']}개월 · "
                f"최근 확정월 수익률 **{base['ret'].iloc[-1]:+.2%}**")
-    if first_full and s_all:
-        st.caption(f"※ 가용 전략을 포함한 전체 구간({s_all['n']}개월) 기준으로는 "
-                   f"CAGR {s_all['cagr']*100:.1f}% · MDD {s_all['mdd']*100:.1f}% · "
-                   f"Sortino {s_all['sortino']:.2f} · Sharpe {s_all['sharpe']:.2f}.")
+    st.caption("공격·방어 비율은 월별 전략 국면에 투자 비중을 곱한 기간 평균입니다. "
+               "승률과 평균 수익률은 방어월을 포함한 전체 월 기준입니다.")
+
+    heatmap_input = pd.DataFrame({'투자월': span, '종합전략': base['ret'].to_numpy() * 100})
+    heatmap = get_monthly_heatmap(heatmap_input, '종합전략')
+    initial_month = str(pd.Period(span[0], freq='M') - 1)
+    equity_with_initial = pd.concat([pd.Series({initial_month: 1.}), base['equity']])
+    mdd_periods = get_mdd_history(equity_with_initial, limit=None)
+    summary = pd.DataFrame([
+        ('CAGR', base['cagr']), ('누적수익률', base['cum']), ('MDD', base['mdd']),
+        ('공격투자비율', offense_ratio), ('방어투자비율', defense_ratio), ('승률', base['win']),
+        ('평균 월수익률', base['ret'].mean()), ('최고 월수익률', base['ret'].max()),
+        ('최저 월수익률', base['ret'].min()), ('Sharpe', base['sharpe']),
+        ('Sortino', base['sortino']), ('집계개월', base['n'])], columns=['지표', '값'])
+    allocation = pd.DataFrame([{'전략': nmap[k], '입력금액(만원)': raw[k], '비중': W.get(k, 0.)}
+                               for k in KEYS])
+    report = build_combined_excel(summary, allocation, monthly, effective, contributions,
+                                  R, heatmap.data / 100, mdd_periods, nmap, cost_rate)
+    st.download_button('📥 종합 엑셀 리포트 다운로드', data=report,
+                       file_name=f'스노우볼_종합전략_{span[0]}_{latest_month}.xlsx',
+                       mime='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+                       key='comb_xls')
+    st.markdown('#### 🗓️ 상세 분석 · 월별 수익률 히트맵 & 전체 MDD 기간')
+    hm_col, mdd_col = st.columns([7, 3])
+    with hm_col:
+        st.dataframe(heatmap, width='stretch', key='comb_heatmap')
+    with mdd_col:
+        st.dataframe(mdd_periods, hide_index=True, width='stretch', key='comb_mdd_periods')
+    with st.expander('월별 종합전략 상세 기록'):
+        st.dataframe(monthly.style.format({col: '{:.2%}' for col in monthly if col != '자산배수'}
+                       | {'자산배수': '{:,.3f}'}), width='stretch', key='comb_monthly_detail')
 
     # ---- 개별 vs 통합 비교표 ----
     st.markdown("#### 3️⃣ 개별 전략 vs 통합 (공통구간, 같은 자로 비교)")
@@ -2084,8 +2119,8 @@ def render_combined():
         r = R.loc[pick, key] if pick in R.index else np.nan
         if pd.isna(r):
             continue
-        crows.append({'전략': nmap[key], '비중': W[key]*100,
-                      '그달 수익률': r*100, '기여도(%p)': r*W[key]*100})
+        crows.append({'전략': nmap[key], '비중': effective.loc[pick, key]*100,
+                      '그달 수익률': r*100, '기여도(%p)': contributions.loc[pick, key]*100})
     cdf = pd.DataFrame(crows).sort_values('기여도(%p)')
     cap = cdf['기여도(%p)'].abs().max() if not cdf.empty else 0.0
     st.dataframe(cdf.style.format({'비중': '{:.1f}%', '그달 수익률': '{:.2f}%',

@@ -173,7 +173,7 @@ def get_styled_stats(df_stats):
     try: return df_stats.style.map(style_stats, subset=['CAGR (연평균)', '총 누적수익률', 'MDD (최대낙폭)'])
     except AttributeError: return df_stats.style.applymap(style_stats, subset=['CAGR (연평균)', '총 누적수익률', 'MDD (최대낙폭)'])
 
-def get_mdd_history(equity_series):
+def get_mdd_history(equity_series, limit=10):
     df = equity_series.to_frame(name='equity')
     records = []
     peak_date, peak_val = df.index[0], df['equity'].iloc[0]
@@ -199,7 +199,10 @@ def get_mdd_history(equity_series):
         if dd_pct < -0.01: records.append({'MDD': dd_pct, '시작일': drawdown_start_date, '최저일': trough_date, '회복일': '진행중'})
     res_df = pd.DataFrame(records)
     if res_df.empty: return pd.DataFrame(columns=['MDD', '기간', '회복기간'])
-    res_df = res_df.sort_values('MDD').head(10).reset_index(drop=True)
+    res_df = res_df.sort_values('MDD')
+    if limit is not None:
+        res_df = res_df.head(limit)
+    res_df = res_df.reset_index(drop=True)
     def calc_months(s, e):
         """월별 데이터의 시작월부터 회복월까지 달력상 월수 차이를 계산한다."""
         if e == '진행중':
