@@ -1,0 +1,168 @@
+{
+  "source_commit": "d91af47ca874b5ef4c1a0e8cd58ceeec5e17412a",
+  "prices_sha256": "dba9d371e24895d89873e6b1920742a7933d982fa92daa54d3425028a12ed913",
+  "primary": "pair_rank",
+  "monthly_count": 183,
+  "events": [
+    {
+      "signal_month": "2017-05",
+      "hold_month": "2017-06",
+      "original": "SMH·EWY",
+      "keep": "SMH",
+      "replacement": "LIT",
+      "proposed": "SMH·LIT",
+      "base_net": -0.02448120017399255,
+      "pair_net": -0.03705404093519937
+    },
+    {
+      "signal_month": "2017-07",
+      "hold_month": "2017-08",
+      "original": "SMH·EWY",
+      "keep": "SMH",
+      "replacement": "LIT",
+      "proposed": "SMH·LIT",
+      "base_net": 0.005917297257840821,
+      "pair_net": 0.05855724515385369
+    },
+    {
+      "signal_month": "2025-06",
+      "hold_month": "2025-07",
+      "original": "EWY·SMH",
+      "keep": "EWY",
+      "replacement": "FDN",
+      "proposed": "EWY·FDN",
+      "base_net": 0.022444892223946803,
+      "pair_net": 0.014297795981650237
+    },
+    {
+      "signal_month": "2025-07",
+      "hold_month": "2025-08",
+      "original": "EWY·SMH",
+      "keep": "EWY",
+      "replacement": "FDN",
+      "proposed": "EWY·FDN",
+      "base_net": -0.0013094114816403768,
+      "pair_net": 0.0009980340814297883
+    },
+    {
+      "signal_month": "2026-04",
+      "hold_month": "2026-05",
+      "original": "EWY·SMH",
+      "keep": "EWY",
+      "replacement": "LIT",
+      "proposed": "EWY·LIT",
+      "base_net": 0.22866503788485587,
+      "pair_net": 0.1327817633625891
+    },
+    {
+      "signal_month": "2026-05",
+      "hold_month": "2026-06",
+      "original": "EWY·SMH",
+      "keep": "EWY",
+      "replacement": "LIT",
+      "proposed": "EWY·LIT",
+      "base_net": 0.03800475347533061,
+      "pair_net": -0.058521131375777524
+    },
+    {
+      "signal_month": "2026-06",
+      "hold_month": "2026-07",
+      "original": "EWY·SMH",
+      "keep": "EWY",
+      "replacement": "IBB",
+      "proposed": "EWY·IBB",
+      "base_net": -0.19888758844673637,
+      "pair_net": -0.12213396639538229
+    },
+    {
+      "signal_month": "2026-09",
+      "hold_month": "2026-10",
+      "original": "EWY·SMH",
+      "keep": "EWY",
+      "replacement": "IBB",
+      "proposed": "EWY·IBB",
+      "base_net": -0.15529123592190747,
+      "pair_net": -0.06745025760126122
+    }
+  ],
+  "prefix_invariance": true,
+  "missing_replacement_count": 0,
+  "latest": {
+    "base": "XLE·IBB",
+    "pair_rank": "XLE·IBB",
+    "pair_fixed_ewy_prior": "XLE·IBB",
+    "correlation_24_070_prior": "XLE·IBB"
+  },
+  "comparisons": {
+    "pair_rank": {
+      "independent_max_error": 0.0,
+      "bootstrap": {
+        "full": {
+          "n": 183,
+          "count": 20000,
+          "block": 6,
+          "sharpe_difference": 0.09684590936955018,
+          "sharpe_difference_ci95": [
+            -0.021575347938466917,
+            0.23653611179480769
+          ],
+          "annual_relative_return": 0.0028091237071809516,
+          "annual_relative_ci95": [
+            -0.017347976549662667,
+            0.024416425509621153
+          ]
+        },
+        "pre2026": {
+          "n": 173,
+          "count": 20000,
+          "block": 6,
+          "sharpe_difference": 0.009626085451543753,
+          "sharpe_difference_ci95": [
+            -0.015337826374847827,
+            0.04800287145666107
+          ],
+          "annual_relative_return": 0.002167298550746932,
+          "annual_relative_ci95": [
+            -0.0019315725955629287,
+            0.009361171072851514
+          ]
+        }
+      }
+    },
+    "pair_fixed_ewy_prior": {
+      "independent_max_error": 0.0,
+      "bootstrap": {
+        "full": {
+          "n": 183,
+          "count": 20000,
+          "block": 6,
+          "sharpe_difference": 0.10184218307217718,
+          "sharpe_difference_ci95": [
+            -0.016745230341336327,
+            0.2412695508670632
+          ],
+          "annual_relative_return": 0.0029111204708554034,
+          "annual_relative_ci95": [
+            -0.016911734520511427,
+            0.024403036801781925
+          ]
+        },
+        "pre2026": {
+          "n": 173,
+          "count": 20000,
+          "block": 6,
+          "sharpe_difference": 0.017347695987805833,
+          "sharpe_difference_ci95": [
+            -0.006166359794730054,
+            0.06280830846558365
+          ],
+          "annual_relative_return": 0.0022751223438997885,
+          "annual_relative_ci95": [
+            -0.0010987702907320504,
+            0.008260488662245139
+          ]
+        }
+      }
+    }
+  }
+}
