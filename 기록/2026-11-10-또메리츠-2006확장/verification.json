@@ -1,0 +1,19 @@
+{
+  "decimal45": {
+    "cagr": "0.68793784633519496614218124373878452175305052",
+    "mdd": "-0.756440766390791220821437977358830131611789644",
+    "cagr_abs_error": 1.1102230246251565e-16,
+    "mdd_abs_error": 0.0
+  },
+  "months": 244,
+  "live_files_git_diff_empty": true,
+  "independent_month_check": {
+    "months": 244,
+    "max_return_error": 0.0
+  },
+  "truncations": [
+    "2008-08",
+    "2009-02",
+    "2010-12"
+  ]
+}
