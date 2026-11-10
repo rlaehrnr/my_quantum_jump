@@ -35,6 +35,8 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument('--revision', default='origin/main')
     ap.add_argument('--output', required=True)
+    ap.add_argument('--early-replacement', action='store_true',
+                    help='교체10종 두 안만 가능한 최초 연속월부터 비교')
     args = ap.parse_args()
     rev = subprocess.check_output(['git', 'rev-parse', args.revision], cwd=ROOT).decode().strip()
     names = subprocess.check_output(['git', 'ls-tree', '-r', '-z', '--name-only', rev], cwd=ROOT).decode().split('\0')
@@ -59,6 +61,8 @@ def main():
     configs = {'base': (original, False), 'expand14': (expanded, False),
                'replace10': (replaced, False), 'expand14_equity3': (expanded, True),
                'replace10_equity3': (replaced, True)}
+    if args.early_replacement:
+        configs = {k: v for k, v in configs.items() if k in ['replace10', 'replace10_equity3']}
 
     def signals(off, cap, prices=p, signals_us=us):
         # 연구 프로세스에서만 변경하고 제품 파일에는 쓰지 않는다.
@@ -117,9 +121,14 @@ def main():
         bt.to_csv(out / (key + '_monthly.csv'), index=False, encoding='utf-8-sig')
         pd.DataFrame(weights).fillna(0).to_csv(out / (key + '_weights.csv'), index=False, encoding='utf-8-sig')
         r = bt.set_index('hold_month').ret_strategy
+        ready_scores = plain(sb.compute_returns)(p[off], 12).notna().all(axis=1)
+        ready_months = ready_scores.index[ready_scores]
+        complete_start = str(ready_months[0] + 1) if len(ready_months) else '9999-12'
         results[key] = {label: stats(r.loc[lo:hi]) for label, lo, hi in [
             ('full', common[0], common[-1]), ('pre2026', common[0], '2025-12'),
-            ('y2026', '2026-01', '2026-10'), ('complete_universe', '2024-11', '2026-10')]}
+            ('y2026', '2026-01', '2026-10'), ('complete_universe', complete_start, '2026-10'),
+            ('before2017', common[0], '2016-12')]}
+        results[key]['complete_universe_start'] = complete_start
         results[key]['equity_mean'] = float(np.mean(contributions))
         results[key]['equity100_months'] = int(np.sum(np.array(contributions) > .999))
         results[key]['universe'] = off
@@ -130,7 +139,8 @@ def main():
         print(key, json.dumps(results[key], ensure_ascii=False), flush=True)
     asset_returns = p.pct_change(fill_method=None).loc['2024-11':'2026-10']
     asset_returns.corr().to_csv(out / 'correlation_24months.csv', encoding='utf-8-sig')
-    base_r = pd.read_csv(out / 'base_monthly.csv', index_col='hold_month').ret_strategy
+    base_key = 'replace10' if args.early_replacement else 'base'
+    base_r = pd.read_csv(out / (base_key + '_monthly.csv'), index_col='hold_month').ret_strategy
     comparisons = {}
     for key in configs:
         r = pd.read_csv(out / (key + '_monthly.csv'), index_col='hold_month').ret_strategy
@@ -142,7 +152,8 @@ def main():
             latest_holds=sigs[key].iloc[-1]['holds'])
     meta = dict(revision=rev, cutoff='2026-10', input_sha256=digest.hexdigest(),
                 start=common[0], end=common[-1], checks='all-month return reconciliation and prefix invariance passed',
-                comparisons=comparisons, results=results)
+                comparison_reference=base_key, comparisons=comparisons, results=results,
+                first_prices={c: str(p[c].first_valid_index()) for c in replaced})
     (out / 'results.json').write_text(json.dumps(meta, ensure_ascii=False, indent=2), encoding='utf-8')
 
 
