@@ -1,0 +1,142 @@
+{
+  "raw_start": "1995-05-02",
+  "start": "1996-06",
+  "end": "2026-10",
+  "months": 365,
+  "signal_end": "2026-11",
+  "rows": 73200,
+  "overlap_2014_max_delta_pp": 0.010000000000005116,
+  "selected_halt_cases": 5,
+  "selected_missing_rows": 0,
+  "source_manifest": {
+    "marcap-1995.parquet": {
+      "sha256": "24d354d939e2f13a3076f85b9515d5e42e2ddfc03016f8c629ec360c5ec3eee0",
+      "invalid_reference_rows": 0
+    },
+    "marcap-1996.parquet": {
+      "sha256": "d37d03a8582c2be6a8bd2d615b28b6e86c70ed9a818264b9962a8132ad4292b1",
+      "invalid_reference_rows": 0
+    },
+    "marcap-1997.parquet": {
+      "sha256": "f055cccac6b8daa331998d653010abb153373861e48007ee1297f99e8168d236",
+      "invalid_reference_rows": 0
+    },
+    "marcap-1998.parquet": {
+      "sha256": "2a0c91876d44267133aece1ada92e3873db3d4e4dcd58491eb8438cd1a0cbf99",
+      "invalid_reference_rows": 831
+    },
+    "marcap-1999.parquet": {
+      "sha256": "e6b8d791cdd40aeb8a4960ad842e762401c4c4fd4879690f05e668ba25bb5a72",
+      "invalid_reference_rows": 43
+    },
+    "marcap-2000.parquet": {
+      "sha256": "2b130e1cfdbe475f25dd429fb8754a094d5c6ca3fbef376de14dde3093faca9c",
+      "invalid_reference_rows": 2
+    },
+    "marcap-2001.parquet": {
+      "sha256": "995af4b9fb9d16640d2079ea4b75ef3c6fae2e779a0ff6c4378185af749eebf0",
+      "invalid_reference_rows": 0
+    },
+    "marcap-2002.parquet": {
+      "sha256": "c43d2550b8cc81b2f8c0602ecbaa2754d2601405200ccc76ad4ee62b316fbf58",
+      "invalid_reference_rows": 0
+    },
+    "marcap-2003.parquet": {
+      "sha256": "ab88a3937e8665f4690a5caadd291f80116cbaea829c0b4f609760e9d85526d8",
+      "invalid_reference_rows": 0
+    },
+    "marcap-2004.parquet": {
+      "sha256": "a4443aa39a80b7ee0f22ac923102316690a5481d4b863d6067b8ea728ec1ed02",
+      "invalid_reference_rows": 0
+    },
+    "marcap-2005.parquet": {
+      "sha256": "9e8e5e642c5e821eaf268703c347c5c444c529ba26b8b7c302e6ff95f3113344",
+      "invalid_reference_rows": 4
+    },
+    "marcap-2006.parquet": {
+      "sha256": "f0b98d9b5d058213a357e87665d6558d3da835b47e05758f16b2325a38034c24",
+      "invalid_reference_rows": 2
+    },
+    "marcap-2007.parquet": {
+      "sha256": "c6f7e19ebbf7dfdaca1c4542c540d9924e36ae9d99ac77bbe03fd58a1e0b56e5",
+      "invalid_reference_rows": 0
+    },
+    "marcap-2008.parquet": {
+      "sha256": "b56e7c327bb1a0ea7433d622fab91b22882d0691af780f05b2e3ddf4ee77de84",
+      "invalid_reference_rows": 0
+    },
+    "marcap-2009.parquet": {
+      "sha256": "a51254e74576110d306f33e94188d30f210b1205b1788bc97227751a6d9779c3",
+      "invalid_reference_rows": 8
+    },
+    "marcap-2010.parquet": {
+      "sha256": "ff6add46f32dbd1bbf8223ba4551a784ab4e9f46b85229b41e661c07b4c10323",
+      "invalid_reference_rows": 0
+    },
+    "marcap-2011.parquet": {
+      "sha256": "f0b06750856c0f31583833128517f0457e47cdd1256ad69f6231343881ea0269",
+      "invalid_reference_rows": 0
+    },
+    "marcap-2012.parquet": {
+      "sha256": "e9a6e7cfaa8f1adf490ec82fd8aebd9ff5852559b459aa4f744a007bdb09a200",
+      "invalid_reference_rows": 0
+    },
+    "marcap-2013.parquet": {
+      "sha256": "6796b4985ed9e3bec36e597a5e06bfc5f2ebd526d7f3d3b87c53f618b649de9b",
+      "invalid_reference_rows": 0
+    },
+    "marcap-2014.parquet": {
+      "sha256": "4e8ec59dd7bbc6a58ba4d3e90f271e6eb5fd87b603a4360247c016497eefe351",
+      "invalid_reference_rows": 0
+    },
+    "marcap-2015.parquet": {
+      "sha256": "c6f3bbf8ef800cf7dc4fcdc7e6acc57d770a2c1d2f7f3753b032b9d9f3b7a970",
+      "invalid_reference_rows": 0
+    },
+    "marcap-2016.parquet": {
+      "sha256": "947746ac36de3b3385f4335a6a051fba49007f50dbefe3e0589ec77a3e03f0e2",
+      "invalid_reference_rows": 0
+    },
+    "marcap-2017.parquet": {
+      "sha256": "a8a40c5013238e2be8e13d52d306e77667efeef5aaeed16fdad38ed27b7755a4",
+      "invalid_reference_rows": 0
+    },
+    "marcap-2018.parquet": {
+      "sha256": "a03348ab0747972c6a353f52c636494abf216392d401cde823b6388e23f1c443",
+      "invalid_reference_rows": 0
+    },
+    "marcap-2019.parquet": {
+      "sha256": "7d2f4018558b9409485da83c7f539692ecbb2be206f7a800cc0f3f84cbdbe503",
+      "invalid_reference_rows": 0
+    },
+    "marcap-2020.parquet": {
+      "sha256": "565f55ef141f58b3ec74c7ccb733fc551b7c6e30fbc7a1da59a78c23e7230806",
+      "invalid_reference_rows": 0
+    },
+    "marcap-2021.parquet": {
+      "sha256": "ede65acaaa9ee61f56564f6a66840133ff4bbab9d2dbc21437f41b4c8d20199e",
+      "invalid_reference_rows": 0
+    },
+    "marcap-2022.parquet": {
+      "sha256": "179650f5d1bd6abecb03d1b8eddf5f59c5ca6a0402e7bf2578635790b9ca811c",
+      "invalid_reference_rows": 0
+    },
+    "marcap-2023.parquet": {
+      "sha256": "08f96990358f5afc4e17321613cef7126e2f0bd4290b82db952b7808d87f9c22",
+      "invalid_reference_rows": 0
+    },
+    "marcap-2024.parquet": {
+      "sha256": "b0c38943e67637d5faf88429880092cf0f46a394be39860dd3bcd0b04231bccb",
+      "invalid_reference_rows": 0
+    },
+    "marcap-2025.parquet": {
+      "sha256": "2bfd93c217eb74263bc5020b23fa6debb6b02531c11eaccc2826639bc191559e",
+      "invalid_reference_rows": 0
+    },
+    "marcap-2026.parquet": {
+      "sha256": "6b067e380de3e12d8ee08372e070073f178268246882f7f2b2ea521093da07a4",
+      "invalid_reference_rows": 0
+    }
+  },
+  "status": "시총200·가격 재구성 및 사전 점검; 기업행동·거래정지 정산 후 최종 비교"
+}

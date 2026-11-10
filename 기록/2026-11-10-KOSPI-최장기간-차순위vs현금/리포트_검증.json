@@ -1,0 +1,37 @@
+{
+  "filename": "KOSPI_최장기간_종합리포트_199606-202610.xlsx",
+  "bytes": 1513591,
+  "sha256": "777b8c103d2660e47e5b33f4f215b41deee613f9adf4af302b2eb94bcde5556f",
+  "period": [
+    "1996-06",
+    "2026-10"
+  ],
+  "months": 365,
+  "sheets": [
+    "요약_및_통계",
+    "기간별_비교",
+    "연도별_수익률",
+    "월별_수익률",
+    "누적_자산",
+    "전략별_MDD",
+    "낙폭_구간",
+    "상세_매매내역",
+    "포트폴리오_비중",
+    "자금_장부",
+    "정지_및_권리승계",
+    "자료_및_가정"
+  ],
+  "checks": [
+    "12 strategy series CAGR/MDD/terminal values",
+    "36 period-policy-strategy comparisons",
+    "31 years of compounded returns",
+    "14302 portfolio weights",
+    "zero cached formula errors",
+    "2 native chart range bindings/colors and zero-based CAGR axis",
+    "stock-code leading zeros preserved",
+    "2014 154-month regression matched both policies",
+    "12 KOSPI unit tests passed"
+  ],
+  "engine": "artifact-tool calculation and render; openpyxl read-only exported-cache validation",
+  "native_excel_ui_tested": false
+}

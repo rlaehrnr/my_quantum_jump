@@ -1,4 +1,4 @@
-"""2014년 이후 거래 불가 신규매수의 차순위 대체·해당 비중 현금 비교."""
+"""월말 모멘텀 신규매수의 차순위 대체·해당 비중 현금 비교(기본2014년 이후)."""
 import argparse
 from collections import Counter
 import hashlib
@@ -71,13 +71,14 @@ def advance_book(wealth, locked, weights, price_returns, blocked_end, release_re
                               'locked_start': sum(locked.values()), 'locked_end': sum(remaining.values())}
 
 
-def load_market(source):
+def load_market(source, start_year=2014, end_month='2026-10'):
     snapshots, daily = [], []
-    codes = ['005300', '042670', '012450', '034020', '489790']
-    for year in range(2014, 2027):
+    codes = ['003640', '003480', '097230', '005300', '042670', '012450', '034020', '489790']
+    end = pd.Period(end_month, freq='M')
+    for year in range(start_year, end.year + 1):
         d = pd.read_parquet(source / f'marcap-{year}.parquet',
                             columns=['Date', 'Code', 'Close', 'Changes', 'Volume', 'MarketId'])
-        d = d[d.MarketId.eq('STK') & d.Date.le('2026-10-31')].copy()
+        d = d[d.MarketId.eq('STK') & d.Date.le(end.end_time)].copy()
         d['Code'] = d.Code.map({code: normalize_stock_code(code) for code in d.Code.unique()})
         d['month'] = d.Date.dt.to_period('M').astype(str)
         last_day = d.groupby('month').Date.transform('max')
@@ -99,6 +100,13 @@ def release_return(code, month, daily):
     if code == '005300' and month == '2019-05':
         value = 10 * first.Close
         components = '롯데칠성 1주→10주'
+    elif code == '003640' and month == '1997-07':
+        value = first.Close
+        components = '연합철강 동일주식1주; 월말무거래 다음거래일 매도'
+    elif code == '003480' and month == '2007-08':
+        other = daily[daily.Code.eq('097230') & daily.Date.eq(first.Date)].iloc[0]
+        value = .27 * first.Close + .73 * other.Close
+        components = '한진중공업홀딩스0.27주+한진중공업0.73주'
     elif code == '042670' and month == '2021-07':
         other = daily[daily.Code.eq('034020') & daily.Date.eq(first.Date)].iloc[0]
         value = .3104974 * first.Close + .4719929 * other.Close
@@ -116,21 +124,25 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--source-dir', type=Path, required=True)
     parser.add_argument('--output', type=Path, required=True)
+    parser.add_argument('--start', default='2014-01')
+    parser.add_argument('--end', default='2026-10')
+    parser.add_argument('--input-dir', type=Path, default=ROOT / '기록/2026-11-10-KOSPI-2014-가격재구성')
+    parser.add_argument('--index-path', type=Path, default=ROOT / '기록/2026-11-05-KOSPI-2010-202610-확정/source_kospi_complete.csv')
+    parser.add_argument('--gold-path', type=Path, default=ROOT / '기록/2026-11-05-KOSPI-2010-202610-확정/gold_monthly.csv')
     args = parser.parse_args()
     if args.output.exists():
         raise SystemExit('새 출력 폴더를 지정하세요.')
-    data_path = ROOT / '기록/2026-11-10-KOSPI-2014-가격재구성/monthly_price_data.csv'
+    data_path = args.input_dir / 'monthly_price_data.csv'
     data = pd.read_csv(data_path, dtype={'종목코드': str})
-    data = data[data['투자월'].le('2026-10')].copy()
-    expected = pd.period_range('2014-01', '2026-10', freq='M').astype(str).tolist()
+    data = data[data['투자월'].between(args.start, args.end)].copy()
+    expected = pd.period_range(args.start, args.end, freq='M').astype(str).tolist()
     data['시가총액(억)'] = (data['시가총액'] / 1e8).round(0)
     engine_data = data.copy()
     engine_data[MOM + ['이번달수익률']] = engine_data[MOM + ['이번달수익률']].fillna(0)
-    sources = ROOT / '기록/2026-11-05-KOSPI-2010-202610-확정'
-    index = pd.read_csv(sources / 'source_kospi_complete.csv', index_col=0, parse_dates=True)
-    gold = pd.read_csv(sources / 'gold_monthly.csv', index_col=0)
+    index = pd.read_csv(args.index_path, index_col=0, parse_dates=True)
+    gold = pd.read_csv(args.gold_path, index_col=0)
     with patch.object(c, '_load_kospi_index', return_value=index), patch.object(c, 'get_gold_krw_monthly', return_value=gold):
-        baseline, _, detail = c.run_backtest_k200(engine_data, 2014, 2026, 6, True, (1, 6), (1, 2), 30, 30,
+        baseline, _, detail = c.run_backtest_k200(engine_data, int(args.start[:4]), int(args.end[:4]), 6, True, (1, 6), (1, 2), 30, 30,
             trading_cost_pct=.25, gold_returns=gold.ret.to_dict(), use_gold=True, use_gold_ma=True, gold_ma_months=6)
     prior = pd.read_csv(data_path.parent / 'diagnostic_monthly_returns.csv')
     prior['중지 사유'] = prior['중지 사유'].fillna('')
@@ -138,7 +150,7 @@ def main():
     pd.testing.assert_frame_equal(baseline, prior, check_dtype=False, rtol=1e-12, atol=1e-12)
     assert baseline['투자월'].tolist() == expected
     modes = detail.set_index('투자월')
-    volumes, daily = load_market(args.source_dir)
+    volumes, daily = load_market(args.source_dir, int(args.start[:4]), args.end)
     results, positions, decisions, ledger, releases = {}, [], [], [], []
     strategy_names = [PERF, HORSE, ENS, PRIORITY, UNIQUE, DUPLICATE]
     for policy in ['next', 'cash']:
@@ -192,7 +204,7 @@ def main():
             records.append(record)
         results[policy] = pd.DataFrame(records)
     args.output.mkdir(parents=True)
-    report = {'period': ['2014-01', '2026-10'], 'months': 154, 'stats': {},
+    report = {'period': [args.start, args.end], 'months': len(expected), 'stats': {},
               'data_sha256': hashlib.sha256(data_path.read_bytes()).hexdigest(),
               'assumptions': ['당시코스피보통주시총200·퍼펙트1~6·달리는말1~2·동일필터·동일금방어',
                               '동일한 모멘텀 자격조건 안에서 차순위 충원; 후보 부족분은 현금',
