@@ -1,0 +1,12 @@
+{
+  "all_variant_months": 10354,
+  "held_stock_month_rows": 61103,
+  "independent_return_turnover_cost_max_error": 2.4424906541753444e-15,
+  "risk_truncation_checks": [
+    132,
+    252,
+    324
+  ],
+  "research_script_sha256": "59f181ef0a060716f2f4b98335265cb2231b3c0d53f268aef1bb1931e3f19e4f",
+  "product_changes": false
+}
