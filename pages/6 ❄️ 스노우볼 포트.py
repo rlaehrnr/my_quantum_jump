@@ -6,6 +6,7 @@
 탭 7개: 또 메리츠 · 맘·쏘 삼성 · 또 ISA · 또 연금 · 쏘 연금 · 맘 비과세 · 통합 포트.
 - 탭 1 "또 메리츠":  기존 스노우볼 전략 (조건1 모멘텀 + 조건2 밸류에이션).
 - 탭 2 "맘·쏘 삼성": 모멘텀 상위 2종 동일가중 + 또 메리츠 리스크오프 동반 방어.
+    · EWY·SMH 동시 보유 시 1위 유지, 적격 차순위로 2위 교체
     · 삼성증권 계좌를 하나로 합쳐 운용한다 (레버리지 '맘 삼성'은 2026-08 폐지)
 
 각 탭 구성은 동일: 공격/방어 현황 → 신호/필터 → 백테스트 성과 + 자산곡선 + 월별 로그.
@@ -24,7 +25,7 @@ from utils.snowball import (
     compute_signals, run_backtest, compute_performance, rule_active_note,
     SIGNAL_ASSETS, OFFENSE_ASSETS, DEFENSE_ASSETS, BENCHMARKS, VIXY_SPIKE,
     # 맘·쏘 삼성
-    compute_signals_so, run_backtest_so,
+    compute_signals_so, run_backtest_so, select_so_offense,
     SO_FILTER_ASSET, SO_OFFENSE_ASSETS, SO_DEFENSE_ASSETS, SO_TOPK,
     SIGNAL_ASSETS, C1_RISK_ASSETS, VIXY_SPIKE,
     # 또 ISA (국내)
@@ -293,8 +294,9 @@ def _cf_so(s):
     scores = {t: s.get(f'score_{t}') for t in SO_OFFENSE_ASSETS if pd.notna(s.get(f'score_{t}'))}
     if not scores:
         return {}
-    top = sorted(scores, key=scores.get, reverse=True)[:SO_TOPK]
-    picks = [t for t in top if pd.notna(s.get(f'abs_{t}')) and s.get(f'abs_{t}') > 0]
+    ranked = pd.Series(scores).sort_values(ascending=False)
+    disparity = {t: s.get(f'abs_{t}', np.nan) for t in SO_OFFENSE_ASSETS}
+    picks, _ = select_so_offense(ranked, disparity)
     return {t: 1.0/len(picks) for t in picks} if picks else {}
 
 
@@ -385,6 +387,8 @@ def build_so_detail(signals, bt):
             # 모멘텀 점수 (4M MA 이격도) 병기 — 4M<0이면 공격 제외 대상
             row[t] = f"{_pct(sc)} ({_pct(ab)})"
         row['보유'] = r['hold']
+        row['원래 상위 순위'] = s.get('rank')
+        row['판정 근거'] = r['reason']
         row['전략수익률(%)'] = round(r['ret_strategy']*100, 2)
         row['누적(%)'] = round((r['cum_strategy']-1)*100, 1)
         row['낙폭(%)'] = round(r['dd_strategy']*100, 1)
@@ -750,6 +754,8 @@ def render_so():
                     f"color:{'#10B981' if is_active else '#9CA3AF'};'>{label}</div>", unsafe_allow_html=True)
         st.markdown("<div style='font-size:11px; color:#9CA3AF; margin-bottom:2px;'>점수 상위 2등 중 4M MA 이격도 &gt; 0 인 것만 50:50 (둘 다 아래면 방어)</div>",
                     unsafe_allow_html=True)
+        st.caption("EWY·SMH 동시 보유 금지 · 1위 유지, 4M MA 위인 첫 차순위로 교체 "
+                   "· 적격 차순위가 없으면 1위 100%")
         def _fmt_ab(v):
             return 'N/A' if pd.isna(v) else f"{v*100:+.1f}%"
         rows = [{'자산': t,
@@ -857,6 +863,7 @@ def render_so():
         '기간': f"{perf['n_months']}개월 ({bt['hold_month'].iloc[0]} ~ {bt['hold_month'].iloc[-1]})",
         '규칙 실제 가동': f"{rule_act[1]}개월" if rule_act else "전 기간 (후보 전종목 상장 완료 상태로 시작)",
         '공격': ', '.join(SO_OFFENSE_ASSETS) + f' 중 모멘텀 상위 {SO_TOPK} (4M MA>0인 것만, 50:50)',
+        '동시 보유 제한': 'EWY·SMH 동시 보유 금지. 1위 유지, 4M MA>0인 첫 차순위로 교체. 없으면 1위100%.',
         '방어': 'GLD 50% · IEF 50% 고정',
         '벤치마크': ', '.join(BENCHMARKS),
     }

@@ -68,6 +68,8 @@ SO_FILTER_ASSET  = 'SPY'
 # 공격: 아래 9종 중 모멘텀 점수 상위 2등을 50:50 동일가중
 SO_OFFENSE_ASSETS = ['EWY', 'FDN', 'IBB', 'LIT', 'SMH', 'XLE', 'XLF', 'SPY', 'QQQ']
 SO_TOPK          = 2
+# 라이브 = 백테스트 기본값. 두 종이 함께 통과하면 1위를 유지하고 적격 차순위로 교체.
+SO_EXCLUSIVE_PAIR = frozenset(['EWY', 'SMH'])
 # 절대모멘텀 필터: 상위 2등이라도 자기 4개월 MA 이격도 ≤ 0 이면 제외.
 #   남는 게 없으면(둘 다 4M MA 아래) 방어로 전환. (백테스트상 전 지표 개선)
 SO_ABSMOM_WIN    = 4
@@ -1088,6 +1090,26 @@ def compute_riskoff_cond1(prices):
     return cond1.astype(bool)
 
 
+def select_so_offense(ranked, disparity):
+    """공격 후보와 동시 보유 때문에 제외한 종목을 반환한다.
+
+    ranked는 모멘텀 내림차순 Series. 상위2 중 4M MA 위인 종목만 보유하며,
+    EWY·SMH가 모두 통과했을 때만 2위를 적격 차순위로 교체한다.
+    대체 후보가 없으면 1위만 보유한다. 화면·엑셀의 공격 반사실도 이 함수를 쓴다.
+    """
+    top = list(ranked.index[:SO_TOPK])
+    picks = [asset for asset in top if disparity.get(asset, np.nan) > 0]
+    excluded = None
+    if set(picks) == SO_EXCLUSIVE_PAIR:
+        excluded = picks[1]
+        picks = [picks[0]]
+        for asset in ranked.index[SO_TOPK:]:
+            if asset not in SO_EXCLUSIVE_PAIR and disparity.get(asset, np.nan) > 0:
+                picks.append(asset)
+                break
+    return picks, excluded
+
+
 @st.cache_data(ttl="1h", max_entries=8, show_spinner=False)
 def compute_signals_so(prices, use_riskoff=SO_USE_RISKOFF):
     """쏘 삼성 월별 신호·보유 계산.
@@ -1096,6 +1118,8 @@ def compute_signals_so(prices, use_riskoff=SO_USE_RISKOFF):
       · 회피 필터: SPY 모멘텀 점수(1+3+6+12M 합) > 0 → 공격, ≤ 0 → 방어
       · 리스크오프(옵션): 또 메리츠 cond1 발동 시 동반 방어 (use_riskoff=True)
       · 공격: 9종 중 모멘텀 점수 상위 SO_TOPK(2) 중 4M MA 이격도>0 인 것만 동일가중
+      · EWY·SMH 동시 보유 제한: 1위 유지, 2위는 4M MA 위인 첫 차순위로 교체
+        (적격 차순위가 없으면 1위100%)
       · 방어: GLD50 / IEF50 고정
 
     run_backtest_samsung과 호환되도록 holds/defensive/hold/reason 컬럼을 포함한다.
@@ -1152,11 +1176,15 @@ def compute_signals_so(prices, use_riskoff=SO_USE_RISKOFF):
             reason = "방어 · GLD50·IEF50 (리스크오프 cond1)"
         elif filter_pass:
             # 절대모멘텀: 상위 2등 중 자기 4M MA 이격도 > 0 인 것만 보유
-            picks = [t for t in top if d_abs.loc[m, t] > 0]
+            picks, excluded = select_so_offense(ranked, d_abs.loc[m])
             if picks:
                 holds = picks
                 defensive = False
-                if len(picks) < len(top):
+                if excluded is not None:
+                    fallback = ' · 적격 차순위 없음' if len(picks) == 1 else ''
+                    reason = (f"공격 · {'·'.join(picks)} (EWY·SMH 동시 보유 제한: "
+                              f"{excluded} 제외{fallback})")
+                elif len(picks) < len(top):
                     dropped = [t for t in top if t not in picks]
                     reason = f"공격 · {'·'.join(picks)} (4M↓ 제외: {'·'.join(dropped)})"
                 else:
