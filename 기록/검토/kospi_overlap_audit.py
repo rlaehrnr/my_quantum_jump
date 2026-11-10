@@ -22,7 +22,7 @@ MOM = ['1개월(%)','3개월(%)','6개월(%)','12개월(%)']
 ENS = '앙상블 (50:50 전략)'
 
 
-def reconstruct(source_dir, end_month='2026-09', start_month='2010-01'):
+def reconstruct(source_dir, end_month='2026-09', start_month='2010-01', exclude_zero_volume=True):
     start = pd.Period(start_month, freq='M')
     end = pd.Period(end_month, freq='M')
     source_year = min(2008, (start - 13).year)
@@ -60,8 +60,14 @@ def reconstruct(source_dir, end_month='2026-09', start_month='2010-01'):
         invest = month+1
         if not start <= invest <= end:
             continue
-        snapshot = snapshot[(snapshot.Volume>0)&(snapshot.Close>0)&(snapshot.Marcap>0)]
-        snapshot = snapshot.sort_values('Marcap',ascending=False).head(200)
+        eligible = (snapshot.Close > 0) & (snapshot.Marcap > 0)
+        if exclude_zero_volume:
+            eligible &= snapshot.Volume > 0
+        snapshot = snapshot[eligible]
+        if exclude_zero_volume:
+            snapshot = snapshot.sort_values('Marcap', ascending=False).head(200)
+        else:
+            snapshot = snapshot.sort_values(['Marcap', 'Code'], ascending=[False, True]).head(200)
         for rank, r in enumerate(snapshot.itertuples(), 1):
             code=r.Code
             row={'투자월':str(invest),'투자연도':invest.year,'종목선정일':str(r.Date.date()),'종목코드':code,'종목명':r.Name,'시가총액':r.Marcap,'종가':r.Close,'거래량':r.Volume,'순위':rank}

@@ -1,0 +1,95 @@
+{
+  "start": "2014-01",
+  "closed_end": "2026-10",
+  "signal_end": "2026-11",
+  "rows": 31000,
+  "closed_months": 154,
+  "dividend_policy": "별도 표시·가격수익률에서 제외",
+  "dividend_collection_status": "미조회는 0원 배당을 뜻하지 않음",
+  "selected_rows": 512,
+  "unresolved_selected_rows": 7,
+  "selected_event_rows": 6,
+  "selected_event_cases": 4,
+  "missing_price_input_rows": 1034,
+  "source_manifest": {
+    "marcap-2008.parquet": {
+      "sha256": "b56e7c327bb1a0ea7433d622fab91b22882d0691af780f05b2e3ddf4ee77de84",
+      "invalid_reference_rows": 0
+    },
+    "marcap-2009.parquet": {
+      "sha256": "a51254e74576110d306f33e94188d30f210b1205b1788bc97227751a6d9779c3",
+      "invalid_reference_rows": 8
+    },
+    "marcap-2010.parquet": {
+      "sha256": "ff6add46f32dbd1bbf8223ba4551a784ab4e9f46b85229b41e661c07b4c10323",
+      "invalid_reference_rows": 0
+    },
+    "marcap-2011.parquet": {
+      "sha256": "f0b06750856c0f31583833128517f0457e47cdd1256ad69f6231343881ea0269",
+      "invalid_reference_rows": 0
+    },
+    "marcap-2012.parquet": {
+      "sha256": "e9a6e7cfaa8f1adf490ec82fd8aebd9ff5852559b459aa4f744a007bdb09a200",
+      "invalid_reference_rows": 0
+    },
+    "marcap-2013.parquet": {
+      "sha256": "6796b4985ed9e3bec36e597a5e06bfc5f2ebd526d7f3d3b87c53f618b649de9b",
+      "invalid_reference_rows": 0
+    },
+    "marcap-2014.parquet": {
+      "sha256": "4e8ec59dd7bbc6a58ba4d3e90f271e6eb5fd87b603a4360247c016497eefe351",
+      "invalid_reference_rows": 0
+    },
+    "marcap-2015.parquet": {
+      "sha256": "c6f3bbf8ef800cf7dc4fcdc7e6acc57d770a2c1d2f7f3753b032b9d9f3b7a970",
+      "invalid_reference_rows": 0
+    },
+    "marcap-2016.parquet": {
+      "sha256": "947746ac36de3b3385f4335a6a051fba49007f50dbefe3e0589ec77a3e03f0e2",
+      "invalid_reference_rows": 0
+    },
+    "marcap-2017.parquet": {
+      "sha256": "a8a40c5013238e2be8e13d52d306e77667efeef5aaeed16fdad38ed27b7755a4",
+      "invalid_reference_rows": 0
+    },
+    "marcap-2018.parquet": {
+      "sha256": "a03348ab0747972c6a353f52c636494abf216392d401cde823b6388e23f1c443",
+      "invalid_reference_rows": 0
+    },
+    "marcap-2019.parquet": {
+      "sha256": "7d2f4018558b9409485da83c7f539692ecbb2be206f7a800cc0f3f84cbdbe503",
+      "invalid_reference_rows": 0
+    },
+    "marcap-2020.parquet": {
+      "sha256": "565f55ef141f58b3ec74c7ccb733fc551b7c6e30fbc7a1da59a78c23e7230806",
+      "invalid_reference_rows": 0
+    },
+    "marcap-2021.parquet": {
+      "sha256": "ede65acaaa9ee61f56564f6a66840133ff4bbab9d2dbc21437f41b4c8d20199e",
+      "invalid_reference_rows": 0
+    },
+    "marcap-2022.parquet": {
+      "sha256": "179650f5d1bd6abecb03d1b8eddf5f59c5ca6a0402e7bf2578635790b9ca811c",
+      "invalid_reference_rows": 0
+    },
+    "marcap-2023.parquet": {
+      "sha256": "08f96990358f5afc4e17321613cef7126e2f0bd4290b82db952b7808d87f9c22",
+      "invalid_reference_rows": 0
+    },
+    "marcap-2024.parquet": {
+      "sha256": "b0c38943e67637d5faf88429880092cf0f46a394be39860dd3bcd0b04231bccb",
+      "invalid_reference_rows": 0
+    },
+    "marcap-2025.parquet": {
+      "sha256": "2bfd93c217eb74263bc5020b23fa6debb6b02531c11eaccc2826639bc191559e",
+      "invalid_reference_rows": 0
+    },
+    "marcap-2026.parquet": {
+      "sha256": "6b067e380de3e12d8ee08372e070073f178268246882f7f2b2ea521093da07a4",
+      "invalid_reference_rows": 0
+    }
+  },
+  "engine_missing_policy": "기존 엔진 비교를 위해 입력만 결측0; 원본 결측 보존·실제 보유 결측은 검토 대상으로 차단",
+  "status": "기업행동·체결 예외 및 배당내역 검증 전 연구 초안",
+  "stats": {}
+}

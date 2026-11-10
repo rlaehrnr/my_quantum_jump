@@ -547,6 +547,34 @@ def get_korea_market_status(df_month):
 # - 풀 리밸런싱 가정 → 매월 매수+매도 양방향 발생 = 비용 × 2
 # - 현금 보유 달에는 비용 0 (단, 진입/이탈 시 한 번은 발생하나 단순화 위해 무시)
 # ==========================================
+def select_kospi200_targets(m_data, rank_p, rank_s, perf_pct, spec_12m_pct, entry_policy='legacy'):
+    """동일한 모멘텀 조건으로 후보를 정하고, 연구용 미체결 정책을 적용한다."""
+    if entry_policy not in ('legacy', 'cash', 'next'):
+        raise ValueError('지원하지 않는 신규매수 정책')
+    q_p, q_s = 1.0 - perf_pct / 100.0, 1.0 - spec_12m_pct / 100.0
+    cond_p = (m_data['1개월(%)'] >= m_data['1개월(%)'].quantile(q_p)) & (m_data['3개월(%)'] >= m_data['3개월(%)'].quantile(q_p)) & \
+             (m_data['6개월(%)'] >= m_data['6개월(%)'].quantile(q_p)) & (m_data['12개월(%)'] >= m_data['12개월(%)'].quantile(q_p)) & \
+             (m_data['1개월(%)'] > 0) & (m_data['3개월(%)'] > 0) & (m_data['6개월(%)'] > 0) & (m_data['12개월(%)'] > 0)
+    cond_s = (m_data['12개월(%)'] >= m_data['12개월(%)'].quantile(q_s)) & (m_data['1개월(%)'] >= m_data['1개월(%)'].quantile(.9))
+
+    def choose(ranked, ranks):
+        selected = ranked.iloc[ranks[0] - 1:ranks[1]].copy()
+        if entry_policy == 'legacy':
+            return selected
+        if entry_policy == 'next':
+            available = ranked.iloc[ranks[0] - 1:]
+            available = available[available['거래량'].gt(0)].head(len(selected))
+            missing_count = len(selected) - len(available)
+            unfilled = selected[~selected['거래량'].gt(0)].head(missing_count)
+            selected = pd.concat([available, unfilled])
+        selected['_cash'] = ~selected['거래량'].gt(0)
+        return selected
+
+    perfect = choose(m_data[cond_p].sort_values('3개월(%)', ascending=False), rank_p)
+    horse = choose(m_data[cond_s].sort_values('1개월(%)', ascending=False), rank_s)
+    return perfect, horse
+
+
 def run_backtest_k200(df, start_year, end_year, ma_months, apply_timing, 
                      rank_p, rank_s, perf_pct, spec_12m_pct,
                      trading_cost_pct=0.25, gold_returns=None, use_gold=False,
@@ -608,18 +636,7 @@ def run_backtest_k200(df, start_year, end_year, ma_months, apply_timing,
         is_bad_market = (neg_1m >= 100 and neg_3m >= 100)
         
         mult = 0.0 if (apply_timing and (is_bad_market or is_below_ma)) else 1.0
-        q_p, q_s = 1.0 - (perf_pct / 100.0), 1.0 - (spec_12m_pct / 100.0)
-
-        # 퍼펙트 상승: 1/3/6/12개월 모두 상위 (1-q_p) & 모두 양수
-        cond_p = (m_data['1개월(%)']>=m_data['1개월(%)'].quantile(q_p)) & (m_data['3개월(%)']>=m_data['3개월(%)'].quantile(q_p)) & \
-                 (m_data['6개월(%)']>=m_data['6개월(%)'].quantile(q_p)) & (m_data['12개월(%)']>=m_data['12개월(%)'].quantile(q_p)) & \
-                 (m_data['1개월(%)']>0) & (m_data['3개월(%)']>0) & (m_data['6개월(%)']>0) & (m_data['12개월(%)']>0)
-
-        # 달리는 말: 12개월 상위 + 1개월 상위 10%
-        cond_s = (m_data['12개월(%)']>=m_data['12개월(%)'].quantile(q_s)) & (m_data['1개월(%)']>=m_data['1개월(%)'].quantile(0.9))
-
-        target_p = m_data[cond_p].sort_values('3개월(%)', ascending=False).iloc[rank_p[0]-1 : rank_p[1]]
-        target_s = m_data[cond_s].sort_values('1개월(%)', ascending=False).iloc[rank_s[0]-1 : rank_s[1]]
+        target_p, target_s = select_kospi200_targets(m_data, rank_p, rank_s, perf_pct, spec_12m_pct)
 
         # 각 전략 수익률 (마켓타이밍 mult 적용)
         ret_p = (target_p[ret_col].mean() * mult) if not target_p.empty else 0.0
