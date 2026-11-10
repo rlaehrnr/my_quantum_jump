@@ -1,0 +1,156 @@
+{
+  "source_commit": "9c76bbe9e056c0e23a575f98149200c938ca12ff",
+  "prices_sha256": "45aaf639194b0cfd6f237ccc6628a14b152b6032be7a160b45de09650df9819d",
+  "cutoff": "2026-10",
+  "primary_window": 24,
+  "threshold": 0.7,
+  "comparison": ">=",
+  "replacement_requirement": "<",
+  "fallback": "first100",
+  "prefix_invariant": true,
+  "checks": {
+    "w12_single": {
+      "independent_max_error": 0.0,
+      "trigger_months": 62,
+      "single_fallback_months": 0,
+      "actual_single_months": 76
+    },
+    "w12_diverse": {
+      "independent_max_error": 0.0,
+      "trigger_months": 62,
+      "single_fallback_months": 12,
+      "actual_single_months": 26
+    },
+    "w24_single": {
+      "independent_max_error": 0.0,
+      "trigger_months": 59,
+      "single_fallback_months": 0,
+      "actual_single_months": 73
+    },
+    "w24_diverse": {
+      "independent_max_error": 0.0,
+      "trigger_months": 59,
+      "single_fallback_months": 10,
+      "actual_single_months": 24
+    },
+    "w36_single": {
+      "independent_max_error": 0.0,
+      "trigger_months": 51,
+      "single_fallback_months": 0,
+      "actual_single_months": 65
+    },
+    "w36_diverse": {
+      "independent_max_error": 0.0,
+      "trigger_months": 51,
+      "single_fallback_months": 8,
+      "actual_single_months": 22
+    }
+  },
+  "diverse_minus_single": {
+    "12": {
+      "full": {
+        "n": 183,
+        "count": 20000,
+        "block": 6,
+        "sharpe_difference": 0.0977465865441931,
+        "sharpe_difference_ci95": [
+          -0.09646579120182074,
+          0.2804791507892721
+        ],
+        "annual_relative_return": -0.016354878246971835,
+        "annual_relative_ci95": [
+          -0.050840514287490875,
+          0.02187188765072172
+        ]
+      },
+      "pre2026": {
+        "n": 173,
+        "count": 20000,
+        "block": 6,
+        "sharpe_difference": 0.0009888403591700179,
+        "sharpe_difference_ci95": [
+          -0.14128059822189115,
+          0.1643536469731312
+        ],
+        "annual_relative_return": -0.02210769461870536,
+        "annual_relative_ci95": [
+          -0.05065497527315666,
+          0.004542051044730749
+        ]
+      }
+    },
+    "24": {
+      "full": {
+        "n": 183,
+        "count": 20000,
+        "block": 6,
+        "sharpe_difference": 0.18381578339493387,
+        "sharpe_difference_ci95": [
+          0.00707895127909153,
+          0.3612677105025912
+        ],
+        "annual_relative_return": -0.005335341447176506,
+        "annual_relative_ci95": [
+          -0.041643666245877786,
+          0.03411740644644907
+        ]
+      },
+      "pre2026": {
+        "n": 173,
+        "count": 20000,
+        "block": 6,
+        "sharpe_difference": 0.1325119391590286,
+        "sharpe_difference_ci95": [
+          -0.030716615296499855,
+          0.313029175282419
+        ],
+        "annual_relative_return": -0.010515624128702465,
+        "annual_relative_ci95": [
+          -0.041940468317458915,
+          0.020621836298833088
+        ]
+      }
+    },
+    "36": {
+      "full": {
+        "n": 183,
+        "count": 20000,
+        "block": 6,
+        "sharpe_difference": 0.16072473410268273,
+        "sharpe_difference_ci95": [
+          -0.009299566745830944,
+          0.3390115019709415
+        ],
+        "annual_relative_return": -0.004579029821662331,
+        "annual_relative_ci95": [
+          -0.036745981634748244,
+          0.03144876410684335
+        ]
+      },
+      "pre2026": {
+        "n": 173,
+        "count": 20000,
+        "block": 6,
+        "sharpe_difference": 0.0953499421637094,
+        "sharpe_difference_ci95": [
+          -0.04527494520129729,
+          0.2699083975376407
+        ],
+        "annual_relative_return": -0.00971974418947346,
+        "annual_relative_ci95": [
+          -0.03553295051909052,
+          0.015907237196474935
+        ]
+      }
+    }
+  },
+  "latest": {
+    "base": "XLE·IBB",
+    "w12_single": "XLE·IBB",
+    "w12_diverse": "XLE·IBB",
+    "w24_single": "XLE·IBB",
+    "w24_diverse": "XLE·IBB",
+    "w36_single": "XLE·IBB",
+    "w36_diverse": "XLE·IBB"
+  }
+}
