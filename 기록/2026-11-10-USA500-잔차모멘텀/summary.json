@@ -1,0 +1,89 @@
+{
+  "input_commit": "1608859432d90fb7bc5cdf149cfbfa1f5bc24fe1",
+  "factor_last_month": "2026-09",
+  "downloaded_tickers": 985,
+  "download_status": {
+    "empty": 747,
+    "ok": 985
+  },
+  "archive_tickers": 1728,
+  "live_334_monthly_max_error": 8.326672684688674e-17,
+  "independent_regression_error": 1.6764367671839864e-14,
+  "future_truncation_checks": 12,
+  "bootstrap": {
+    "archive_only_lag1__residual_in_triple": {
+      "control": "eligible_triple",
+      "relative_annual_return": 0.010279394452777172,
+      "interval95": [
+        -0.030840978021549406,
+        0.05470868718459622
+      ]
+    },
+    "archive_only_lag1__residual_all_top6": {
+      "control": "raw12_all_top6",
+      "relative_annual_return": -0.035455862447351265,
+      "interval95": [
+        -0.09218205357856565,
+        0.02089883426678661
+      ]
+    },
+    "archive_only_lag2__residual_in_triple": {
+      "control": "eligible_triple",
+      "relative_annual_return": 0.019073733934135317,
+      "interval95": [
+        -0.01911756311635872,
+        0.059829488843323266
+      ]
+    },
+    "archive_only_lag2__residual_all_top6": {
+      "control": "raw12_all_top6",
+      "relative_annual_return": -0.029798204637827834,
+      "interval95": [
+        -0.0867886452653452,
+        0.026536437472201423
+      ]
+    },
+    "supplemented_lag1__residual_in_triple": {
+      "control": "eligible_triple",
+      "relative_annual_return": -0.02513591612686314,
+      "interval95": [
+        -0.07336505421239861,
+        0.024143648820296102
+      ]
+    },
+    "supplemented_lag1__residual_all_top6": {
+      "control": "raw12_all_top6",
+      "relative_annual_return": -0.06682739550804911,
+      "interval95": [
+        -0.13611953128853238,
+        0.007968704029074116
+      ]
+    },
+    "supplemented_lag2__residual_in_triple": {
+      "control": "eligible_triple",
+      "relative_annual_return": 0.009164012974593072,
+      "interval95": [
+        -0.04297934129010907,
+        0.06243494299840813
+      ]
+    },
+    "supplemented_lag2__residual_all_top6": {
+      "control": "raw12_all_top6",
+      "relative_annual_return": -0.04945556720174678,
+      "interval95": [
+        -0.12379426031244063,
+        0.035278699445841236
+      ]
+    }
+  },
+  "lag2_publication_assumption": "month t trade: regression through t-2; exact historical publication timestamps and data vintages not verified",
+  "original_full_334_month_gross": {
+    "months": 334,
+    "cagr": 0.20513348540251664,
+    "mdd": -0.33374068574152793,
+    "vol": 0.2877194802380938,
+    "sharpe": 0.7852229953594094,
+    "calmar": 0.6146493195659888,
+    "worst_month": -0.21669999999999995
+  }
+}
