@@ -34,7 +34,7 @@ from utils.snowball import (
     # 쏘 연금 (국내 나스닥 단일 + cond1 위험회피)
     load_ssopen_prices, compute_signals_ssopen, run_backtest_ssopen,
     SSOPEN_NASDAQ, SSOPEN_DEFENSE, SSOPEN_DEF_WINDOWS, SSOPEN_TICKER_NAMES, SSOPEN_BENCHMARKS,
-    # 맘 비과세 (국내 글로벌 듀얼모멘텀 + cond1)
+    # 맘 ISA (국내 글로벌 듀얼모멘텀 + cond1)
     load_mamtax_prices, compute_signals_mamtax, run_backtest_mamtax,
     MAMTAX_OFFENSE, MAMTAX_DEFENSE, MAMTAX_TICKER_NAMES, MAMTAX_BENCHMARKS, MAMTAX_TOP_OFF,
     mamtax_live_ticker, mamtax_live_name,
@@ -71,7 +71,7 @@ ASSET_COLORS = {
     '133690': '#10B981', '305080': '#3B82F6', '261220': '#EF4444', '329200': '#14B8A6',
     # 쏘 연금 (추가 방어: 국고채10년·SOL초단기채)
     '148070': '#0EA5E9', '469830': '#94A3B8',
-    # 맘 비과세 (실운용 티커 기준)
+    # 맘 ISA (실운용 티커 기준)
     '379810': '#10B981', '278530': '#3B82F6', '192090': '#EF4444', '453870': '#F97316',
     '241180': '#14B8A6', '229200': '#A855F7', '360750': '#6366F1', '466940': '#F59E0B',
     '371160': '#EC4899', '144600': '#94A3B8', '455030': '#64748B',
@@ -1397,10 +1397,10 @@ def render_ssopen():
 
 
 # ==========================================
-# 맘 비과세 (탭 7) 렌더 — 글로벌 듀얼모멘텀 + cond1
+# 맘 ISA (탭 7) 렌더 — 글로벌 듀얼모멘텀 + cond1
 # ==========================================
 def build_mamtax_detail(signals, bt):
-    """맘 비과세 월별 상세 근거."""
+    """맘 ISA 월별 상세 근거."""
     sig_by_month = {str(r['signal_month']): r for _, r in signals.iterrows()}
     rows = []
     for _, b in bt.iterrows():
@@ -1424,7 +1424,7 @@ def render_mamtax():
         us_prices = load_monthly_prices()  # cond1 신호자산(TIP/VWO/VEA/VIXY)
 
     if mp.empty:
-        st.error("📁 맘 비과세 데이터가 없습니다. `data/snowball_kr/monthly/`에 공격 10종·방어 6종이 "
+        st.error("📁 맘 ISA 데이터가 없습니다. `data/snowball_kr/monthly/`에 공격 10종·방어 6종이 "
                  "수집됐는지 확인하세요.")
         return
     missing = [t for t in (MAMTAX_OFFENSE + MAMTAX_DEFENSE) if t not in mp.columns]
@@ -1561,7 +1561,7 @@ def render_mamtax():
     detail_df = build_mamtax_detail(signals, bt)
     rule_act = rule_active_note(bt, mp, MAMTAX_OFFENSE + MAMTAX_DEFENSE)
     settings_dict = {
-        '전략': '맘 비과세 (글로벌 듀얼모멘텀 + cond1)',
+        '전략': '맘 ISA (글로벌 듀얼모멘텀 + cond1)',
         '공격': f'10종 중 12M 수익률 상위{MAMTAX_TOP_OFF} → 12M 음수 제외 → 승자 균등(듀얼모멘텀)',
         '방어': '6종 중 3M MA이격도 상위2, 각 50% (cond1 발동 시)',
         '위험회피 필터': f'cond1: TIP·VWO·VEA 6M 음수 AND (VIXY 6M 음수 또는 ≥ +{int(VIXY_SPIKE*100)}%)',
@@ -1574,7 +1574,7 @@ def render_mamtax():
     }
     render_bt_title(t_col, rule_act)
     render_backtest_section(bt, perf, cost_rate, key_prefix="mamtax",
-                            strat_color='#F97316', strat_name='맘 비과세 전략',
+                            strat_color='#F97316', strat_name='맘 ISA 전략',
                             detail_df=detail_df, settings_dict=settings_dict,
                             excel_detail_df=_build_cf_excel(detail_df, signals, bt, mp, _cf_mamtax, mamtax_live_name),
                             rule_active=rule_act)
@@ -1590,7 +1590,7 @@ STRAT_META = [
     ('ko',      '또 ISA',     '#0EA5E9'),
     ('pen',     '또 연금',    '#8B5CF6'),
     ('ssopen',  '쏘 연금',    '#EC4899'),
-    ('mamtax',  '맘 비과세',  '#F97316'),
+    ('mamtax',  '맘 ISA',  '#F97316'),
 ]
 HIDDEN_STRATEGIES = {'so', 'ko'}
 
@@ -1633,19 +1633,36 @@ def _shade_corr(v):
     return f"background-color: rgba(239,68,68,{a:.3f})"
 
 
+def _allocation_default_amounts():
+    """개인별 기본 잔액은 Streamlit Secrets에서 읽는다."""
+    empty = (0, 0, 0, 0)
+    try:
+        config = st.secrets.get('snowball_allocation', {})
+    except FileNotFoundError:
+        return empty
+    amounts = config.get('default_amounts_manwon', empty) if hasattr(config, 'get') else empty
+    if (isinstance(amounts, (list, tuple)) and len(amounts) == len(empty)
+            and all(type(value) is int and 0 <= value <= (1 << 53) - 1 for value in amounts)):
+        return tuple(amounts)
+    return empty
+
+
 def render_combined():
     st.markdown("### 통합 포트 · 계좌별 전략 배정")
-    st.caption("계좌마다 잔액 전부를 한 전략에 배정합니다. "
-               "계좌 1~4를 네 전략에 하나씩 짝짓는 24개 조합을 비교합니다.")
+    st.caption("계좌마다 잔액 전부를 네 전략 중 하나에 배정합니다. "
+               "여러 계좌가 같은 전략을 쓰는 경우까지 256개 조합을 비교합니다.")
     nmap = {k: name for k, name, _ in STRAT_META if k not in HIDDEN_STRATEGIES}
     keys = list(nmap)
     names = [f"계좌 {i + 1}" for i in range(4)]
+    defaults = _allocation_default_amounts()
     with st.form('allocation_balances', enter_to_submit=False):
+        *amount_columns, submit_column = st.columns(5, vertical_alignment='bottom')
         amounts = tuple(
-            col.number_input(f"{name} (만원)", min_value=0, step=1, key=f"allocation_manwon_{i}")
-            for i, (col, name) in enumerate(zip(st.columns(len(names)), names))
+            col.number_input(f"{name} (만원)", min_value=0, value=default, step=1,
+                             key=f"allocation_manwon_{i}")
+            for i, (col, name, default) in enumerate(zip(amount_columns, names, defaults))
         )
-        if st.form_submit_button("입력완료", type="primary"):
+        if submit_column.form_submit_button("입력완료", type="primary"):
             st.session_state['allocation_submitted_manwon'] = amounts
             st.session_state.pop('allocation_candidate', None)
 
@@ -1680,10 +1697,10 @@ def render_combined():
     st.caption("입력 금액으로 정해진 비중을 매월 유지한다고 가정합니다. 또 메리츠는 달러 수익률, "
                "국내 전략은 원화 수익률로 합산합니다. 환율·세금·계좌 간 비중 조정 비용은 별도입니다.")
     sort_options = {
-        '종합 점수': ('점수', False),
+        '연복리 수익률': ('연복리', False),
+        '종합 점수': ('종합 점수', False),
         '샤프': ('샤프', False),
         '소르티노': ('소르티노', False),
-        '연복리 수익률': ('연복리', False),
         '최대 낙폭 방어': ('MDD', False),
         '최악 월 방어': ('최악 월', False),
         '하위 5% 월 방어': ('하위 5% 월 평균', False),
@@ -1692,7 +1709,7 @@ def render_combined():
     rows = []
     for i, ((assignment, _), (stats, score)) in enumerate(zip(candidates, results), start=1):
         rows.append({
-            '조합': i, '점수': score, '연복리': stats['cagr'] * 100,
+            '조합': i, '종합 점수': score, '연복리': stats['cagr'] * 100,
             '샤프': stats['sharpe'], '소르티노': stats['sortino'],
             'MDD': stats['mdd'] * 100, '최악 월': stats['worst'] * 100,
             '하위 5% 월 평균': stats['tail'] * 100,
@@ -1703,11 +1720,12 @@ def render_combined():
                for j, (name, key) in enumerate(zip(names, assignment))},
         })
     sort_by = st.selectbox("우선 비교 기준", sort_options.keys(), key="allocation_sort")
+    st.caption("기본 정렬은 연복리 수익률입니다. 종합 점수는 수익과 위험을 함께 보는 비교 지표입니다.")
     metric, ascending = sort_options[sort_by]
     ranked = pd.DataFrame(rows).sort_values([metric, '조합'], ascending=[ascending, True])
     percent = {col: st.column_config.NumberColumn(format="%.2f%%")
                for col in ('연복리', 'MDD', '최악 월', '하위 5% 월 평균')}
-    ratios = {col: st.column_config.NumberColumn(format="%.2f") for col in ('점수', '샤프', '소르티노')}
+    ratios = {col: st.column_config.NumberColumn(format="%.2f") for col in ('종합 점수', '샤프', '소르티노')}
     st.dataframe(ranked, hide_index=True, width="stretch", column_config=percent | ratios,
                  key="allocation_comparison")
     with st.expander("지표와 점수 계산 방식"):
@@ -1898,7 +1916,7 @@ STRATEGY_TABS = [
     ('ko', '🇰🇷 또 ISA', render_ko),
     ('pen', '🇰🇷 또 연금', render_pension),
     ('ssopen', '🇰🇷 쏘 연금', render_ssopen),
-    ('mamtax', '🇰🇷 맘 비과세', render_mamtax),
+    ('mamtax', '🇰🇷 맘 ISA', render_mamtax),
 ]
 visible_tabs = [(label, render) for key, label, render in STRATEGY_TABS
                 if key not in HIDDEN_STRATEGIES]

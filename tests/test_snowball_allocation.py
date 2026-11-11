@@ -6,19 +6,24 @@ from utils.snowball_allocation import allocation_choices, compare_allocations, c
 
 
 class SnowballAllocationTest(unittest.TestCase):
-    def test_four_accounts_map_to_distinct_strategies_in_all_24_permutations(self):
+    def test_all_256_assignments_allow_repeated_strategies_and_preserve_total(self):
         keys = ('a', 'b', 'c', 'd')
         balances = (40, 30, 20, 10)
         options = allocation_choices(balances, keys)
-        self.assertEqual(len({assignment for assignment, _ in options}), 24)
+        self.assertEqual(len({assignment for assignment, _ in options}), 256)
+        self.assertEqual(options[0], (('a', 'a', 'a', 'a'), {'a': 100}))
         for assignment, amounts in options:
-            self.assertEqual(set(assignment), set(keys))
-            self.assertEqual([amounts[key] for key in assignment], list(balances))
+            self.assertEqual(sum(amounts.values()), sum(balances))
+            for key in amounts:
+                self.assertEqual(amounts[key], sum(balance for chosen, balance in
+                                                   zip(assignment, balances) if chosen == key))
 
-    def test_zero_balance_can_still_be_paired_with_a_distinct_strategy(self):
+    def test_zero_balance_does_not_affect_strategy_totals(self):
         options = allocation_choices([0, 20], ('a', 'b'))
-        self.assertEqual(options, [(('a', 'b'), {'a': 0, 'b': 20}),
-                                   (('b', 'a'), {'b': 0, 'a': 20})])
+        self.assertEqual(options, [(('a', 'a'), {'a': 20}),
+                                   (('a', 'b'), {'a': 0, 'b': 20}),
+                                   (('b', 'a'), {'b': 0, 'a': 20}),
+                                   (('b', 'b'), {'b': 20})])
         self.assertEqual(allocation_choices([0, 0], ('a', 'b')), [])
 
     def test_only_recent_contiguous_confirmed_months(self):
