@@ -1650,7 +1650,7 @@ def _allocation_default_amounts():
 def render_combined():
     st.markdown("### 통합 포트 · 계좌별 전략 배정")
     st.caption("계좌마다 잔액 전부를 네 전략 중 하나에 배정합니다. "
-               "여러 계좌가 같은 전략을 쓰는 경우까지 256개 조합을 비교합니다.")
+               "전략당 한 계좌를 선택하면 전략이 겹치지 않는 24개 조합을 비교합니다.")
     nmap = {k: name for k, name, _ in STRAT_META if k not in HIDDEN_STRATEGIES}
     keys = list(nmap)
     names = [f"계좌 {i + 1}" for i in range(4)]
@@ -1662,8 +1662,10 @@ def render_combined():
                              key=f"allocation_manwon_{i}")
             for i, (col, name, default) in enumerate(zip(amount_columns, names, defaults))
         )
+        distinct = submit_column.checkbox("전략당 한 계좌", key="allocation_distinct")
         if submit_column.form_submit_button("입력완료", type="primary"):
             st.session_state['allocation_submitted_manwon'] = amounts
+            st.session_state['allocation_submitted_distinct'] = distinct
             st.session_state.pop('allocation_candidate', None)
 
     if 'allocation_submitted_manwon' not in st.session_state:
@@ -1673,7 +1675,8 @@ def render_combined():
     if not total:
         st.info("잔액을 한 계좌 이상 입력해 주세요.")
         return
-    candidates = allocation_choices(amounts, keys)
+    distinct = st.session_state.get('allocation_submitted_distinct', False)
+    candidates = allocation_choices(amounts, keys, distinct=distinct)
     cost_rate = 0.0025
     with st.spinner("확정월 기준으로 배정 조합을 비교하는 중…"):
         R, regimes = build_all_strategy_returns(cost_rate, keys)
@@ -1748,7 +1751,7 @@ def render_combined():
         return f"{candidate}번 · " + " / ".join(
             f"{name} → {nmap[key]}" for name, key in zip(names, assignment))
 
-    picked = st.selectbox("상세히 볼 조합", ranked['조합'].tolist(), format_func=candidate_label,
+    picked = st.selectbox("상세히 볼 조합", range(1, len(candidates) + 1), format_func=candidate_label,
                           key="allocation_candidate")
     assignment, by_strategy = candidates[picked - 1]
     W = {key: amount / total for key, amount in by_strategy.items() if amount > 0}

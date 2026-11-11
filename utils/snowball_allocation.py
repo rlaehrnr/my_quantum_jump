@@ -1,5 +1,5 @@
 """계좌별 배정 후보와 같은 확정월에서의 통합 성과 비교."""
-from itertools import product
+from itertools import permutations, product
 
 import numpy as np
 import pandas as pd
@@ -7,12 +7,13 @@ import pandas as pd
 from utils.portfolio_report import common_portfolio_months
 
 
-def allocation_choices(amounts, keys):
-    """각 계좌의 잔액을 한 전략에 배정하며 여러 계좌가 같은 전략을 쓸 수 있다."""
+def allocation_choices(amounts, keys, *, distinct=False):
+    """각 계좌의 잔액을 한 전략에 배정하고 필요하면 중복을 제한한다."""
     if not any(amounts):
         return []
+    assignments = permutations(keys, len(amounts)) if distinct else product(keys, repeat=len(amounts))
     candidates = []
-    for assignment in product(keys, repeat=len(amounts)):
+    for assignment in assignments:
         by_strategy = {}
         for key, amount in zip(assignment, amounts):
             by_strategy[key] = by_strategy.get(key, 0) + amount

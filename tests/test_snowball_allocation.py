@@ -18,6 +18,15 @@ class SnowballAllocationTest(unittest.TestCase):
                 self.assertEqual(amounts[key], sum(balance for chosen, balance in
                                                    zip(assignment, balances) if chosen == key))
 
+    def test_distinct_assignments_use_each_strategy_once(self):
+        keys = ('a', 'b', 'c', 'd')
+        balances = (40, 30, 20, 0)
+        options = allocation_choices(balances, keys, distinct=True)
+        self.assertEqual(len({assignment for assignment, _ in options}), 24)
+        for assignment, amounts in options:
+            self.assertEqual(set(assignment), set(keys))
+            self.assertEqual([amounts[key] for key in assignment], list(balances))
+
     def test_zero_balance_does_not_affect_strategy_totals(self):
         options = allocation_choices([0, 20], ('a', 'b'))
         self.assertEqual(options, [(('a', 'a'), {'a': 20}),
