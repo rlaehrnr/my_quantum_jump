@@ -41,6 +41,7 @@ from utils.snowball import (
 )
 from utils.ui_components import inject_custom_css, get_monthly_heatmap, get_mdd_history
 from utils.portfolio_report import build_combined_monthly, build_combined_excel
+from utils.snowball_balance_storage import browser_balance_storage, normalize_balance_amounts
 from utils.snowball_allocation import (
     allocation_choices, compare_allocations, comparison_window, portfolio_stats,
 )
@@ -1640,11 +1641,22 @@ def _allocation_default_amounts():
         config = st.secrets.get('snowball_allocation', {})
     except FileNotFoundError:
         return empty
-    amounts = config.get('default_amounts_manwon', empty) if hasattr(config, 'get') else empty
-    if (isinstance(amounts, (list, tuple)) and len(amounts) == len(empty)
-            and all(type(value) is int and 0 <= value <= (1 << 53) - 1 for value in amounts)):
-        return tuple(amounts)
-    return empty
+    amounts = config.get('default_amounts_manwon') if hasattr(config, 'get') else None
+    return normalize_balance_amounts(amounts) or empty
+
+
+def _restore_allocation_balances():
+    """새 세션에서만 저장한 금액을 폼 위젯에 복원한다."""
+    if st.session_state.get('allocation_storage_ready'):
+        return
+    st.session_state['allocation_storage_ready'] = True
+    if 'allocation_submitted_manwon' in st.session_state:
+        return
+    saved = st.session_state['allocation_balance_storage'].loaded
+    amounts = normalize_balance_amounts(saved.get('amounts')) if saved else None
+    if amounts is not None:
+        for i, amount in enumerate(amounts):
+            st.session_state[f'allocation_manwon_{i}'] = amount
 
 
 def render_allocation_pair(ranked, results, names, amounts, candidate_label):
@@ -1718,20 +1730,31 @@ def render_combined():
     nmap = {k: name for k, name, _ in STRAT_META if k not in HIDDEN_STRATEGIES}
     keys = list(nmap)
     names = [f"계좌 {i + 1}" for i in range(4)]
-    defaults = _allocation_default_amounts()
+    for i, amount in enumerate(_allocation_default_amounts()):
+        st.session_state.setdefault(f'allocation_manwon_{i}', amount)
     with st.form('allocation_balances', enter_to_submit=False):
         *amount_columns, submit_column = st.columns(5, vertical_alignment='bottom')
         amounts = tuple(
-            col.number_input(f"{name} (만원)", min_value=0, value=default, step=1,
-                             key=f"allocation_manwon_{i}")
-            for i, (col, name, default) in enumerate(zip(amount_columns, names, defaults))
+            col.number_input(f"{name} (만원)", min_value=0, step=1, key=f"allocation_manwon_{i}")
+            for i, (col, name) in enumerate(zip(amount_columns, names))
         )
         distinct = submit_column.checkbox("전략당 한 계좌", key="allocation_distinct")
-        if submit_column.form_submit_button("입력완료", type="primary"):
+        submitted = submit_column.form_submit_button("입력완료", type="primary")
+        if submitted:
             st.session_state['allocation_submitted_manwon'] = amounts
             st.session_state['allocation_submitted_distinct'] = distinct
             for key in ('allocation_candidate', 'allocation_pair_a', 'allocation_pair_b'):
                 st.session_state.pop(key, None)
+
+    storage = browser_balance_storage(
+        key='allocation_balance_storage',
+        data={'restore': not st.session_state.get('allocation_storage_ready'), 'save': amounts if submitted else None},
+        default={'loaded': None, 'write_ok': True},
+        on_loaded_change=_restore_allocation_balances,
+        on_write_ok_change=lambda: None,
+    )
+    if storage.write_ok is False:
+        st.caption("브라우저에서 저장이 차단되어 이 세션에서만 금액이 유지됩니다.")
 
     if 'allocation_submitted_manwon' not in st.session_state:
         return

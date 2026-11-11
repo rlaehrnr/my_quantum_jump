@@ -3,9 +3,18 @@ import unittest
 import pandas as pd
 
 from utils.snowball_allocation import allocation_choices, compare_allocations, comparison_window, recovery_periods
+from utils.snowball_balance_storage import normalize_balance_amounts
 
 
 class SnowballAllocationTest(unittest.TestCase):
+    def test_saved_balances_require_four_nonnegative_safe_integers(self):
+        self.assertEqual(normalize_balance_amounts([10, 20, 0, 30]), (10, 20, 0, 30))
+        self.assertEqual(normalize_balance_amounts([0, 0, 0, 0]), (0, 0, 0, 0))
+        for values in ([10, 20], [0, 0, -1, 0], [0, 0, True, 0],
+                       [0, 0, 0.5, 0], [0, 0, 1 << 53, 0], None):
+            with self.subTest(values=values):
+                self.assertIsNone(normalize_balance_amounts(values))
+
     def test_all_256_assignments_allow_repeated_strategies_and_preserve_total(self):
         keys = ('a', 'b', 'c', 'd')
         balances = (40, 30, 20, 10)
