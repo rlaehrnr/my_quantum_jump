@@ -3,14 +3,9 @@
 ─────────────────────
 동적 자산배분 전략 페이지 (탭 구성).
 
-탭 7개: 또 메리츠 · 맘·쏘 삼성 · 또 ISA · 또 연금 · 쏘 연금 · 맘 비과세 · 통합 포트.
-- 탭 1 "또 메리츠":  기존 스노우볼 전략 (조건1 모멘텀 + 조건2 밸류에이션).
-- 탭 2 "맘·쏘 삼성": 모멘텀 상위 2종 동일가중 + 또 메리츠 리스크오프 동반 방어.
-    · EWY·SMH 동시 보유 시 1위 유지, 적격 차순위로 2위 교체
-    · 삼성증권 계좌를 하나로 합쳐 운용한다 (레버리지 '맘 삼성'은 2026-08 폐지)
-
+전략별 라이브·백테스트 탭과 계좌별 배정 조합을 비교하는 통합 포트.
 각 탭 구성은 동일: 공격/방어 현황 → 신호/필터 → 백테스트 성과 + 자산곡선 + 월별 로그.
-새 탭을 추가하려면 render_* 함수를 만들어 아래 st.tabs에 연결하면 된다.
+비노출 전략은 아래 HIDDEN_STRATEGIES에서 관리한다.
 """
 
 import streamlit as st
@@ -45,7 +40,10 @@ from utils.snowball import (
     mamtax_live_ticker, mamtax_live_name,
 )
 from utils.ui_components import inject_custom_css, get_monthly_heatmap, get_mdd_history
-from utils.portfolio_report import build_combined_monthly, build_combined_excel, common_portfolio_months
+from utils.portfolio_report import build_combined_monthly, build_combined_excel
+from utils.snowball_allocation import (
+    allocation_choices, compare_allocations, comparison_window, portfolio_stats,
+)
 
 st.set_page_config(page_title="스노우볼 포트", page_icon="❄️", layout="wide")
 inject_custom_css()
@@ -1583,88 +1581,45 @@ def render_mamtax():
 
 
 # ==========================================
-# 통합 포트 (탭 8) — 7개 전략을 실제 비중으로 합산
+# 통합 포트 — 계좌별 전략 배정 비교
 # ==========================================
-#
-# 탭을 하나씩 보면 그달 제일 아픈 숫자만 눈에 들어온다. 실제 자산은 7개 계좌에
-# 나뉘어 있으므로, 전체가 얼마나 흔들렸는지는 비중을 넣어 합쳐야 보인다.
-# (예: 2026-07은 맘 삼성 탭에 -38.6%가 찍히지만 균등 배분이면 전체는 -17.9%다.)
 
 STRAT_META = [
-    # (키, 표시명, 색)  ※ 맘 삼성은 2026-08 폐지 (아래 사유)
     ('meritz',  '또 메리츠',   '#10B981'),
     ('so',      '맘·쏘 삼성', '#F59E0B'),
-    ('ko',      '또 ISA',    '#0EA5E9'),
+    ('ko',      '또 ISA',     '#0EA5E9'),
     ('pen',     '또 연금',    '#8B5CF6'),
     ('ssopen',  '쏘 연금',    '#EC4899'),
     ('mamtax',  '맘 비과세',  '#F97316'),
 ]
+HIDDEN_STRATEGIES = {'so', 'ko'}
 
 
-def build_all_strategy_returns(cost_rate, include_defense=False):
-    """6개 전략의 월별 순수익률을 한 프레임으로 (index=보유월 문자열).
-
-    각 탭과 같은 데이터·신호·백테스트 캐시를 재사용한다. 합산에는 별도 캐시를
-    두지 않아 원본이 갱신된 실행에서 새 월이 바로 반영된다.
-    비어 있는 달(전략마다 시작 시점이 다름)은 NaN.
-    """
-    ko_p = load_ko_prices()
-    pen_p = load_pen_prices()
-    ss_p = load_ssopen_prices()
-    mp = load_mamtax_prices()
+def build_all_strategy_returns(cost_rate, keys):
+    """개별 탭과 동일한 라이브 전략 엔진에서 보유월별 순수익·국면을 가져온다."""
+    sources = {
+        'meritz': (lambda: prices, lambda p: compute_signals(p, div_yield), run_backtest),
+        'so': (lambda: prices, compute_signals_so, run_backtest_so),
+        'ko': (load_ko_prices, compute_signals_ko, run_backtest_ko),
+        'pen': (load_pen_prices, compute_signals_pension, run_backtest_pension),
+        'ssopen': (load_ssopen_prices, lambda p: compute_signals_ssopen(p, prices), run_backtest_ssopen),
+        'mamtax': (load_mamtax_prices, lambda p: compute_signals_mamtax(p, prices), run_backtest_mamtax),
+    }
     out, regimes = {}, {}
-
-    def _put(key, bt):
-        if bt is not None and not bt.empty:
-            out[key] = bt.set_index('hold_month')['ret_strategy']
-            regimes[key] = bt.set_index('hold_month')['defensive'].astype('boolean')
-
-    _put('meritz',  run_backtest(prices, compute_signals(prices, div_yield), cost=cost_rate))
-    _put('so',      run_backtest_so(prices, compute_signals_so(prices), cost=cost_rate))
-    if not ko_p.empty:
-        _put('ko', run_backtest_ko(ko_p, compute_signals_ko(ko_p), cost=cost_rate))
-    if not pen_p.empty:
-        _put('pen', run_backtest_pension(pen_p, compute_signals_pension(pen_p), cost=cost_rate))
-    if not ss_p.empty:
-        _put('ssopen', run_backtest_ssopen(ss_p, compute_signals_ssopen(ss_p, prices), cost=cost_rate))
-    if not mp.empty:
-        _put('mamtax', run_backtest_mamtax(mp, compute_signals_mamtax(mp, prices), cost=cost_rate))
-
-    returns = pd.DataFrame(out).sort_index()
-    if include_defense:
-        return returns, pd.DataFrame(regimes).reindex(returns.index)
-    return returns
-
-
-def build_current_states():
-    """전략별 '이번 달' 국면(공격/방어). 추천 비중의 국면 기울기에 쓴다."""
-    ko_p = load_ko_prices(); pen_p = load_pen_prices()
-    ss_p = load_ssopen_prices(); mp = load_mamtax_prices()
-    out = {}
-
-    def _last(key, sig):
-        if sig is None or sig.empty or 'defensive' not in sig.columns:
-            return
-        s = sig[sig['defensive'].notna()]
-        if len(s):
-            out[key] = {'defensive': bool(s.iloc[-1]['defensive'])}
-
-    _last('meritz', compute_signals(prices, div_yield))
-    _last('so', compute_signals_so(prices))
-    if not ko_p.empty:
-        _last('ko', compute_signals_ko(ko_p))
-    if not pen_p.empty:
-        _last('pen', compute_signals_pension(pen_p))
-    if not ss_p.empty:
-        _last('ssopen', compute_signals_ssopen(ss_p, prices))
-    if not mp.empty:
-        _last('mamtax', compute_signals_mamtax(mp, prices))
-    return out
+    for key in keys:
+        load_prices, signals, backtest = sources[key]
+        px = load_prices()
+        if px.empty:
+            continue
+        bt = backtest(px, signals(px), cost=cost_rate)
+        if not bt.empty:
+            by_month = bt.set_index('hold_month')
+            out[key] = by_month['ret_strategy']
+            regimes[key] = by_month['defensive'].astype('boolean')
+    return pd.DataFrame(out).sort_index(), pd.DataFrame(regimes).sort_index()
 
 
 def _shade_signed(v, cap):
-    """음수=빨강 / 양수=초록 배경. matplotlib 없이 인라인 rgba로 처리.
-    (Styler.background_gradient는 matplotlib을 요구하는데 이 레포엔 의존성이 없다.)"""
     if pd.isna(v) or cap <= 0:
         return ''
     a = min(abs(v) / cap, 1.0) * 0.55
@@ -1672,341 +1627,155 @@ def _shade_signed(v, cap):
 
 
 def _shade_corr(v):
-    """상관계수 0~1 → 초록에서 빨강으로."""
     if pd.isna(v):
         return ''
     a = min(max(float(v), 0.0), 1.0) * 0.55
     return f"background-color: rgba(239,68,68,{a:.3f})"
 
 
-def _port_stats(r):
-    """월수익률 시리즈 → 성과지표."""
-    r = r.dropna()
-    if len(r) < 2:
-        return None
-    cum = (1 + r).cumprod()
-    dd = cum / cum.cummax().clip(lower=1.0) - 1.0
-    sd = r.std(ddof=0)
-    # Sortino: 하락 편차만 위험으로 본다. 상승 급등(2026-05 +54% 같은 달)을
-    # 벌주지 않아 비대칭 수익 분포를 가진 이 전략들에 Sharpe보다 공정하다.
-    downside = np.sqrt((np.minimum(r, 0.0) ** 2).mean())
-    n = len(r)
-    return {
-        'n': n, 'cum': cum.iloc[-1] - 1.0, 'cagr': cum.iloc[-1] ** (12.0 / n) - 1.0,
-        'mdd': dd.min(), 'sharpe': (r.mean() / sd * np.sqrt(12)) if sd > 0 else 0.0,
-        'sortino': (r.mean() / downside * np.sqrt(12)) if downside > 0 else 0.0,
-        'win': (r > 0).mean(), 'equity': cum, 'dd': dd, 'ret': r,
-    }
-
-
-def _round_to_step(wdict, step=10):
-    """비중(합=1)을 step% 단위로 반올림하되 합계를 정확히 100%로 맞춘다(최대잔여법)."""
-    raw = {k: v * 100 for k, v in wdict.items()}
-    base = {k: int(v // step) * step for k, v in raw.items()}
-    left = 100 - sum(base.values())
-    # 버림으로 잃은 양이 큰 순서대로 step씩 되돌려 준다
-    order = sorted(raw, key=lambda k: raw[k] - base[k], reverse=True)
-    i = 0
-    while left >= step and order:
-        base[order[i % len(order)]] += step
-        left -= step
-        i += 1
-    return base
-
-
-def recommend_weights(R, states, step=10, wmax=40, aggr=0.5):
-    """이번달 추천 비중과 그 근거표.
-
-    두 극단을 기하평균으로 섞는다 (aggr = 수익 반영 강도, 0~1):
-      · aggr=0 → 순수 역변동성(리스크 패리티). 수익률을 아예 안 보므로
-                 과최적화 여지가 가장 적지만, 잘 버는 전략도 눌러 버린다.
-      · aggr=1 → 순수 Sortino 비례. 잘 버는 쪽에 확실히 실어 준다.
-    Sortino를 쓰는 이유: 하락 편차만 위험으로 봐서, 상승 급등(2026-05 +54%)을
-    벌주지 않는다. 이 전략들처럼 수익 분포가 비대칭이면 Sharpe보다 공정하다.
-
-    그 위에 완만한 기울기 둘을 더 얹는다:
-      · 계절성 : 다음 보유월의 과거 같은 달 평균 (±15%, 표본이 얇아 약하게)
-      · 국면   : 이번 달 방어 모드면 부담 위험이 작으므로 ×1.15
-
-    ⚠️ 최적해가 아니라 출발점이다. 근거표와 '이 비중의 과거 성과'를 같이
-       보여주는 이유 — 숫자를 그대로 믿지 말고 직접 비교하라는 뜻.
-    """
-    rows, score = [], {}
-    nmap = dict((k, n) for k, n, _ in STRAT_META)
-    hold_month = (int(str(R.index[-1])[-2:]) % 12) + 1     # 다음 보유월
-
-    sor, vol, sea, sh = {}, {}, {}, {}
-    for k in R.columns:
-        r = R[k].dropna()
-        if len(r) < 24:
-            continue
-        tail = r.tail(36)
-        sd = tail.std(ddof=0)
-        vol[k] = sd * np.sqrt(12) if sd > 0 else np.nan
-        st_ = _port_stats(r)
-        sor[k] = st_['sortino']
-        sh[k] = st_['sharpe']
-        same = r[[int(str(i)[-2:]) == hold_month for i in r.index]]
-        sea[k] = same.mean() if len(same) >= 3 else 0.0
-
-    keys = [k for k in R.columns if k in vol and pd.notna(vol[k]) and vol[k] > 0]
-    if not keys:
-        return {}, pd.DataFrame()
-
-    def _norm(d):
-        t = sum(d.values())
-        return {k: v / t for k, v in d.items()} if t > 0 else {k: 1 / len(d) for k in d}
-
-    def _tilt(vals, lam=0.15):
-        """값 → 평균 대비 ±lam 배율. 표준편차가 0이면 전부 1.0."""
-        a = pd.Series(vals, dtype=float)
-        sd = a.std(ddof=0)
-        if not np.isfinite(sd) or sd == 0:
-            return {k: 1.0 for k in a.index}
-        z = ((a - a.mean()) / sd).clip(-1.5, 1.5)
-        return (1 + lam * z / 1.5).to_dict()
-
-    w_risk = _norm({k: 1.0 / vol[k] for k in keys})            # 역변동성
-    w_perf = _norm({k: max(sor[k], 0.05) for k in keys})       # Sortino 비례
-    a = min(max(float(aggr), 0.0), 1.0)
-    t_s = _tilt({k: sea[k] for k in keys})
-    for k in keys:
-        defensive = states.get(k, {}).get('defensive')
-        t_r = 1.15 if defensive is True else 1.0
-        # 기하평균 혼합 — 두 배분 사이를 매끄럽게 오가고 항상 양수를 유지한다
-        score[k] = (w_risk[k] ** (1 - a)) * (w_perf[k] ** a) * t_s[k] * t_r
-        rows.append({'전략': nmap.get(k, k),
-                     '국면': ('🛡️ 방어' if defensive is True
-                              else '⚔️ 공격' if defensive is False else '—'),
-                     'CAGR': _port_stats(R[k])['cagr'] * 100,
-                     '연변동성': vol[k] * 100,
-                     'Sortino': sor[k], 'Sharpe': sh[k],
-                     f'{hold_month}월 평균': sea[k] * 100,
-                     'MDD': _port_stats(R[k])['mdd'] * 100})
-
-    tot = sum(score.values())
-    w = {k: v / tot for k, v in score.items()}
-    # 한 전략이 과하게 커지지 않도록 상한을 걸고 나머지에 재분배
-    for _ in range(6):
-        over = {k: v for k, v in w.items() if v > wmax / 100}
-        if not over:
-            break
-        spill = sum(v - wmax / 100 for v in over.values())
-        rest = [k for k in w if k not in over]
-        if not rest:
-            break
-        for k in over:
-            w[k] = wmax / 100
-        add = spill / len(rest)
-        for k in rest:
-            w[k] += add
-
-    rec = _round_to_step(w, step)
-    df = pd.DataFrame(rows)
-    # 반올림 전 값도 같이 보여준다 — 10% 단위로 자르면 슬라이더를 움직여도
-    # 추천이 그대로인 구간이 생기는데, 그때 실제로는 무엇이 움직였는지 보이게.
-    df['계산값'] = [w.get(k, 0) * 100 for k in keys]
-    df['추천'] = [rec.get(k, 0) for k in keys]
-    return rec, df.sort_values('계산값', ascending=False)
-
-
 def render_combined():
-    st.markdown("### 📊 통합 포트 — 내 실제 비중으로 합산")
-    st.caption("탭별로 보면 그달 제일 아픈 숫자만 보입니다. 계좌 비중을 넣으면 "
-               "전체 자산이 실제로 얼마나 움직였는지 한 화면에서 보입니다.")
+    st.markdown("### 통합 포트 · 계좌별 전략 배정")
+    st.caption("계좌 이름과 잔액을 입력하고 실제로 매매할 수 있는 전략을 남겨주세요. "
+               "각 계좌의 잔액 전부를 한 전략에 배정하는 조합을 비교합니다.")
+    nmap = {k: name for k, name, _ in STRAT_META if k not in HIDDEN_STRATEGIES}
+    keys = list(nmap)
+    with st.form('allocation_accounts', enter_to_submit=False):
+        accounts = []
+        for i in range(4):
+            name_col, amount_col, eligible_col = st.columns([2, 2, 5])
+            name = name_col.text_input(f"계좌 {i + 1} 이름", key=f"allocation_name_{i}",
+                                       placeholder=f"계좌 {i + 1}", max_chars=40)
+            amount = amount_col.number_input(f"계좌 {i + 1} 잔액 (원)", min_value=0,
+                                             step=10_000, key=f"allocation_amount_{i}")
+            eligible = eligible_col.multiselect(f"계좌 {i + 1} 운용 가능 전략", keys,
+                                                default=keys, format_func=nmap.get,
+                                                key=f"allocation_eligible_{i}")
+            accounts.append((name.strip() or f"계좌 {i + 1}", amount, eligible))
+        cost_col, distinct_col = st.columns([1, 3])
+        cost_pct = cost_col.number_input("교체비용 (%)", 0.0, 1.0, 0.25, 0.05,
+                                        key="allocation_cost")
+        distinct = distinct_col.checkbox("한 전략당 한 계좌만 배정", key="allocation_distinct")
+        if st.form_submit_button("입력완료", type="primary"):
+            st.session_state['allocation_submitted'] = (accounts, cost_pct, distinct)
+            st.session_state.pop('allocation_candidate', None)
 
-    # 위젯 변경값은 rerun 전에 session_state에 반영된다.
-    cost_rate = float(st.session_state.get('comb_cost', 0.25) or 0.0) / 100.0
-
-    with st.spinner("전략별 월수익률 계산 중..."):
-        R, regimes = build_all_strategy_returns(cost_rate, include_defense=True)
-    if R.empty:
-        st.error("전략 수익률을 계산할 수 없습니다.")
+    if 'allocation_submitted' not in st.session_state:
+        return
+    accounts, cost_pct, distinct = st.session_state['allocation_submitted']
+    names, amounts, eligible = zip(*accounts)
+    total = sum(amounts)
+    if not total:
+        st.info("잔액을 한 계좌 이상 입력해 주세요.")
+        return
+    for name, amount, allowed in accounts:
+        if amount and not allowed:
+            st.warning(f"{name}에 운용 가능한 전략을 하나 이상 선택해 주세요.")
+            return
+    candidates = allocation_choices(amounts, eligible, distinct=distinct)
+    if not candidates:
+        st.warning("입력한 운용 가능 전략으로는 한 전략당 한 계좌 조건을 충족할 수 없습니다.")
         return
 
-    # ---- 비중 입력 (금액 ↔ 비율 양방향) ----
-    nmap = dict((k, n) for k, n, _ in STRAT_META)
-    KEYS = [k for k, _, _ in STRAT_META if k in R.columns]
+    cost_rate = cost_pct / 100
+    with st.spinner("확정월 기준으로 배정 조합을 비교하는 중…"):
+        R, regimes = build_all_strategy_returns(cost_rate, keys)
+        unavailable = [nmap[k] for k in keys if k not in R or R[k].isna().all()]
+        if unavailable:
+            st.warning("수익률 이력이 없는 전략 · " + ", ".join(unavailable))
+            return
+        # 미국·한국 월말이 모두 지난 뒤 해당 월을 집계한다.
+        current_month = pd.Timestamp.now(tz='America/New_York').strftime('%Y-%m')
+        last_closed = str(pd.Period(current_month, freq='M') - 1)
+        R = comparison_window(R[keys], last_closed)
+        if len(R) < 2:
+            st.info("비교 전략의 연속 공통 확정 이력이 2개월 이상 필요합니다.")
+            return
+        results = compare_allocations(R, candidates)
 
-    # 금액(만원)을 원본으로 두고 비율은 파생값. 반대로 비율을 고치면 총액 기준으로
-    # 금액을 되돌려 계산한다. on_change 콜백은 rerun '전에' 돌아 위젯 값을 갱신한다.
-    def _sv(key):
-        return float(st.session_state.get(key, 0) or 0)
+    span = R.index
+    st.markdown("#### 배정 조합 비교")
+    st.caption(f"확정월 {span[0]}~{span[-1]} · {len(span)}개월 · 총 {total:,}원 · "
+               f"{len(candidates)}개 조합 · 교체비용 {cost_pct:.2f}%")
+    st.caption("입력 금액으로 정해진 비중을 매월 유지한다고 가정합니다. 또 메리츠는 달러 수익률, "
+               "국내 전략은 원화 수익률로 합산합니다. 환율·세금·계좌 간 비중 조정 비용은 별도입니다.")
+    sort_options = {
+        '종합 점수': ('점수', False),
+        '샤프': ('샤프', False),
+        '소르티노': ('소르티노', False),
+        '연복리 수익률': ('연복리', False),
+        '최대 낙폭 방어': ('MDD', False),
+        '최악 월 방어': ('최악 월', False),
+        '하위 5% 월 방어': ('하위 5% 월 평균', False),
+        '회복기간 단축': ('최장 고점 회복(개월)', True),
+    }
+    rows = []
+    for i, ((assignment, _), (stats, score)) in enumerate(zip(candidates, results), start=1):
+        rows.append({
+            '조합': i, '점수': score, '연복리': stats['cagr'] * 100,
+            '샤프': stats['sharpe'], '소르티노': stats['sortino'],
+            'MDD': stats['mdd'] * 100, '최악 월': stats['worst'] * 100,
+            '하위 5% 월 평균': stats['tail'] * 100,
+            '최장 고점 회복(개월)': stats['longest'],
+            '미회복 경과(개월)': stats['periods'][-1]['months']
+                if stats['periods'] and stats['periods'][-1]['recovered'] is None else 0,
+            **{f"{j + 1}. {name}": nmap.get(key, '—')
+               for j, (name, key) in enumerate(zip(names, assignment))},
+        })
+    sort_by = st.selectbox("우선 비교 기준", sort_options.keys(), key="allocation_sort")
+    metric, ascending = sort_options[sort_by]
+    ranked = pd.DataFrame(rows).sort_values([metric, '조합'], ascending=[ascending, True])
+    percent = {col: st.column_config.NumberColumn(format="%.2f%%")
+               for col in ('연복리', 'MDD', '최악 월', '하위 5% 월 평균')}
+    ratios = {col: st.column_config.NumberColumn(format="%.2f") for col in ('점수', '샤프', '소르티노')}
+    st.dataframe(ranked, hide_index=True, width="stretch", column_config=percent | ratios,
+                 key="allocation_comparison")
+    with st.expander("지표와 점수 계산 방식"):
+        st.markdown(
+            "- **연복리**는 월별 수익률을 복리로 연결한 연환산 수익률입니다. "
+            "**샤프**는 월평균 수익을 전체 변동성으로, **소르티노**는 하락 편차로 나눠 연환산합니다. "
+            "두 지표의 기준수익률은 0%이고 분모가 0이면 값을 비워둡니다.\n"
+            "- **MDD**는 월말 기준 고점 대비 최대 낙폭입니다. **최악 월**은 단일 월 최저 수익률이고, "
+            "**하위 5% 월 평균**은 수익률이 낮은 순으로 전체 월의 5%를 올림해 평균합니다. "
+            "세 지표 모두 값이 높을수록 양호합니다.\n"
+            "- **최장 고점 회복**은 직전 고점에서 다시 그 수준에 닿을 때까지의 최장 기간입니다. "
+            "관측 종료일까지 회복하지 못한 구간은 그때까지의 경과월을 포함하며 미회복 열에 표시합니다.\n"
+            "- **종합 점수**는 위 일곱 지표의 후보 내 순위 백분율을 같은 비중으로 평균합니다. "
+            "동일한 전략별 금액은 순위에 한 번만 반영하며, 계산 불가 지표에는 50점을 적용합니다. "
+            "같은 과거 구간에서 고른 순위이므로 이후에도 유지된다는 보장은 없습니다."
+        )
 
-    if 'comb_ready' not in st.session_state:
-        for k in KEYS:
-            st.session_state[f'amt_{k}'] = 1000.0
-            st.session_state[f'pct_{k}'] = round(100.0 / len(KEYS), 1)
-        # 반올림 오차는 마지막 항목이 흡수해 합계를 정확히 100%로
-        st.session_state[f'pct_{KEYS[-1]}'] = round(
-            100.0 - sum(_sv(f'pct_{k}') for k in KEYS[:-1]), 1)
-        st.session_state['comb_total'] = 1000.0 * len(KEYS)
-        st.session_state['comb_ready'] = True
+    def candidate_label(candidate):
+        assignment = candidates[candidate - 1][0]
+        return f"{candidate}번 · " + " / ".join(
+            f"{name} → {nmap[key]}" for name, key in zip(names, assignment) if key is not None)
 
-    def _amt_from_pct():
-        t = _sv('comb_total')
-        s = sum(_sv(f'pct_{k}') for k in KEYS)
-        for k in KEYS:
-            st.session_state[f'amt_{k}'] = round(t * _sv(f'pct_{k}') / s, 1) if s > 0 else 0.0
-
-    def _from_amt():
-        """금액을 고치면 총액과 비율이 따라온다."""
-        t = sum(_sv(f'amt_{k}') for k in KEYS)
-        st.session_state['comb_total'] = t
-        for k in KEYS:
-            st.session_state[f'pct_{k}'] = round(_sv(f'amt_{k}') / t * 100, 1) if t > 0 else 0.0
-
-    def _from_pct(changed=None):
-        """비율을 고치면 나머지 비율이 비례로 밀려 합계 100%를 유지하고, 금액이 따라온다.
-
-        직접 고친 항목은 입력값 그대로 둔다(정규화로 값이 바뀌면 놀라니까).
-        총액 위젯에서 호출될 땐 changed=None — 비율은 그대로 두고 금액만 스케일한다.
-        """
-        if changed is not None:
-            keep = min(max(_sv(f'pct_{changed}'), 0.0), 100.0)
-            st.session_state[f'pct_{changed}'] = keep
-            others = [k for k in KEYS if k != changed]
-            room = 100.0 - keep
-            s_o = sum(_sv(f'pct_{k}') for k in others)
-            for k in others:
-                st.session_state[f'pct_{k}'] = (
-                    round(room * _sv(f'pct_{k}') / s_o, 1) if s_o > 0
-                    else round(room / len(others), 1) if others else 0.0)
-            if others:   # 반올림 오차 흡수
-                st.session_state[f'pct_{others[-1]}'] = round(
-                    100.0 - keep - sum(_sv(f'pct_{k}') for k in others[:-1]), 1)
-        _amt_from_pct()
-
-    def _apply_rec(rec):
-        """추천 비중 적용. 위젯 생성 후에는 session_state를 못 바꾸므로
-        반드시 on_click 콜백에서 처리한다 (콜백은 다음 실행 '전에' 돈다)."""
-        for k in KEYS:
-            st.session_state[f'pct_{k}'] = float(rec.get(k, 0))
-        _amt_from_pct()
-
-    st.markdown("#### 1️⃣ 계좌 금액 · 비중")
-    st.caption("금액을 넣으면 비율이, 비율을 넣으면 금액이 자동으로 따라옵니다. "
-               "총액을 바꾸면 비율을 유지한 채 금액만 스케일됩니다. 단위는 **만원**.")
-
-    tcol, _sp, fee_col = st.columns([2, 5, 1.3])
-    with tcol:
-        st.number_input("총 투자금액 (만원)", min_value=0.0, step=100.0,
-                        key='comb_total', on_change=_from_pct, format="%.0f")
-    with fee_col:
-        st.number_input("교체비용 (%)", 0.0, 1.0, 0.25, 0.05,
-                        key='comb_cost', format='%.2f', help='모든 전략에 동일 적용 · 빈 값은 0%')
-
-    st.markdown("<div style='font-size:12px; color:#9CA3AF; margin:2px 0;'>금액 (만원)</div>",
-                unsafe_allow_html=True)
-    for c, k in zip(st.columns(len(KEYS)), KEYS):
-        with c:
-            st.number_input(nmap[k], min_value=0.0, step=100.0,
-                            key=f'amt_{k}', on_change=_from_amt, format="%.0f")
-    st.markdown("<div style='font-size:12px; color:#9CA3AF; margin:6px 0 2px;'>비중 (%)</div>",
-                unsafe_allow_html=True)
-    for c, k in zip(st.columns(len(KEYS)), KEYS):
-        with c:
-            st.number_input(nmap[k], min_value=0.0, max_value=100.0, step=1.0,
-                            key=f'pct_{k}', on_change=_from_pct, args=(k,),
-                            format="%.1f", label_visibility='collapsed')
-
-    raw = {k: _sv(f'amt_{k}') for k in KEYS}
-    tot = sum(raw.values())
-    if tot <= 0:
-        st.warning("계좌 금액을 하나 이상 0보다 크게 넣어주세요.")
-        return
-    W = {k: v / tot for k, v in raw.items() if v > 0}
-    st.caption(f"입력 금액 합계 {tot:,.1f}만원 · 금액에서 계산한 비중으로 매월 재배분합니다.")
-
-    # ---- 이번달 추천 비중 ----
-    with st.expander("🎯 이번달 추천 비중 (10% 단위)", expanded=False):
-        states = build_current_states()
-        aggr = st.slider(
-            "수익 반영 강도", 0.0, 1.0, 0.5, 0.1, key="comb_aggr",
-            help="0 = 순수 역변동성(위험 균등, 잘 버는 전략도 눌림) / "
-                 "1 = 순수 Sortino 비례(잘 버는 쪽에 확실히 실음)")
-        rec, rdf = recommend_weights(R, states, step=10, aggr=aggr)
-        if rec:
-            st.markdown("**추천 — " + " · ".join(
-                f"{nmap.get(k, k)} {v}%" for k, v in
-                sorted(rec.items(), key=lambda x: -x[1]) if v > 0) + "**")
-
-            # 이 비중을 과거에 그대로 굴렸다면? — 강도를 바꿀 때마다 대가가 보이게
-            def _apply(wmap):
-                sub = R[[k for k in wmap if k in R.columns and wmap[k] > 0]]
-                if sub.empty:
-                    return None
-                ws = pd.Series({k: v for k, v in wmap.items() if k in sub.columns},
-                               dtype=float)
-                m = sub.notna()
-                den = m.mul(ws, axis=1).sum(axis=1)
-                return _port_stats((sub.fillna(0).mul(ws, axis=1).sum(axis=1)
-                                    / den.replace(0, np.nan)).dropna())
-
-            cur = _apply(rec)
-            eqw = _apply({k: 1.0 for k in rec})
-            if cur:
-                m1, m2, m3, m4 = st.columns(4)
-                m1.metric("이 비중의 CAGR", f"{cur['cagr']*100:.1f}%",
-                          delta=(f"균등 대비 {(cur['cagr']-eqw['cagr'])*100:+.1f}%p"
-                                 if eqw else None))
-                m2.metric("MDD", f"{cur['mdd']*100:.1f}%",
-                          delta=(f"{(cur['mdd']-eqw['mdd'])*100:+.1f}%p" if eqw else None),
-                          delta_color="inverse")
-                m3.metric("Sortino", f"{cur['sortino']:.2f}",
-                          delta=(f"{cur['sortino']-eqw['sortino']:+.2f}" if eqw else None))
-                m4.metric("Sharpe", f"{cur['sharpe']:.2f}",
-                          delta=(f"{cur['sharpe']-eqw['sharpe']:+.2f}" if eqw else None))
-                st.caption("↑ 이 비중을 공통구간에 그대로 적용했을 때의 과거 성과입니다 "
-                           "(비교 대상은 같은 전략들의 균등 배분). "
-                           "슬라이더를 좌우로 움직여 수익과 낙폭이 어떻게 맞바뀌는지 보세요.")
-
-            fmt = {'CAGR': '{:.1f}%', '연변동성': '{:.1f}%', 'Sortino': '{:.2f}',
-                   'Sharpe': '{:.2f}', 'MDD': '{:.1f}%',
-                   '계산값': '{:.1f}%', '추천': '{:.0f}%'}
-            fmt.update({c: '{:+.2f}%' for c in rdf.columns if c.endswith('월 평균')})
-            st.dataframe(rdf.style.format(fmt),
-                         width="stretch", hide_index=True, key="comb_rec")
-            st.button("이 비중으로 채우기", key="comb_apply",
-                      on_click=_apply_rec, args=(rec,))
-            st.caption(
-                "**계산 방식** — 역변동성(위험 균등)과 Sortino 비례(수익 위주) 두 배분을 "
-                "위 슬라이더 값으로 기하평균해 섞습니다. Sortino를 쓰는 건 하락 편차만 "
-                "위험으로 봐서, 2026-05 +54% 같은 상승 급등을 벌주지 않기 때문입니다. "
-                "여기에 다음 보유월의 과거 같은 달 평균(±15%)과 이번 달 방어 여부(×1.15)를 "
-                "얹고, 한 전략이 40%를 넘지 않게 잘랐습니다.")
-            st.caption(
-                "⚠️ **최적해가 아니라 출발점입니다.** 계절성은 전략당 표본이 8~15개월뿐이고, "
-                "Sortino·MDD는 과거를 보고 만든 규칙의 백테스트 값이라 실전보다 낙관적입니다. "
-                "강도를 1.0까지 올리면 과거에 잘한 전략에 그만큼 몰리는데, 그게 앞으로도 "
-                "잘한다는 보장은 없습니다.")
-            st.caption(
-                "🔬 **워크포워드 검증 (2026-08-18) — 알고 고르세요.** 매달 *그 시점까지의 "
-                "데이터만으로* 비중을 정해 다음 달에 적용해 보면, 이 추천은 기본 강도 0.5에서 "
-                "**균등 배분에 연 8.8%p 뒤졌습니다** (2020-04~2026-07 · 76개월 · 26승 50패 · "
-                "t=−4.22). 원인은 역변동성 성분이 또 메리츠(연변동성 54.6%)를 평균 10%까지 "
-                "누르는 것이고, 또 메리츠를 빼고 5개끼리만 보면 균등과 동률입니다(t=−0.99). "
-                "강도 1.0은 균등과 비슷했습니다(+1.7%p).  \n"
-                "다만 **최악 10개월에서는 이 추천이 8승 2패로 덜 맞았습니다**(합계 +4.7%p) — "
-                "광고한 대로 나쁜 달을 줄이긴 합니다. 그리고 검증구간에 **또 메리츠가 무너지는 "
-                "국면이 없습니다.** 그런 국면에선 역변동성 쪽이 유리하므로, 위 숫자는 "
-                "'이 강세장에서 그 보험료가 연 8.8%p였다'는 뜻이지 추천이 틀렸다는 뜻이 아닙니다.")
-        else:
-            st.info("추천을 계산할 만큼 이력이 충분하지 않습니다.")
-
-    # ---- 합산 ----
-    # 전략마다 시작월이 다르다. 그달 존재하는 전략들끼리 비중을 다시 정규화해
-    # '없는 전략은 현금'이 아니라 '있는 것들에 비례 배분'으로 처리한다.
+    picked = st.selectbox("상세히 볼 조합", ranked['조합'].tolist(), format_func=candidate_label,
+                          key="allocation_candidate")
+    assignment, by_strategy = candidates[picked - 1]
+    raw = {key: by_strategy.get(key, 0) / 10_000 for key in keys}
+    W = {key: amount / total for key, amount in by_strategy.items()}
+    base, score = results[picked - 1]
+    st.dataframe(pd.DataFrame([
+        {'계좌': name, '배정 전략': nmap.get(key, '—'), '금액 (원)': amount,
+         '전체 비중': amount / total * 100}
+        for name, amount, key in zip(names, amounts, assignment)
+    ]), hide_index=True, width="stretch",
+        column_config={'금액 (원)': st.column_config.NumberColumn(format="localized"),
+                       '전체 비중': st.column_config.NumberColumn(format="%.2f%%")})
+    worst_month = base['ret'].idxmin()
+    st.caption(f"종합 {score:.1f}점 · 최악 월 {worst_month} {base['worst']:+.2%} · "
+               f"하위 5% 월 평균 {base['tail']:+.2%} · 최장 고점 회복 {base['longest']}개월")
+    if base['periods']:
+        worst = min(base['periods'], key=lambda period: period['mdd'])
+        recovery = (f"{worst['recovered']} 회복 ({worst['months']}개월)"
+                    if worst['recovered'] else f"{worst['months']}개월 경과 · 미회복")
+        st.caption(f"최대 낙폭 {worst['mdd']:.2%} · 고점 {worst['peak']} → "
+                   f"저점 {worst['trough']} → {recovery}")
     monthly, effective, contributions = build_combined_monthly(R, regimes, W)
-    port = monthly['종합전략']
-    span = common_portfolio_months(R, list(W))
-    if len(span) < 2:
-        st.info('선택한 전략의 연속 공통 이력이 2개월 이상 필요합니다.')
-        return
 
-    st.markdown("#### 2️⃣ 종합전략 성과 · 입력 금액 비중 기준")
-    st.caption('선택한 전략의 월수익률이 모두 존재하는 연속 공통 구간으로 계산합니다.')
-    base = _port_stats(port.loc[span])
+
+    st.markdown("#### 선택 조합 성과")
+    st.caption("계좌 배정에 따른 고정 비중을 모든 비교 전략의 동일한 확정월 구간에 적용했습니다.")
     latest_month = span[-1]
     monthly = monthly.loc[span].copy()
     monthly['자산배수'] = base['equity']
@@ -2046,7 +1815,7 @@ def render_combined():
         ('최저 월수익률', base['ret'].min()), ('Sharpe', base['sharpe']),
         ('Sortino', base['sortino']), ('집계개월', base['n'])], columns=['지표', '값'])
     allocation = pd.DataFrame([{'전략': nmap[k], '입력금액(만원)': raw[k], '비중': W.get(k, 0.)}
-                               for k in KEYS])
+                               for k in keys])
     report = build_combined_excel(summary, allocation, monthly, effective, contributions,
                                   R, heatmap.data / 100, mdd_periods, nmap, cost_rate)
     st.download_button('📥 종합 엑셀 리포트 다운로드', data=report,
@@ -2066,11 +1835,8 @@ def render_combined():
     # ---- 개별 vs 통합 비교표 ----
     st.markdown("#### 3️⃣ 개별 전략 vs 통합 (공통구간, 같은 자로 비교)")
     rows = []
-    nmap = dict((k, n) for k, n, _ in STRAT_META)
     for key in W:
-        s = _port_stats(R.loc[span, key])
-        if not s:
-            continue
+        s = portfolio_stats(R[key])
         rows.append({'전략': nmap[key], '비중': f"{W[key]*100:.1f}%",
                      'CAGR': s['cagr']*100, 'MDD': s['mdd']*100,
                      'Sortino': s['sortino'], 'Sharpe': s['sharpe'],
@@ -2087,17 +1853,14 @@ def render_combined():
                           if v == '★ 통합 포트' else '' for v in cmp_df['전략']], axis=0),
         width="stretch", hide_index=True, key="comb_cmp")
     best = cmp_df.iloc[:-1]['Sharpe'].max()
-    if base['sharpe'] > best:
-        st.success(f"✅ 통합 Sharpe {base['sharpe']:.2f} — 개별 최고({best:.2f})보다 높습니다. "
-                   f"상관관계가 낮아 분산에서 생기는 이득입니다.")
+    if base['sharpe'] > best + 1e-10:
+        st.success(f"공통 구간에서 선택 조합의 샤프 {base['sharpe']:.2f}는 개별 최고 {best:.2f}보다 높았습니다.")
 
     # ---- 자산곡선 ----
     st.markdown("#### 4️⃣ 자산곡선 & 낙폭")
     fig = go.Figure()
     for key in W:
-        s = _port_stats(R.loc[span, key])
-        if not s:
-            continue
+        s = portfolio_stats(R[key])
         col = dict((k, c) for k, _, c in STRAT_META)[key]
         fig.add_trace(go.Scatter(x=list(s['equity'].index), y=s['equity'].values,
                                  name=nmap[key], line=dict(width=1.2, color=col),
@@ -2134,7 +1897,7 @@ def render_combined():
                                    '기여도(%p)': '{:+.2f}'})
                  .map(lambda v: _shade_signed(v, cap), subset=['기여도(%p)']),
                  width="stretch", hide_index=True, key="comb_contrib")
-    st.caption(f"**{pick} 통합 수익률 = {port.get(pick, np.nan)*100:.2f}%** "
+    st.caption(f"**{pick} 통합 수익률 = {base['ret'].get(pick, np.nan)*100:.2f}%** "
                f"(기여도 합계). 개별 탭의 큰 숫자와 전체 영향의 차이를 확인하세요.")
 
     # ---- 상관관계 ----
@@ -2149,20 +1912,17 @@ def render_combined():
 # ==========================================
 # 탭 배치
 # ==========================================
-tab1, tab2, tab3, tab4, tab5, tab6, tab7 = st.tabs(
-    ["🇺🇸 또 메리츠", "🇺🇸 맘·쏘 삼성", "🇰🇷 또 ISA", "🇰🇷 또 연금", "🇰🇷 쏘 연금",
-     "🇰🇷 맘 비과세", "📊 통합 포트"])
-with tab1:
-    render_meritz()
-with tab2:
-    render_so()
-with tab3:
-    render_ko()
-with tab4:
-    render_pension()
-with tab5:
-    render_ssopen()
-with tab6:
-    render_mamtax()
-with tab7:
-    render_combined()
+STRATEGY_TABS = [
+    ('meritz', '🇺🇸 또 메리츠', render_meritz),
+    ('so', '🇺🇸 맘·쏘 삼성', render_so),
+    ('ko', '🇰🇷 또 ISA', render_ko),
+    ('pen', '🇰🇷 또 연금', render_pension),
+    ('ssopen', '🇰🇷 쏘 연금', render_ssopen),
+    ('mamtax', '🇰🇷 맘 비과세', render_mamtax),
+]
+visible_tabs = [(label, render) for key, label, render in STRATEGY_TABS
+                if key not in HIDDEN_STRATEGIES]
+visible_tabs.append(("📊 통합 포트", render_combined))
+for tab, (_, render) in zip(st.tabs([label for label, _ in visible_tabs]), visible_tabs):
+    with tab:
+        render()

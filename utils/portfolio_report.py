@@ -80,7 +80,9 @@ def build_combined_excel(summary, weights, monthly, effective, contributions,
         overview.set_column('B:B', 19, percent)
         for row, metric in enumerate(summary['지표'], start=5):
             if metric in ['Sharpe', 'Sortino']:
-                overview.write_number(row, 1, float(summary.iloc[row - 5]['값']), number)
+                value = summary.iloc[row - 5]['값']
+                if pd.notna(value):
+                    overview.write_number(row, 1, float(value), number)
             elif metric == '집계개월':
                 overview.write_number(row, 1, int(summary.iloc[row - 5]['값']), integer)
         notes_row = max(24, len(summary) + 7)
