@@ -1,0 +1,13 @@
+{
+  "input_snapshot": "1608859432d90fb7bc5cdf149cfbfa1f5bc24fe1",
+  "scores_source": "2026-11-10-USA500-\uc794\ucc28\ubaa8\uba58\ud140",
+  "mean_eligible": 399.77570093457945,
+  "eligible_2026_10": 442,
+  "example_ticker": "TGT",
+  "example_return_2026_08": 0.1134,
+  "example_fitted_2026_08": -0.0039147622459956176,
+  "example_residual_2026_08": 0.11731476224599562,
+  "example_11m_residual_mean": 0.04598341899729874,
+  "example_11m_residual_std": 0.057410430484922816,
+  "example_score": 0.8009593136455396
+}
