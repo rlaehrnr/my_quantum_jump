@@ -16,6 +16,22 @@ class PortfolioReportTests(unittest.TestCase):
         self.defensive = pd.DataFrame({'a': [False, True, False], 'b': [True, False, True]},
                                       index=self.returns.index, dtype='boolean')
 
+    def test_missing_history_is_cash_and_keeps_months_with_no_active_strategy(self):
+        returns = pd.DataFrame({'a': [None, .10, -.05], 'b': [None, None, .10]},
+                               index=['2016-12', '2017-01', '2017-02'])
+        regimes = pd.DataFrame({'a': [None, False, True], 'b': [None, None, False]},
+                               index=returns.index)
+        monthly, effective, contributions = build_combined_monthly(
+            returns, regimes, {'a': .6, 'b': .4}, missing_as_cash=True)
+        self.assertEqual(list(monthly.index), list(returns.index))
+        self.assertAlmostEqual(monthly.loc['2017-01', '종합전략'], .06)
+        self.assertAlmostEqual(monthly.loc['2017-01', '미운용 현금비율'], .4)
+        self.assertEqual(monthly.loc['2016-12', '미운용 현금비율'], 1.)
+        self.assertEqual(list(effective['b']), [0, 0, .4])
+        pd.testing.assert_series_equal(contributions.sum(axis=1), monthly['종합전략'], check_names=False)
+        regime_total = monthly[['공격투자비율', '방어투자비율', '미운용 현금비율']].sum(axis=1)
+        self.assertTrue((regime_total == 1.).all())
+
     def test_amount_weighted_returns_and_regimes_reconcile(self):
         monthly, effective, contributions = build_combined_monthly(
             self.returns, self.defensive, {'a': 3., 'b': 1.})

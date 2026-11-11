@@ -21,11 +21,13 @@ def allocation_choices(amounts, keys, *, distinct=False):
     return candidates
 
 
-def comparison_window(returns, last_closed_month):
-    """미확정월과 누락된 달 이전의 이력을 집계에서 제외한다."""
-    closed = returns.loc[returns.index <= last_closed_month]
+def comparison_window(returns, last_closed_month, *, extended=False):
+    """확정월의 최근 공통 구간 또는 가장 오래된 이력부터의 달력 구간."""
+    closed = returns.loc[returns.index <= last_closed_month].dropna(how='all')
     span = common_portfolio_months(closed, list(returns.columns))
-    return closed.loc[span]
+    if extended and len(span):
+        span = pd.period_range(closed.index.min(), span[-1], freq='M').astype(str)
+    return closed.reindex(span)
 
 
 def recovery_periods(equity):

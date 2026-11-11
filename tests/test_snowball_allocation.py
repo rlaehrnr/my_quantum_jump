@@ -54,6 +54,16 @@ class SnowballAllocationTest(unittest.TestCase):
             ['2026-08', '2026-09'],
         )
 
+    def test_extended_window_preserves_calendar_gaps_until_latest_common_confirmed_month(self):
+        returns = pd.DataFrame(
+            {'a': [0.1, 0.2, 0.3, 0.4, 0.5], 'b': [None, -0.1, 0.2, None, 0.9]},
+            index=['2016-12', '2017-02', '2017-03', '2017-04', '2017-05'],
+        )
+        extended = comparison_window(returns, '2017-04', extended=True)
+        self.assertEqual(list(extended.index), ['2016-12', '2017-01', '2017-02', '2017-03'])
+        self.assertTrue(extended.loc['2017-01'].isna().all())
+        self.assertTrue(pd.isna(extended.loc['2016-12', 'b']))
+
     def test_identical_weights_share_metrics_without_changing_ranks(self):
         months = pd.period_range('2026-01', periods=4, freq='M').astype(str)
         returns = pd.DataFrame({'a': [0.10, -0.10, 0.20, 0.10],

@@ -1756,6 +1756,8 @@ def render_combined():
     if storage.write_ok is False:
         st.caption("브라우저에서 저장이 차단되어 이 세션에서만 금액이 유지됩니다.")
 
+    common_only = st.checkbox("2017년부터 보기 · 네 전략 공통 구간", key="allocation_history_2017")
+
     if 'allocation_submitted_manwon' not in st.session_state:
         return
     amounts = st.session_state['allocation_submitted_manwon']
@@ -1775,16 +1777,24 @@ def render_combined():
         # 미국·한국 월말이 모두 지난 뒤 해당 월을 집계한다.
         current_month = pd.Timestamp.now(tz='America/New_York').strftime('%Y-%m')
         last_closed = str(pd.Period(current_month, freq='M') - 1)
-        R = comparison_window(R[keys], last_closed)
+        R = R[keys]
+        if common_only:
+            R = R.loc[R.index >= '2017-01']
+        R = comparison_window(R, last_closed, extended=not common_only)
         if len(R) < 2:
-            st.info("비교 전략의 연속 공통 확정 이력이 2개월 이상 필요합니다.")
+            st.info("조합을 비교할 확정 이력이 2개월 이상 필요합니다.")
             return
-        results = compare_allocations(R, candidates)
+        comparison_returns = R.fillna(0)
+        results = compare_allocations(comparison_returns, candidates)
 
     span = R.index
     st.markdown("#### 배정 조합 비교")
-    st.caption(f"확정월 {span[0]}~{span[-1]} · {len(span)}개월 · 총 {total:,}만원 · "
+    period_label = "2017년 이후 공통 구간" if common_only else "장기 구간"
+    st.caption(f"{period_label} · 확정월 {span[0]}~{span[-1]} · {len(span)}개월 · 총 {total:,}만원 · "
                f"{len(candidates)}개 조합 · 교체비용 {cost_rate:.2%}")
+    if not common_only:
+        st.caption("전략 수익률 이력이 없는 달은 해당 배정금을 수익률 0%인 현금으로 계산합니다. "
+                   "전략별 첫 확정월 · " + " / ".join(f"{nmap[key]} {R[key].first_valid_index()}" for key in keys))
     st.caption("입력 금액으로 정해진 비중을 매월 유지한다고 가정합니다. 또 메리츠는 달러 수익률, "
                "국내 전략은 원화 수익률로 합산합니다. 환율·세금·계좌 간 비중 조정 비용은 별도입니다.")
     sort_options = {
@@ -1811,7 +1821,7 @@ def render_combined():
                for j, (name, key) in enumerate(zip(names, assignment))},
         })
     sort_by = st.selectbox("우선 비교 기준", sort_options.keys(), key="allocation_sort")
-    st.caption("기본 정렬은 연복리 수익률입니다. 종합 점수는 수익과 위험을 함께 보는 비교 지표입니다.")
+    st.caption("기본 정렬은 연복리 수익률입니다. 종합 점수는 표시된 기간의 후보 조합끼리 다시 매깁니다.")
     metric, ascending = sort_options[sort_by]
     ranked = pd.DataFrame(rows).sort_values([metric, '조합'], ascending=[ascending, True])
     percent = {col: st.column_config.NumberColumn(format="%.2f%%")
@@ -1862,7 +1872,8 @@ def render_combined():
                     if worst['recovered'] else f"{worst['months']}개월 경과 · 미회복")
         st.caption(f"최대 낙폭 {worst['mdd']:.2%} · 고점 {worst['peak']} → "
                    f"저점 {worst['trough']} → {recovery}")
-    monthly, effective, contributions = build_combined_monthly(R, regimes, W)
+    monthly, effective, contributions = build_combined_monthly(
+        R, regimes, W, missing_as_cash=not common_only)
 
 
     st.markdown("#### 선택 조합 성과")
@@ -1876,6 +1887,7 @@ def render_combined():
     contributions = contributions.loc[span]
     offense_ratio = monthly['공격투자비율'].mean()
     defense_ratio = monthly['방어투자비율'].mean()
+    cash_ratio = monthly.get('미운용 현금비율')
     c1, c2, c3, c4, c5, c6 = st.columns(6)
     c1.metric("CAGR", f"{base['cagr']*100:.1f}%")
     c2.metric("누적수익률", f"{base['cum']*100:,.1f}%")
@@ -1883,6 +1895,8 @@ def render_combined():
     c4.metric("공격투자비율", f"{offense_ratio:.1%}")
     c5.metric("방어투자비율", f"{defense_ratio:.1%}")
     c6.metric("승률", f"{base['win']*100:.0f}%", delta=f"{base['n']}개월")
+    if cash_ratio is not None:
+        st.caption(f"선택 조합의 평균 미운용 현금 비중 **{cash_ratio.mean():.1%}**")
     extra_stats = pd.DataFrame([{
         '평균 월수익률': base['ret'].mean(), '최고 월수익률': base['ret'].max(),
         '최저 월수익률': base['ret'].min(), 'Sharpe': base['sharpe'], 'Sortino': base['sortino']}])
@@ -1905,6 +1919,8 @@ def render_combined():
         ('평균 월수익률', base['ret'].mean()), ('최고 월수익률', base['ret'].max()),
         ('최저 월수익률', base['ret'].min()), ('Sharpe', base['sharpe']),
         ('Sortino', base['sortino']), ('집계개월', base['n'])], columns=['지표', '값'])
+    if cash_ratio is not None:
+        summary.loc[len(summary)] = ['미운용 현금비율', cash_ratio.mean()]
     allocation = pd.DataFrame([{'전략': nmap[k], '입력금액(만원)': by_strategy.get(k, 0), '비중': W.get(k, 0.)}
                                for k in keys])
     report = build_combined_excel(summary, allocation, monthly, effective, contributions,
@@ -1927,7 +1943,7 @@ def render_combined():
     st.markdown("#### 3️⃣ 개별 전략 vs 통합 (공통구간, 같은 자로 비교)")
     rows = []
     for key in W:
-        s = portfolio_stats(R[key])
+        s = portfolio_stats(comparison_returns[key])
         rows.append({'전략': nmap[key], '비중': f"{W[key]*100:.1f}%",
                      'CAGR': s['cagr']*100, 'MDD': s['mdd']*100,
                      'Sortino': s['sortino'], 'Sharpe': s['sharpe'],
@@ -1951,7 +1967,7 @@ def render_combined():
     st.markdown("#### 4️⃣ 자산곡선 & 낙폭")
     fig = go.Figure()
     for key in W:
-        s = portfolio_stats(R[key])
+        s = portfolio_stats(comparison_returns[key])
         col = dict((k, c) for k, _, c in STRAT_META)[key]
         fig.add_trace(go.Scatter(x=list(s['equity'].index), y=s['equity'].values,
                                  name=nmap[key], line=dict(width=1.2, color=col),
@@ -1982,6 +1998,9 @@ def render_combined():
             continue
         crows.append({'전략': nmap[key], '비중': effective.loc[pick, key]*100,
                       '그달 수익률': r*100, '기여도(%p)': contributions.loc[pick, key]*100})
+    if cash_ratio is not None and cash_ratio.loc[pick] > 1e-12:
+        crows.append({'전략': '미운용 현금', '비중': cash_ratio.loc[pick] * 100,
+                      '그달 수익률': 0., '기여도(%p)': 0.})
     cdf = pd.DataFrame(crows).sort_values('기여도(%p)')
     cap = cdf['기여도(%p)'].abs().max() if not cdf.empty else 0.0
     st.dataframe(cdf.style.format({'비중': '{:.1f}%', '그달 수익률': '{:.2f}%',
@@ -1992,10 +2011,10 @@ def render_combined():
                f"(기여도 합계). 개별 탭의 큰 숫자와 전체 영향의 차이를 확인하세요.")
 
     # ---- 상관관계 ----
-    st.markdown("#### 6️⃣ 전략 간 상관관계 (공통구간 월수익률)")
+    st.markdown("#### 6️⃣ 전략 간 상관관계 (네 전략 공통 실측월)")
     st.caption("낮을수록 분산 효과가 큽니다. 다만 폭락장에서는 상관이 함께 올라가므로, "
                "분산은 구덩이를 얕게 만들 뿐 피하게 해주지는 않습니다.")
-    corr = R.loc[span, list(W)].rename(columns=nmap).corr()
+    corr = R.dropna().loc[:, list(W)].rename(columns=nmap).corr()
     st.dataframe(corr.style.format('{:.2f}').map(_shade_corr),
                  width="stretch", key="comb_corr")
 

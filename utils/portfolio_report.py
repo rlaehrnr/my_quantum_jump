@@ -18,18 +18,23 @@ def common_portfolio_months(returns, selected):
     return pd.period_range(start, calendar[-1], freq='M').astype(str)
 
 
-def build_combined_monthly(returns, defensive, weights):
-    """보유월 기준 수익·국면에 같은 유효 비중을 적용한다."""
+def build_combined_monthly(returns, defensive, weights, *, missing_as_cash=False):
+    """이력 없는 배정금을 현금으로 두거나 가용 전략에 재배분한다."""
     selected = pd.Series({key: value for key, value in weights.items() if value > 0}, dtype=float)
     if selected.empty:
         raise ValueError('투자 비중을 하나 이상 입력해주세요.')
-    sub = returns.loc[:, selected.index].sort_index().dropna(how='all')
+    sub = returns.loc[:, selected.index].sort_index()
+    if not missing_as_cash:
+        sub = sub.dropna(how='all')
     available = sub.notna()
     regime = defensive.reindex(index=sub.index, columns=sub.columns)
     if (available & regime.isna()).any().any():
         raise ValueError('수익률이 있는 전략의 공격·방어 국면 정보가 누락되었습니다.')
     effective = available.mul(selected, axis=1)
-    effective = effective.div(effective.sum(axis=1), axis=0)
+    if missing_as_cash:
+        effective = effective / selected.sum()
+    else:
+        effective = effective.div(effective.sum(axis=1), axis=0)
     contributions = sub.fillna(0).mul(effective)
     monthly = pd.DataFrame({'종합전략': contributions.sum(axis=1)})
     monthly['자산배수'] = (1 + monthly['종합전략']).cumprod()
@@ -37,6 +42,8 @@ def build_combined_monthly(returns, defensive, weights):
     monthly['낙폭'] = monthly['자산배수'] / monthly['자산배수'].cummax().clip(lower=1.) - 1
     monthly['공격투자비율'] = effective.where(regime.eq(False), 0).sum(axis=1)
     monthly['방어투자비율'] = effective.where(regime.eq(True), 0).sum(axis=1)
+    if missing_as_cash:
+        monthly['미운용 현금비율'] = (1 - effective.sum(axis=1)).clip(lower=0)
     monthly.index.name = effective.index.name = contributions.index.name = '투자월'
     return monthly, effective, contributions
 
@@ -88,6 +95,10 @@ def build_combined_excel(summary, weights, monthly, effective, contributions,
         notes_row = max(24, len(summary) + 7)
         overview.write(notes_row, 0, '공격·방어 비율은 월별 투자 비중의 기간 평균')
         overview.write(notes_row + 1, 0, '전략별 계산 통화 기준 수익률 합산 · 환율 별도')
+        if '미운용 현금비율' in monthly:
+            overview.write(notes_row + 2, 0, '장기 구간 · 이력 없는 전략 배정금은 해당 월 수익률 0% 현금')
+        else:
+            overview.write(notes_row + 2, 0, '2017년 이후 네 전략의 연속 공통 확정월')
         overview.set_tab_color('#27374D')
 
         allocation = table(weights, '계좌비중')
@@ -102,6 +113,8 @@ def build_combined_excel(summary, weights, monthly, effective, contributions,
 
         contribution_table = contributions.rename(columns=names).copy()
         contribution_table['종합전략'] = monthly['종합전략']
+        if '미운용 현금비율' in monthly:
+            contribution_table['미운용 현금비율'] = monthly['미운용 현금비율']
         for key in effective:
             contribution_table[f'비중 - {names.get(key, key)}'] = effective[key]
         table(contribution_table, '월별기여도', index=True)
