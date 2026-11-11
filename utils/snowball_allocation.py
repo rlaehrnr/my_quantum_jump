@@ -1,5 +1,5 @@
 """계좌별 배정 후보와 같은 확정월에서의 통합 성과 비교."""
-from itertools import product
+from itertools import permutations
 
 import numpy as np
 import pandas as pd
@@ -7,22 +7,12 @@ import pandas as pd
 from utils.portfolio_report import common_portfolio_months
 
 
-def allocation_choices(amounts, eligible, distinct=False):
-    """잔액이 있는 계좌마다 허용 전략 하나에 잔액 전부를 배정한다."""
+def allocation_choices(amounts, keys):
+    """계좌마다 잔액 전부를 배정하고 전략은 조합 안에서 한 번씩만 사용한다."""
     if not any(amounts):
         return []
-    options = [allowed if amount else (None,) for amount, allowed in zip(amounts, eligible)]
-    candidates = []
-    for assignment in product(*options):
-        used = [key for key in assignment if key is not None]
-        if distinct and len(set(used)) != len(used):
-            continue
-        by_strategy = {}
-        for key, amount in zip(assignment, amounts):
-            if key is not None:
-                by_strategy[key] = by_strategy.get(key, 0) + amount
-        candidates.append((assignment, by_strategy))
-    return candidates
+    return [(assignment, dict(zip(assignment, amounts)))
+            for assignment in permutations(keys, len(amounts))]
 
 
 def comparison_window(returns, last_closed_month):

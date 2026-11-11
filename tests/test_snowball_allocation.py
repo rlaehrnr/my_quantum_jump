@@ -6,22 +6,20 @@ from utils.snowball_allocation import allocation_choices, compare_allocations, c
 
 
 class SnowballAllocationTest(unittest.TestCase):
-    def test_all_assignments_keep_money_and_honor_eligibility(self):
-        choices = [('a', 'b'), ('a', 'b'), ('c',), ('d',)]
-        options = allocation_choices([40, 30, 20, 10], choices)
-        self.assertEqual(len(options), 4)
-        assignment, amounts = options[0]
-        self.assertEqual(assignment, ('a', 'a', 'c', 'd'))
-        self.assertEqual(amounts, {'a': 70, 'c': 20, 'd': 10})
-        distinct = allocation_choices([40, 30, 20, 10], choices, distinct=True)
-        self.assertEqual(len(distinct), 2)
+    def test_four_accounts_map_to_distinct_strategies_in_all_24_permutations(self):
+        keys = ('a', 'b', 'c', 'd')
+        balances = (40, 30, 20, 10)
+        options = allocation_choices(balances, keys)
+        self.assertEqual(len({assignment for assignment, _ in options}), 24)
+        for assignment, amounts in options:
+            self.assertEqual(set(assignment), set(keys))
+            self.assertEqual([amounts[key] for key in assignment], list(balances))
 
-    def test_zero_accounts_do_not_constrain_assignments(self):
-        self.assertEqual(
-            allocation_choices([0, 20], [(), ('a',)], distinct=True),
-            [((None, 'a'), {'a': 20})],
-        )
-        self.assertEqual(allocation_choices([0, 0], [('a',), ('b',)]), [])
+    def test_zero_balance_can_still_be_paired_with_a_distinct_strategy(self):
+        options = allocation_choices([0, 20], ('a', 'b'))
+        self.assertEqual(options, [(('a', 'b'), {'a': 0, 'b': 20}),
+                                   (('b', 'a'), {'b': 0, 'a': 20})])
+        self.assertEqual(allocation_choices([0, 0], ('a', 'b')), [])
 
     def test_only_recent_contiguous_confirmed_months(self):
         returns = pd.DataFrame(

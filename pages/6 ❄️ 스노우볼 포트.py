@@ -1635,48 +1635,29 @@ def _shade_corr(v):
 
 def render_combined():
     st.markdown("### 통합 포트 · 계좌별 전략 배정")
-    st.caption("계좌 이름과 잔액을 입력하고 실제로 매매할 수 있는 전략을 남겨주세요. "
-               "각 계좌의 잔액 전부를 한 전략에 배정하는 조합을 비교합니다.")
+    st.caption("계좌마다 잔액 전부를 한 전략에 배정합니다. "
+               "계좌 1~4를 네 전략에 하나씩 짝짓는 24개 조합을 비교합니다.")
     nmap = {k: name for k, name, _ in STRAT_META if k not in HIDDEN_STRATEGIES}
     keys = list(nmap)
-    with st.form('allocation_accounts', enter_to_submit=False):
-        accounts = []
-        for i in range(4):
-            name_col, amount_col, eligible_col = st.columns([2, 2, 5])
-            name = name_col.text_input(f"계좌 {i + 1} 이름", key=f"allocation_name_{i}",
-                                       placeholder=f"계좌 {i + 1}", max_chars=40)
-            amount = amount_col.number_input(f"계좌 {i + 1} 잔액 (원)", min_value=0,
-                                             step=10_000, key=f"allocation_amount_{i}")
-            eligible = eligible_col.multiselect(f"계좌 {i + 1} 운용 가능 전략", keys,
-                                                default=keys, format_func=nmap.get,
-                                                key=f"allocation_eligible_{i}")
-            accounts.append((name.strip() or f"계좌 {i + 1}", amount, eligible))
-        cost_col, distinct_col = st.columns([1, 3])
-        cost_pct = cost_col.number_input("교체비용 (%)", 0.0, 1.0, 0.25, 0.05,
-                                        key="allocation_cost")
-        distinct = distinct_col.checkbox("한 전략당 한 계좌만 배정", key="allocation_distinct")
+    names = [f"계좌 {i + 1}" for i in range(4)]
+    with st.form('allocation_balances', enter_to_submit=False):
+        amounts = tuple(
+            col.number_input(f"{name} (만원)", min_value=0, step=1, key=f"allocation_manwon_{i}")
+            for i, (col, name) in enumerate(zip(st.columns(len(names)), names))
+        )
         if st.form_submit_button("입력완료", type="primary"):
-            st.session_state['allocation_submitted'] = (accounts, cost_pct, distinct)
+            st.session_state['allocation_submitted_manwon'] = amounts
             st.session_state.pop('allocation_candidate', None)
 
-    if 'allocation_submitted' not in st.session_state:
+    if 'allocation_submitted_manwon' not in st.session_state:
         return
-    accounts, cost_pct, distinct = st.session_state['allocation_submitted']
-    names, amounts, eligible = zip(*accounts)
+    amounts = st.session_state['allocation_submitted_manwon']
     total = sum(amounts)
     if not total:
         st.info("잔액을 한 계좌 이상 입력해 주세요.")
         return
-    for name, amount, allowed in accounts:
-        if amount and not allowed:
-            st.warning(f"{name}에 운용 가능한 전략을 하나 이상 선택해 주세요.")
-            return
-    candidates = allocation_choices(amounts, eligible, distinct=distinct)
-    if not candidates:
-        st.warning("입력한 운용 가능 전략으로는 한 전략당 한 계좌 조건을 충족할 수 없습니다.")
-        return
-
-    cost_rate = cost_pct / 100
+    candidates = allocation_choices(amounts, keys)
+    cost_rate = 0.0025
     with st.spinner("확정월 기준으로 배정 조합을 비교하는 중…"):
         R, regimes = build_all_strategy_returns(cost_rate, keys)
         unavailable = [nmap[k] for k in keys if k not in R or R[k].isna().all()]
@@ -1694,8 +1675,8 @@ def render_combined():
 
     span = R.index
     st.markdown("#### 배정 조합 비교")
-    st.caption(f"확정월 {span[0]}~{span[-1]} · {len(span)}개월 · 총 {total:,}원 · "
-               f"{len(candidates)}개 조합 · 교체비용 {cost_pct:.2f}%")
+    st.caption(f"확정월 {span[0]}~{span[-1]} · {len(span)}개월 · 총 {total:,}만원 · "
+               f"{len(candidates)}개 조합 · 교체비용 {cost_rate:.2%}")
     st.caption("입력 금액으로 정해진 비중을 매월 유지한다고 가정합니다. 또 메리츠는 달러 수익률, "
                "국내 전략은 원화 수익률로 합산합니다. 환율·세금·계좌 간 비중 조정 비용은 별도입니다.")
     sort_options = {
@@ -1747,20 +1728,19 @@ def render_combined():
     def candidate_label(candidate):
         assignment = candidates[candidate - 1][0]
         return f"{candidate}번 · " + " / ".join(
-            f"{name} → {nmap[key]}" for name, key in zip(names, assignment) if key is not None)
+            f"{name} → {nmap[key]}" for name, key in zip(names, assignment))
 
     picked = st.selectbox("상세히 볼 조합", ranked['조합'].tolist(), format_func=candidate_label,
                           key="allocation_candidate")
     assignment, by_strategy = candidates[picked - 1]
-    raw = {key: by_strategy.get(key, 0) / 10_000 for key in keys}
-    W = {key: amount / total for key, amount in by_strategy.items()}
+    W = {key: amount / total for key, amount in by_strategy.items() if amount > 0}
     base, score = results[picked - 1]
     st.dataframe(pd.DataFrame([
-        {'계좌': name, '배정 전략': nmap.get(key, '—'), '금액 (원)': amount,
+        {'계좌': name, '배정 전략': nmap.get(key, '—'), '금액 (만원)': amount,
          '전체 비중': amount / total * 100}
         for name, amount, key in zip(names, amounts, assignment)
     ]), hide_index=True, width="stretch",
-        column_config={'금액 (원)': st.column_config.NumberColumn(format="localized"),
+        column_config={'금액 (만원)': st.column_config.NumberColumn(format="localized"),
                        '전체 비중': st.column_config.NumberColumn(format="%.2f%%")})
     worst_month = base['ret'].idxmin()
     st.caption(f"종합 {score:.1f}점 · 최악 월 {worst_month} {base['worst']:+.2%} · "
@@ -1814,7 +1794,7 @@ def render_combined():
         ('평균 월수익률', base['ret'].mean()), ('최고 월수익률', base['ret'].max()),
         ('최저 월수익률', base['ret'].min()), ('Sharpe', base['sharpe']),
         ('Sortino', base['sortino']), ('집계개월', base['n'])], columns=['지표', '값'])
-    allocation = pd.DataFrame([{'전략': nmap[k], '입력금액(만원)': raw[k], '비중': W.get(k, 0.)}
+    allocation = pd.DataFrame([{'전략': nmap[k], '입력금액(만원)': by_strategy.get(k, 0), '비중': W.get(k, 0.)}
                                for k in keys])
     report = build_combined_excel(summary, allocation, monthly, effective, contributions,
                                   R, heatmap.data / 100, mdd_periods, nmap, cost_rate)
