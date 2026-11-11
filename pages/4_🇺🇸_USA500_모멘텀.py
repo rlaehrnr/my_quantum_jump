@@ -8,6 +8,7 @@ st.set_page_config(page_title="USA 500 통합 모멘텀", layout="wide")
 
 from utils.data_loader import get_folder_hash
 from utils.calculator import get_cycle_year, PRESIDENTIAL_DANGEROUS_MONTHS
+from utils.ui_usa_residual import render_residual_backtest
 # 💡 핵심: ui_components에서 앞서 정의한 공통 설정들을 똑같이 가져옵니다.
 from utils.ui_components import (
     inject_custom_css, apply_korea_styling, style_kospi_ma, get_styled_stats, 
@@ -58,7 +59,9 @@ years_list = sorted(valid_years)
 min_y, max_y = min(years_list), max(years_list)
 if min_y >= max_y: min_y = max_y - 1 
 
-tab1, tab2, tab3 = st.tabs(["📅 월별 상세 분석", "🕒 실시간 데일리 순위", "📈 전략 백테스트"])
+tab1, tab2, tab3, tab4 = st.tabs(
+    ["📅 월별 상세 분석", "🕒 실시간 데일리 순위", "📈 전략 백테스트", "잔차백테스트"]
+)
 
 # ==========================================
 # 탭 1. 월별 상세 분석
@@ -411,3 +414,6 @@ with tab3:
                 with st.expander("📝 월별 전체 상세 기록 보기 (전략·벤치마크)"): st.dataframe(ret_all.style.format("{:.2f}%", na_rep="-"), use_container_width=True)
             else:
                 st.warning("해당 조건에서 결과가 비어 있습니다. 교집합 기준(N위)이나 기간을 조정해 보세요.")
+
+with tab4:
+    render_residual_backtest(df_master, STRAT_CUTOFF_N, (STRAT_RANK_START, STRAT_RANK_END))
