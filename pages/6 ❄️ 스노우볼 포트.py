@@ -1647,6 +1647,70 @@ def _allocation_default_amounts():
     return empty
 
 
+def render_allocation_pair(ranked, results, names, amounts, candidate_label):
+    """두 조합의 배정과 공통 확정월 성과를 나란히 표시한다."""
+    with st.expander("조합 두 개 비교"):
+        a_col, b_col = st.columns(2)
+        options = range(1, len(results) + 1)
+        a = a_col.selectbox("조합 A", options, index=None, format_func=candidate_label,
+                            key="allocation_pair_a")
+        b = b_col.selectbox("조합 B", options, index=None, format_func=candidate_label,
+                            key="allocation_pair_b")
+        if a is None or b is None:
+            return
+        if a == b:
+            st.info("서로 다른 조합을 선택해 주세요.")
+            return
+
+        labels = {a: f"A · {a}번", b: f"B · {b}번"}
+        selected = ranked.set_index('조합').loc[[a, b]]
+        allocation = pd.DataFrame({'계좌': names, '잔액 (만원)': amounts})
+        account_cols = [f"{i + 1}. {name}" for i, name in enumerate(names)]
+        for key, label in labels.items():
+            allocation[label] = selected.loc[key, account_cols].tolist()
+
+        formats = {
+            '연복리': '{:.2f}%', 'MDD': '{:.2f}%', '샤프': '{:.2f}', '소르티노': '{:.2f}',
+            '종합 점수': '{:.1f}', '최악 월': '{:.2f}%', '하위 5% 월 평균': '{:.2f}%',
+            '최장 고점 회복(개월)': '{:d}', '미회복 경과(개월)': '{:d}',
+        }
+        metrics = {'지표': list(formats)}
+        for key, label in labels.items():
+            metrics[label] = [fmt.format(selected.at[key, metric]) if pd.notna(selected.at[key, metric]) else '—'
+                              for metric, fmt in formats.items()]
+
+        allocation_col, metrics_col = st.columns(2)
+        with allocation_col:
+            st.markdown("**계좌별 배정**")
+            st.dataframe(allocation, hide_index=True, width="stretch",
+                         column_config={'잔액 (만원)': st.column_config.NumberColumn(format="localized")},
+                         key="allocation_pair_accounts")
+        with metrics_col:
+            st.markdown("**성과 지표**")
+            st.dataframe(pd.DataFrame(metrics), hide_index=True, width="stretch", height="content",
+                         key="allocation_pair_metrics")
+
+        chart_columns = st.columns(2)
+        for chart_col, (field, title, baseline) in zip(
+            chart_columns, [('equity', '누적 수익률', 1), ('dd', '고점 대비 낙폭', 0)]
+        ):
+            chart = go.Figure()
+            for (key, label), color, dash in zip(labels.items(), ('#38BDF8', '#F59E0B'), ('solid', 'dot')):
+                values = results[key - 1][0][field]
+                initial_month = str(pd.Period(values.index[0], freq='M') - 1)
+                chart.add_trace(go.Scatter(
+                    x=[initial_month, *values.index], y=[0, *(values - baseline)],
+                    name=label, line={'color': color, 'width': 2.5, 'dash': dash},
+                    hovertemplate='%{y:.2%}',
+                ))
+            chart.update_layout(
+                title=title, height=285, template='plotly_dark', hovermode='x unified',
+                yaxis_tickformat='.0%', legend={'orientation': 'h'},
+                margin={'l': 10, 'r': 10, 't': 45, 'b': 10},
+            )
+            chart_col.plotly_chart(chart, width="stretch", key=f"allocation_pair_{field}")
+
+
 def render_combined():
     st.markdown("### 통합 포트 · 계좌별 전략 배정")
     st.caption("계좌마다 잔액 전부를 네 전략 중 하나에 배정합니다. "
@@ -1666,7 +1730,8 @@ def render_combined():
         if submit_column.form_submit_button("입력완료", type="primary"):
             st.session_state['allocation_submitted_manwon'] = amounts
             st.session_state['allocation_submitted_distinct'] = distinct
-            st.session_state.pop('allocation_candidate', None)
+            for key in ('allocation_candidate', 'allocation_pair_a', 'allocation_pair_b'):
+                st.session_state.pop(key, None)
 
     if 'allocation_submitted_manwon' not in st.session_state:
         return
@@ -1750,6 +1815,8 @@ def render_combined():
         assignment = candidates[candidate - 1][0]
         return f"{candidate}번 · " + " / ".join(
             f"{name} → {nmap[key]}" for name, key in zip(names, assignment))
+
+    render_allocation_pair(ranked, results, names, amounts, candidate_label)
 
     picked = st.selectbox("상세히 볼 조합", range(1, len(candidates) + 1), format_func=candidate_label,
                           key="allocation_candidate")
