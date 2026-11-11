@@ -2026,9 +2026,9 @@ STRATEGY_TABS = [
     ('meritz', '🇺🇸 또 메리츠', render_meritz),
     ('so', '🇺🇸 맘·쏘 삼성', render_so),
     ('ko', '🇰🇷 또 ISA', render_ko),
-    ('pen', '🇰🇷 또 연금', render_pension),
+    ('pen', '🇰🇷 맘 ISA', render_pension),
     ('ssopen', '🇰🇷 쏘 연금', render_ssopen),
-    ('mamtax', '🇰🇷 맘 ISA', render_mamtax),
+    ('mamtax', '🇰🇷 또 연금', render_mamtax),
 ]
 visible_tabs = [(label, render) for key, label, render in STRATEGY_TABS
                 if key not in HIDDEN_STRATEGIES]
