@@ -39,6 +39,7 @@ from utils.snowball import (
     MAMTAX_OFFENSE, MAMTAX_DEFENSE, MAMTAX_TICKER_NAMES, MAMTAX_BENCHMARKS, MAMTAX_TOP_OFF,
     mamtax_live_ticker, mamtax_live_name,
 )
+from utils.snowball_daily import SNAPSHOTS, holding_weights, month_performance, preview_monthly, read_snapshot, signal_for_month
 from utils.ui_components import inject_custom_css, get_monthly_heatmap, get_mdd_history
 from utils.portfolio_report import build_combined_monthly, build_combined_excel
 from utils.snowball_balance_storage import browser_balance_storage, normalize_balance_amounts
@@ -200,6 +201,95 @@ def _mode_badge(defensive, hold_display):
         f"현재 보유: <b style='color:#E5E7EB;'>{hold_display}</b></span></div>",
         unsafe_allow_html=True,
     )
+
+
+def render_month_monitor(signals, monthly, compute, tickers, market, *,
+                         name=str, alias=str, us_inputs=(), use_dividend=False):
+    """현재 보유월은 전월 확정 신호를 읽고, 잠정 월봉은 화면 안에서만 계산한다."""
+    month = pd.Timestamp.now(tz="Asia/Seoul").tz_localize(None).to_period("M")
+    daily = load_monitor_snapshot(market)
+    with st.expander(f"{month.month}월 일별 수익률 · {(month + 1).month}월 선택 미리보기", expanded=True):
+        st.markdown(f"**{month.month}월 보유 성과**")
+        weights = holding_weights(signal_for_month(signals, month - 1), alias)
+        performance = month_performance(daily, weights, month)
+        if performance.empty:
+            st.caption("전월 확정 신호 또는 보유 종목의 일별 종가가 준비되면 표시됩니다.")
+        else:
+            latest = performance.iloc[-1]
+            st.metric("이번 달 누적", f'{latest["포트 누적"]:+.2%}')
+            st.caption(
+                f"{performance.index[-1]:%Y-%m-%d} 종가까지 · "
+                + " · ".join(f'{name(t)} {w:.0%} ({latest[f"{t} 누적"]:+.2%})' for t, w in weights.items())
+            )
+            price_basis = "달러 수정종가" if market == "US" else "원화 종가"
+            st.caption(f"전월 마지막 거래일 종가 대비 · {price_basis} 기준 · 환율·거래비용 미포함")
+            chart = performance[["포트 누적"] + [f"{t} 누적" for t in weights]]
+            chart = chart.rename(columns={f"{t} 누적": f"{name(t)} 누적" for t in weights})
+            fig = go.Figure()
+            for label in chart:
+                fig.add_scatter(x=chart.index, y=chart[label], name=label, mode="lines+markers",
+                                hovertemplate="%{x|%m-%d} %{y:+.2%}<extra></extra>")
+            fig.update_layout(height=230, margin=dict(l=8, r=8, t=10, b=5),
+                              yaxis_tickformat=".1%", legend=dict(orientation="h"))
+            st.plotly_chart(fig, width="stretch", key=f"month_monitor_{compute.__name__}")
+            table = performance.rename(columns={
+                f"{ticker} {period}": f"{name(ticker)} {period}"
+                for ticker in weights for period in ("일간", "누적")
+            }).sort_index(ascending=False)
+            table.index = table.index.strftime("%m-%d")
+            table.index.name = "거래일"
+            st.dataframe(table, width="stretch", height=210, column_config={
+                label: st.column_config.NumberColumn(format="percent") for label in table.columns
+            })
+
+        st.markdown(f"**{(month + 1).month}월 선택 미리보기**")
+        arguments = []
+        # 또 ISA의 TIP은 국내 월봉 프레임에 포함되지만 가격은 미국 종가를 사용한다.
+        if market == "KR" and "TIP" in tickers:
+            preview = preview_monthly(monthly, daily, [t for t in tickers if t != "TIP"], month)
+            tip = preview_monthly(monthly, load_monitor_snapshot("US"), ["TIP"], month)
+            if preview is None or tip is None:
+                st.caption("국내 ETF와 미국 TIP의 이번 달 일봉이 모두 준비되면 표시됩니다.")
+                return
+            provisional, price_date = preview
+            provisional.loc[month, "TIP"] = tip[0].loc[month, "TIP"]
+            date_label = f"한국 {price_date:%m-%d} · 미국 TIP {tip[1]:%m-%d}"
+        else:
+            preview = preview_monthly(monthly, daily, tickers, month)
+            if preview is None:
+                st.caption("전월 월봉과 이번 달 후보·필터 자산의 일봉이 모두 준비되면 표시됩니다.")
+                return
+            provisional, price_date = preview
+            date_label = f"{'미국' if market == 'US' else '한국'} {price_date:%m-%d}"
+            if us_inputs:
+                us_preview = preview_monthly(prices, load_monitor_snapshot("US"), us_inputs, month)
+                if us_preview is None:
+                    st.caption("미국 위험회피 자산의 이번 달 일봉이 모두 준비되면 표시됩니다.")
+                    return
+                us_provisional, us_date = us_preview
+                arguments.append(us_provisional)
+                date_label += f" · 미국 {us_date:%m-%d}"
+            if use_dividend:
+                if pd.isna(div_yield.get(month, np.nan)):
+                    st.caption("이번 달 S&P 500 배당수익률 관측값이 들어오면 표시됩니다.")
+                    return
+                arguments.append(div_yield.loc[div_yield.index <= month])
+
+        signal = signal_for_month(compute(provisional, *arguments), month)
+        next_weights = holding_weights(signal, alias)
+        if next_weights:
+            mode = "방어" if signal["defensive"] else "공격"
+            picks = " · ".join(f"{name(t)} {w:.0%}" for t, w in next_weights.items())
+            st.markdown(f"**{mode} · {picks}**")
+        st.caption(f"{date_label} 종가를 월말 가격으로 가정한 잠정 결과입니다. 월말까지 바뀔 수 있습니다.")
+        if use_dividend:
+            st.caption(f"S&P 500 배당수익률 {div_yield.loc[month]:.2f}% 적용 (이번 달 최신 수집값)")
+        st.caption(signal.get("reason", "최근 종가로 계산할 수 있는 잠정 신호가 없습니다."))
+
+
+@st.cache_data(ttl="15m", show_spinner=False)
+def load_monitor_snapshot(market):
+    return read_snapshot(SNAPSHOTS[market])
 
 
 def _pct(v):
@@ -569,6 +659,8 @@ def render_meritz():
         f"<span style='font-size:12px; color:#9CA3AF; font-weight:500;'>(기준: {lm} 월말)</span></div>",
         unsafe_allow_html=True)
     _mode_badge(defensive_now, f"<span style='color:{ASSET_COLORS.get(selected_hold,'#E5E7EB')};'>{selected_hold}</span>")
+    render_month_monitor(signals, prices, compute_signals,
+                         SIGNAL_ASSETS + OFFENSE_ASSETS + DEFENSE_ASSETS, "US", use_dividend=True)
 
     col_off, col_def = st.columns(2)
     with col_off:
@@ -744,6 +836,11 @@ def render_so():
         f"<span style='font-size:12px; color:#9CA3AF; font-weight:500;'>(기준: {lm} 월말)</span></div>",
         unsafe_allow_html=True)
     _mode_badge(defensive_now, hold_disp)
+    render_month_monitor(
+        signals, prices, lambda monthly: compute_signals_so(monthly, use_riskoff=use_riskoff),
+        [SO_FILTER_ASSET] + SO_OFFENSE_ASSETS + SO_DEFENSE_ASSETS
+        + (SIGNAL_ASSETS if use_riskoff else []), "US",
+    )
 
     col_off, col_def = st.columns(2)
     with col_off:
@@ -933,6 +1030,8 @@ def render_ko():
         f"<span style='font-size:12px; color:#9CA3AF; font-weight:500;'>(기준: {lm} 월말 · ISA/연금 매매용)</span></div>",
         unsafe_allow_html=True)
     _mode_badge(defensive_now, hold_disp)
+    render_month_monitor(signals, ko_prices, compute_signals_ko, need, "KR",
+                         name=lambda t: KO_TICKER_NAMES.get(t, t))
 
     off_scores = last.get('offense_scores', {}) or {}
     def_scores = last.get('defense_scores', {}) or {}
@@ -1116,6 +1215,9 @@ def render_pension():
         f"<span style='font-size:12px; color:#9CA3AF; font-weight:500;'>(기준: {valid[-1]} 월말 · 연금/ISA 매매용)</span></div>",
         unsafe_allow_html=True)
     _mode_badge(defensive_now, hold_disp)
+    render_month_monitor(signals, pen_prices, compute_signals_pension,
+                         PEN_OFFENSE + PEN_DEFENSE, "KR",
+                         name=lambda t: PEN_TICKER_NAMES.get(t, t))
 
     off_scores = last.get('offense_scores', {}) or {}
     def_scores = last.get('defense_scores', {}) or {}
@@ -1281,6 +1383,9 @@ def render_ssopen():
         f"<span style='font-size:12px; color:#9CA3AF; font-weight:500;'>(기준: {valid[-1]} 월말 · 연금/ISA 매매용)</span></div>",
         unsafe_allow_html=True)
     _mode_badge(defensive_now, hold_disp)
+    render_month_monitor(signals, ss_prices, compute_signals_ssopen,
+                         [SSOPEN_NASDAQ] + SSOPEN_DEFENSE, "KR",
+                         name=lambda t: SSOPEN_TICKER_NAMES.get(t, t), us_inputs=SIGNAL_ASSETS)
 
     def_scores = last.get('defense_scores', {}) or {}
 
@@ -1452,6 +1557,10 @@ def render_mamtax():
         f"<span style='font-size:12px; color:#9CA3AF; font-weight:500;'>(기준: {valid[-1]} 월말 · 비과세계좌 매매용)</span></div>",
         unsafe_allow_html=True)
     _mode_badge(defensive_now, hold_disp)
+    render_month_monitor(signals, mp, compute_signals_mamtax,
+                         MAMTAX_OFFENSE + MAMTAX_DEFENSE, "KR",
+                         name=lambda t: MAMTAX_TICKER_NAMES.get(t, t),
+                         alias=mamtax_live_ticker, us_inputs=SIGNAL_ASSETS)
     st.caption("ℹ️ 신호·백테스트는 장수 종목(133690·102110)으로 계산하고, 표시·매매는 실운용 종목"
                "(379810 KODEX 미국나스닥100·278530 KODEX 200TR)으로 안내합니다. CSI300은 192090 동일.")
 

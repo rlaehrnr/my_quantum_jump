@@ -62,7 +62,7 @@ EARLY_START = {'QQQ': '1990-01-01', 'SPY': '1990-01-01'}
 # ETF 월봉 수집
 # ==========================================
 
-def fetch_etf_fdr(ticker, start='2005-01-01', adjusted=False):
+def fetch_etf_fdr(ticker, start='2005-01-01', adjusted=False, *, daily=False):
     """FinanceDataReader로 ETF 일봉 받아 월봉(월말 종가)으로 변환.
 
     adjusted=True면 'Adj Close'(수정종가)를 사용. FDR이 수정종가를 제공하지
@@ -84,12 +84,14 @@ def fetch_etf_fdr(ticker, start='2005-01-01', adjusted=False):
         if 'Close' not in df.columns:
             return None
         col = 'Close'
+    if daily:
+        return df[col].dropna()
     # 월말 종가로 리샘플
     monthly = df[col].resample('ME').last().dropna()
     return monthly
 
 
-def fetch_etf_yfinance(ticker, start='2005-01-01', adjusted=False):
+def fetch_etf_yfinance(ticker, start='2005-01-01', adjusted=False, *, daily=False):
     """yfinance 폴백. adjusted=True면 auto_adjust로 수정종가를 'Close'에 반영."""
     import yfinance as yf
     df = yf.download(ticker, start=start, progress=False, auto_adjust=adjusted)
@@ -101,6 +103,8 @@ def fetch_etf_yfinance(ticker, start='2005-01-01', adjusted=False):
         close = close.iloc[:, 0]
     if getattr(close.index, 'tz', None) is not None:
         close.index = close.index.tz_localize(None)
+    if daily:
+        return close.dropna()
     monthly = close.resample('ME').last().dropna()
     return monthly
 
@@ -396,7 +400,21 @@ def _parse_existing_div(df):
 # 메인
 # ==========================================
 
+def update_us_daily():
+    from functools import partial
+
+    from update_snowball_daily import update_daily_snapshot
+
+    return update_daily_snapshot("US", ALL_TICKERS, (
+        partial(fetch_etf_yfinance, adjusted=True, daily=True),
+        partial(fetch_etf_fdr, adjusted=True, daily=True),
+    ))
+
+
 def main():
+    if "--daily-only" in sys.argv:
+        sys.exit(0 if update_us_daily() else 1)
+
     print("=" * 60)
     print(f"🚀 스노우볼 데이터 자동 업데이트 시작 — {datetime.now()}")
     print("=" * 60)
@@ -406,6 +424,8 @@ def main():
     etf_ok, etf_fail = update_all_etfs()
     print()
     div_ok = update_dividend()
+    if not update_us_daily():
+        print("::warning::미국 스노우볼 일봉 수집 실패")
     
     print()
     print("=" * 60)

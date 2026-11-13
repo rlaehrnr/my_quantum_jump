@@ -5,7 +5,12 @@ on:
     # 매일 KST 07:01. 월초에는 06:01/08:01 추가 시도 (미국 마감 후).
     - cron: '1 22 * * *'
     - cron: '1 21,23 28-31,1,2 * *'
-  workflow_dispatch:   # 수동 실행 버튼
+  workflow_dispatch:
+    inputs:
+      daily_only:
+        description: 일봉만 갱신
+        type: boolean
+        default: false
 
 jobs:
   update-snowball:
@@ -28,7 +33,12 @@ jobs:
         pip install pandas numpy finance-datareader yfinance requests beautifulsoup4 lxml openpyxl
 
     - name: 4. 스노우볼 데이터 업데이트 스크립트 실행
-      run: python update_snowball.py
+      run: |
+        if [ "${{ inputs.daily_only }}" = "true" ]; then
+          python update_snowball.py --daily-only
+        else
+          python update_snowball.py
+        fi
 
     - name: 5. 깃허브에 변경사항 커밋 & 푸시
       run: |

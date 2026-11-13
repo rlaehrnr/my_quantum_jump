@@ -132,7 +132,7 @@ def _drop_incomplete_month(monthly_series, today=None):
     return monthly_series[monthly_series.index < current_month_start]
 
 
-def fetch_kr_fdr(ticker, start=START_DATE):
+def fetch_kr_fdr(ticker, start=START_DATE, *, daily=False):
     """FinanceDataReader로 국내 ETF 일봉 → 월말 종가 월봉."""
     import FinanceDataReader as fdr
     df = fdr.DataReader(ticker, start)
@@ -140,11 +140,13 @@ def fetch_kr_fdr(ticker, start=START_DATE):
         return None
     if getattr(df.index, 'tz', None) is not None:
         df.index = df.index.tz_localize(None)
+    if daily:
+        return df['Close'].dropna()
     monthly = df['Close'].resample('ME').last().dropna()
     return monthly
 
 
-def fetch_kr_yfinance(ticker, start=START_DATE):
+def fetch_kr_yfinance(ticker, start=START_DATE, *, daily=False):
     """야후 폴백. 국내 ETF는 '{코드}.KS' 심볼 (일부만 지원)."""
     import yfinance as yf
     df = yf.download(f"{ticker}.KS", start=start, progress=False, auto_adjust=False)
@@ -155,6 +157,8 @@ def fetch_kr_yfinance(ticker, start=START_DATE):
         close = close.iloc[:, 0]
     if getattr(close.index, 'tz', None) is not None:
         close.index = close.index.tz_localize(None)
+    if daily:
+        return close.dropna()
     return close.resample('ME').last().dropna()
 
 
@@ -219,8 +223,24 @@ def update_all():
     return ok, fail
 
 
+def update_kr_daily():
+    from functools import partial
+
+    from update_snowball_daily import update_daily_snapshot
+
+    return update_daily_snapshot("KR", ALL_TICKERS, (
+        partial(fetch_kr_fdr, daily=True),
+        partial(fetch_kr_yfinance, daily=True),
+    ))
+
+
 def main():
+    if "--daily-only" in sys.argv:
+        sys.exit(0 if update_kr_daily() else 1)
+
     ok, fail = update_all()
+    if not update_kr_daily():
+        print("::warning::국내 스노우볼 일봉 수집 실패")
     # 절반 이상 실패하면 비정상 종료(워크플로우에서 감지)
     if len(fail) > len(ALL_TICKERS) // 2:
         print("❌ 절반 이상 수집 실패 — 데이터 소스 점검 필요")
