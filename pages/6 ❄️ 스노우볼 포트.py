@@ -13,6 +13,7 @@ import pandas as pd
 import numpy as np
 import plotly.graph_objects as go
 import re
+from html import escape
 
 from utils.snowball import (
     load_monthly_prices, load_dividend_yield,
@@ -210,16 +211,18 @@ def current_holding_month():
     return pd.Timestamp.now(tz="Asia/Seoul").tz_localize(None).to_period("M")
 
 
-def render_daily_performance(performance, key, labels, *, portfolio_only=False):
+def render_daily_performance(performance, key, labels):
+    cumulative = performance["포트 누적"]
     fig = go.Figure()
-    for column, label in labels.items():
-        fig.add_scatter(
-            x=performance.index, y=performance[column], name=label, mode="lines+markers",
-            visible="legendonly" if portfolio_only and column != "포트 누적" else True,
-            hovertemplate="%{x|%m-%d} %{y:+.2%}<extra></extra>",
-        )
-    fig.update_layout(height=230, margin=dict(l=8, r=8, t=10, b=5),
-                      yaxis_tickformat=".1%", legend=dict(orientation="h"))
+    fig.add_scatter(
+        x=performance.index, y=cumulative, name="포트 누적", mode="lines+markers+text",
+        text=[f"{value:+.2%}" for value in cumulative],
+        textposition=["top center" if i % 2 == 0 else "bottom center"
+                      for i in range(len(cumulative))],
+        cliponaxis=False, hovertemplate="%{x|%m-%d} %{y:+.2%}<extra></extra>",
+    )
+    fig.update_layout(height=245, margin=dict(l=26, r=26, t=24, b=18),
+                      yaxis_tickformat=".1%", showlegend=False)
     st.plotly_chart(fig, width="stretch", key=f"month_monitor_{key}")
     table = performance.rename(columns=labels).sort_index()
     table.index = table.index.strftime("%m-%d")
@@ -302,8 +305,7 @@ def render_month_monitor(signals, monthly, compute, tickers, market, *,
             st.caption(f"전월 마지막 거래일 종가 대비 · {price_basis} 기준 · 환율·거래비용 미포함")
             labels = {"포트 누적": "포트 누적", **{f"{t} 누적": f"{name(t)} 누적" for t in weights}}
             columns = {f"{t} 일간": f"{name(t)} 일간" for t in weights}
-            render_daily_performance(performance.rename(columns=columns), compute.__name__, labels,
-                                     portfolio_only=strategy in ("pen", "ssopen"))
+            render_daily_performance(performance, compute.__name__, labels | columns)
 
         st.markdown(f"**{(month + 1).month}월 선택 미리보기**")
         arguments = []
@@ -340,15 +342,18 @@ def render_month_monitor(signals, monthly, compute, tickers, market, *,
 
         signal = signal_for_month(compute(provisional, *arguments), month)
         next_weights = holding_weights(signal, alias)
-        line, conditions = preview_summary(signal, strategy, name, alias)
-        if line:
-            st.markdown(line)
-        for condition in conditions:
-            st.caption(condition)
         if next_weights:
             mode = "방어" if signal["defensive"] else "공격"
             picks = " · ".join(f"{name(t)} {w:.0%}" for t, w in next_weights.items())
-            st.caption(f"{mode} · {picks} | {date_label} 종가")
+            st.markdown(f"**{mode} · {picks}**")
+        line, conditions = preview_summary(signal, strategy, name, alias)
+        if line:
+            st.caption(f'<span style="font-size: calc(1em + 1px)">{escape(line)}</span>',
+                       unsafe_allow_html=True)
+        for condition in conditions:
+            st.caption(condition)
+        if next_weights:
+            st.caption(f"{date_label} 종가 기준")
         elif line:
             st.caption(signal.get("reason", "선택 종목 없음"))
 
@@ -1930,7 +1935,7 @@ def render_combined_month(by_strategy, nmap, strategy_data):
         st.caption("입력 금액의 월초 비중으로 합산 · 공통 거래일 기준 · 환율·거래비용 미포함")
         labels = {"포트 누적": "포트 누적",
                   **{f"{key} 누적": f"{nmap[key]} 누적" for key in returns}}
-        render_daily_performance(performance, "combined", labels, portfolio_only=True)
+        render_daily_performance(performance, "combined", labels)
 
 
 def render_combined():
