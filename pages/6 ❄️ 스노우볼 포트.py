@@ -39,7 +39,10 @@ from utils.snowball import (
     MAMTAX_OFFENSE, MAMTAX_DEFENSE, MAMTAX_TICKER_NAMES, MAMTAX_BENCHMARKS, MAMTAX_TOP_OFF,
     mamtax_live_ticker, mamtax_live_name,
 )
-from utils.snowball_daily import SNAPSHOTS, holding_weights, month_performance, preview_monthly, read_snapshot, signal_for_month
+from utils.snowball_daily import (
+    SNAPSHOTS, combine_month_performance, holding_weights, month_performance,
+    preview_monthly, read_snapshot, signal_for_month,
+)
 from utils.ui_components import inject_custom_css, get_monthly_heatmap, get_mdd_history
 from utils.portfolio_report import build_combined_monthly, build_combined_excel
 from utils.snowball_balance_storage import browser_balance_storage, normalize_balance_amounts
@@ -203,10 +206,84 @@ def _mode_badge(defensive, hold_display):
     )
 
 
+def current_holding_month():
+    return pd.Timestamp.now(tz="Asia/Seoul").tz_localize(None).to_period("M")
+
+
+def render_daily_performance(performance, key, labels, *, portfolio_only=False):
+    fig = go.Figure()
+    for column, label in labels.items():
+        fig.add_scatter(
+            x=performance.index, y=performance[column], name=label, mode="lines+markers",
+            visible="legendonly" if portfolio_only and column != "포트 누적" else True,
+            hovertemplate="%{x|%m-%d} %{y:+.2%}<extra></extra>",
+        )
+    fig.update_layout(height=230, margin=dict(l=8, r=8, t=10, b=5),
+                      yaxis_tickformat=".1%", legend=dict(orientation="h"))
+    st.plotly_chart(fig, width="stretch", key=f"month_monitor_{key}")
+    table = performance.rename(columns=labels).sort_index()
+    table.index = table.index.strftime("%m-%d")
+    table.index.name = "거래일"
+    st.dataframe(table, width="stretch", height=210, column_config={
+        label: st.column_config.NumberColumn(format="percent") for label in table.columns
+    })
+
+
+def preview_summary(signal, strategy, name, alias):
+    def scores(values):
+        if not isinstance(values, dict):
+            return ""
+        ranked = sorted(((ticker, score) for ticker, score in values.items() if pd.notna(score)),
+                        key=lambda item: item[1], reverse=True)
+        return ", ".join(f"{name(alias(ticker))} {score:+.1%}" for ticker, score in ranked)
+
+    def risk_status(flag):
+        value = signal.get(flag)
+        return ("자료 없음" if pd.isna(value) else "발동" if value else "미발동")
+
+    def values_with(keys):
+        return " · ".join(f"{label} {signal[key]:+.1%}" for label, key in keys
+                          if pd.notna(signal.get(key)))
+
+    if strategy == "meritz":
+        offense = scores({t: signal.get(f"ret12_{t}") for t in OFFENSE_ASSETS})
+        defense = scores({t: signal.get(f"disp12_{t}") for t in DEFENSE_ASSETS})
+        line = f"공격 (12M 수익률) {offense} / 방어 (12M 이격도) {defense}"
+        risk = values_with((t, f"ret6_{t}") for t in SIGNAL_ASSETS)
+        percentile, rank = signal.get("div_pct"), signal.get("div_rank")
+        dividend = ""
+        if pd.notna(percentile) and pd.notna(rank):
+            dividend = f" · 하위 {percentile:.1f}% · {rank:.0f}위"
+        conditions = (
+            f"조건 1 {risk_status('cond1')} · 6M {risk} "
+            f"(TIP·VWO·VEA 모두 음수, VIXY 음수 또는 {VIXY_SPIKE:+.0%} 이상)",
+            f"조건 2 {risk_status('cond2')}{dividend} (배당수익률 하위 10%, 1위 제외)",
+        )
+    elif strategy == "pen":
+        line = (f"공격 (6M 수익률) {scores(signal.get('offense_scores'))} / "
+                f"방어 (3M 이격도) {scores(signal.get('defense_scores'))}")
+        filt = values_with((("나스닥", "filt_nasdaq"), ("코스피", "filt_kospi")))
+        conditions = (f"위험회피 {risk_status('risk_off')} · 6M 이격도 {filt} (하나라도 음수)",)
+    elif strategy in ("ssopen", "mamtax"):
+        if strategy == "ssopen":
+            line = (f"공격 {name(SSOPEN_NASDAQ)} 100% / "
+                    f"방어 (1+3+6+12M 합) {scores(signal.get('defense_scores'))}")
+        else:
+            line = (f"공격 (12M 수익률) {scores(signal.get('off_scores'))} / "
+                    f"방어 (3M 이격도) {scores(signal.get('def_scores'))}")
+        filt = values_with((t, f"{t}_6m") for t in SIGNAL_ASSETS)
+        conditions = (f"위험회피 {risk_status('risk_off')} · 6M {filt} "
+                      f"(TIP·VWO·VEA 모두 음수, VIXY 음수 또는 {VIXY_SPIKE:+.0%} 이상)",)
+    else:
+        return "", (signal.get("reason", "최근 종가로 계산할 수 있는 신호가 없습니다."),)
+    return line, conditions
+
+
 def render_month_monitor(signals, monthly, compute, tickers, market, *,
-                         name=str, alias=str, us_inputs=(), use_dividend=False):
+                         name=str, alias=str, us_inputs=(), use_dividend=False, strategy=""):
+
     """현재 보유월은 전월 확정 신호를 읽고, 잠정 월봉은 화면 안에서만 계산한다."""
-    month = pd.Timestamp.now(tz="Asia/Seoul").tz_localize(None).to_period("M")
+    month = current_holding_month()
     daily = load_monitor_snapshot(market)
     with st.expander(f"{month.month}월 일별 수익률 · {(month + 1).month}월 선택 미리보기", expanded=True):
         st.markdown(f"**{month.month}월 보유 성과**")
@@ -223,24 +300,10 @@ def render_month_monitor(signals, monthly, compute, tickers, market, *,
             )
             price_basis = "달러 수정종가" if market == "US" else "원화 종가"
             st.caption(f"전월 마지막 거래일 종가 대비 · {price_basis} 기준 · 환율·거래비용 미포함")
-            chart = performance[["포트 누적"] + [f"{t} 누적" for t in weights]]
-            chart = chart.rename(columns={f"{t} 누적": f"{name(t)} 누적" for t in weights})
-            fig = go.Figure()
-            for label in chart:
-                fig.add_scatter(x=chart.index, y=chart[label], name=label, mode="lines+markers",
-                                hovertemplate="%{x|%m-%d} %{y:+.2%}<extra></extra>")
-            fig.update_layout(height=230, margin=dict(l=8, r=8, t=10, b=5),
-                              yaxis_tickformat=".1%", legend=dict(orientation="h"))
-            st.plotly_chart(fig, width="stretch", key=f"month_monitor_{compute.__name__}")
-            table = performance.rename(columns={
-                f"{ticker} {period}": f"{name(ticker)} {period}"
-                for ticker in weights for period in ("일간", "누적")
-            }).sort_index(ascending=False)
-            table.index = table.index.strftime("%m-%d")
-            table.index.name = "거래일"
-            st.dataframe(table, width="stretch", height=210, column_config={
-                label: st.column_config.NumberColumn(format="percent") for label in table.columns
-            })
+            labels = {"포트 누적": "포트 누적", **{f"{t} 누적": f"{name(t)} 누적" for t in weights}}
+            columns = {f"{t} 일간": f"{name(t)} 일간" for t in weights}
+            render_daily_performance(performance.rename(columns=columns), compute.__name__, labels,
+                                     portfolio_only=strategy in ("pen", "ssopen"))
 
         st.markdown(f"**{(month + 1).month}월 선택 미리보기**")
         arguments = []
@@ -277,14 +340,17 @@ def render_month_monitor(signals, monthly, compute, tickers, market, *,
 
         signal = signal_for_month(compute(provisional, *arguments), month)
         next_weights = holding_weights(signal, alias)
+        line, conditions = preview_summary(signal, strategy, name, alias)
+        if line:
+            st.markdown(line)
+        for condition in conditions:
+            st.caption(condition)
         if next_weights:
             mode = "방어" if signal["defensive"] else "공격"
             picks = " · ".join(f"{name(t)} {w:.0%}" for t, w in next_weights.items())
-            st.markdown(f"**{mode} · {picks}**")
-        st.caption(f"{date_label} 종가를 월말 가격으로 가정한 잠정 결과입니다. 월말까지 바뀔 수 있습니다.")
-        if use_dividend:
-            st.caption(f"S&P 500 배당수익률 {div_yield.loc[month]:.2f}% 적용 (이번 달 최신 수집값)")
-        st.caption(signal.get("reason", "최근 종가로 계산할 수 있는 잠정 신호가 없습니다."))
+            st.caption(f"{mode} · {picks} | {date_label} 종가")
+        elif line:
+            st.caption(signal.get("reason", "선택 종목 없음"))
 
 
 @st.cache_data(ttl="15m", show_spinner=False)
@@ -660,7 +726,7 @@ def render_meritz():
         unsafe_allow_html=True)
     _mode_badge(defensive_now, f"<span style='color:{ASSET_COLORS.get(selected_hold,'#E5E7EB')};'>{selected_hold}</span>")
     render_month_monitor(signals, prices, compute_signals,
-                         SIGNAL_ASSETS + OFFENSE_ASSETS + DEFENSE_ASSETS, "US", use_dividend=True)
+                         SIGNAL_ASSETS + OFFENSE_ASSETS + DEFENSE_ASSETS, "US", use_dividend=True, strategy="meritz")
 
     col_off, col_def = st.columns(2)
     with col_off:
@@ -1217,7 +1283,7 @@ def render_pension():
     _mode_badge(defensive_now, hold_disp)
     render_month_monitor(signals, pen_prices, compute_signals_pension,
                          PEN_OFFENSE + PEN_DEFENSE, "KR",
-                         name=lambda t: PEN_TICKER_NAMES.get(t, t))
+                         name=lambda t: PEN_TICKER_NAMES.get(t, t), strategy="pen")
 
     off_scores = last.get('offense_scores', {}) or {}
     def_scores = last.get('defense_scores', {}) or {}
@@ -1385,7 +1451,7 @@ def render_ssopen():
     _mode_badge(defensive_now, hold_disp)
     render_month_monitor(signals, ss_prices, compute_signals_ssopen,
                          [SSOPEN_NASDAQ] + SSOPEN_DEFENSE, "KR",
-                         name=lambda t: SSOPEN_TICKER_NAMES.get(t, t), us_inputs=SIGNAL_ASSETS)
+                         name=lambda t: SSOPEN_TICKER_NAMES.get(t, t), us_inputs=SIGNAL_ASSETS, strategy="ssopen")
 
     def_scores = last.get('defense_scores', {}) or {}
 
@@ -1560,7 +1626,7 @@ def render_mamtax():
     render_month_monitor(signals, mp, compute_signals_mamtax,
                          MAMTAX_OFFENSE + MAMTAX_DEFENSE, "KR",
                          name=lambda t: MAMTAX_TICKER_NAMES.get(t, t),
-                         alias=mamtax_live_ticker, us_inputs=SIGNAL_ASSETS)
+                         alias=mamtax_live_ticker, us_inputs=SIGNAL_ASSETS, strategy="mamtax")
     st.caption("ℹ️ 신호·백테스트는 장수 종목(133690·102110)으로 계산하고, 표시·매매는 실운용 종목"
                "(379810 KODEX 미국나스닥100·278530 KODEX 200TR)으로 안내합니다. CSI300은 192090 동일.")
 
@@ -1705,9 +1771,8 @@ STRAT_META = [
 HIDDEN_STRATEGIES = {'so', 'ko'}
 
 
-def build_all_strategy_returns(cost_rate, keys):
-    """개별 탭과 동일한 라이브 전략 엔진에서 보유월별 순수익·국면을 가져온다."""
-    sources = {
+def strategy_sources():
+    return {
         'meritz': (lambda: prices, lambda p: compute_signals(p, div_yield), run_backtest),
         'so': (lambda: prices, compute_signals_so, run_backtest_so),
         'ko': (load_ko_prices, compute_signals_ko, run_backtest_ko),
@@ -1715,13 +1780,19 @@ def build_all_strategy_returns(cost_rate, keys):
         'ssopen': (load_ssopen_prices, lambda p: compute_signals_ssopen(p, prices), run_backtest_ssopen),
         'mamtax': (load_mamtax_prices, lambda p: compute_signals_mamtax(p, prices), run_backtest_mamtax),
     }
+
+
+
+def build_all_strategy_returns(cost_rate, keys, strategy_data):
+    """개별 탭과 동일한 라이브 전략 엔진에서 보유월별 순수익·국면을 가져온다."""
+    sources = strategy_sources()
     out, regimes = {}, {}
     for key in keys:
-        load_prices, signals, backtest = sources[key]
-        px = load_prices()
+        px, signals = strategy_data[key]
+        backtest = sources[key][2]
         if px.empty:
             continue
-        bt = backtest(px, signals(px), cost=cost_rate)
+        bt = backtest(px, signals, cost=cost_rate)
         if not bt.empty:
             by_month = bt.set_index('hold_month')
             out[key] = by_month['ret_strategy']
@@ -1832,6 +1903,36 @@ def render_allocation_pair(ranked, results, names, amounts, candidate_label):
             chart_col.plotly_chart(chart, width="stretch", key=f"allocation_pair_{field}")
 
 
+def render_combined_month(by_strategy, nmap, strategy_data):
+    month = current_holding_month()
+    with st.expander(f"{month.month}월 통합 포트 일별 수익률", expanded=True):
+        returns = {}
+        for key, amount in by_strategy.items():
+            if amount <= 0:
+                continue
+            _, signals = strategy_data[key]
+            market = "US" if key in ("meritz", "so") else "KR"
+            alias = mamtax_live_ticker if key == "mamtax" else str
+            weights = holding_weights(signal_for_month(signals, month - 1), alias)
+            performance = month_performance(load_monitor_snapshot(market), weights, month)
+            if not performance.empty:
+                returns[key] = performance["포트 누적"]
+
+        performance = combine_month_performance(returns, by_strategy)
+        if performance.empty:
+            st.caption("선택한 전략들의 전월 확정 신호와 공통 거래일 종가가 들어오면 표시됩니다.")
+            return
+        st.metric("이번 달 통합 누적", f'{performance["포트 누적"].iloc[-1]:+.2%}')
+        total = sum(by_strategy.values())
+        mix = " · ".join(f"{nmap[key]} {amount / total:.1%}"
+                         for key, amount in by_strategy.items() if amount > 0)
+        st.caption(f"{performance.index[-1]:%Y-%m-%d} 종가까지 · {mix}")
+        st.caption("입력 금액의 월초 비중으로 합산 · 공통 거래일 기준 · 환율·거래비용 미포함")
+        labels = {"포트 누적": "포트 누적",
+                  **{f"{key} 누적": f"{nmap[key]} 누적" for key in returns}}
+        render_daily_performance(performance, "combined", labels, portfolio_only=True)
+
+
 def render_combined():
     st.markdown("### 통합 포트 · 계좌별 전략 배정")
     st.caption("계좌마다 잔액 전부를 네 전략 중 하나에 배정합니다. "
@@ -1865,8 +1966,6 @@ def render_combined():
     if storage.write_ok is False:
         st.caption("브라우저에서 저장이 차단되어 이 세션에서만 금액이 유지됩니다.")
 
-    common_only = st.checkbox("2017년부터 보기 · 네 전략 공통 구간", key="allocation_history_2017")
-
     if 'allocation_submitted_manwon' not in st.session_state:
         return
     amounts = st.session_state['allocation_submitted_manwon']
@@ -1876,9 +1975,27 @@ def render_combined():
         return
     distinct = st.session_state.get('allocation_submitted_distinct', False)
     candidates = allocation_choices(amounts, keys, distinct=distinct)
+    def candidate_label(candidate):
+        assignment = candidates[candidate - 1][0]
+        return f"{candidate}번 · " + " / ".join(
+            f"{name} → {nmap[key]}" for name, key in zip(names, assignment))
+
+    default_candidate = next(i for i, (assignment, _) in enumerate(candidates)
+                             if assignment == tuple(keys))
+    picked = st.selectbox("상세히 볼 조합", range(1, len(candidates) + 1), index=default_candidate,
+                          format_func=candidate_label, key="allocation_candidate")
+    assignment, by_strategy = candidates[picked - 1]
+    strategy_data = {}
+    for key, (load_prices, compute, _) in strategy_sources().items():
+        if key in keys:
+            px = load_prices()
+            strategy_data[key] = (px, compute(px) if not px.empty else pd.DataFrame())
+    render_combined_month(by_strategy, nmap, strategy_data)
+
+    common_only = st.checkbox("2017년부터 보기 · 네 전략 공통 구간", key="allocation_history_2017")
     cost_rate = 0.0025
     with st.spinner("확정월 기준으로 배정 조합을 비교하는 중…"):
-        R, regimes = build_all_strategy_returns(cost_rate, keys)
+        R, regimes = build_all_strategy_returns(cost_rate, keys, strategy_data)
         unavailable = [nmap[k] for k in keys if k not in R or R[k].isna().all()]
         if unavailable:
             st.warning("수익률 이력이 없는 전략 · " + ", ".join(unavailable))
@@ -1953,16 +2070,8 @@ def render_combined():
             "같은 과거 구간에서 고른 순위이므로 이후에도 유지된다는 보장은 없습니다."
         )
 
-    def candidate_label(candidate):
-        assignment = candidates[candidate - 1][0]
-        return f"{candidate}번 · " + " / ".join(
-            f"{name} → {nmap[key]}" for name, key in zip(names, assignment))
-
     render_allocation_pair(ranked, results, names, amounts, candidate_label)
 
-    picked = st.selectbox("상세히 볼 조합", range(1, len(candidates) + 1), format_func=candidate_label,
-                          key="allocation_candidate")
-    assignment, by_strategy = candidates[picked - 1]
     W = {key: amount / total for key, amount in by_strategy.items() if amount > 0}
     base, score = results[picked - 1]
     st.dataframe(pd.DataFrame([

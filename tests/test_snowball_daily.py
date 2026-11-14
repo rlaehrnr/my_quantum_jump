@@ -2,7 +2,7 @@ import unittest
 
 import pandas as pd
 
-from utils.snowball_daily import month_performance, preview_monthly, holding_weights, signal_for_month
+from utils.snowball_daily import combine_month_performance, month_performance, preview_monthly, holding_weights, signal_for_month
 
 
 class SnowballDailyTests(unittest.TestCase):
@@ -20,6 +20,17 @@ class SnowballDailyTests(unittest.TestCase):
         self.assertAlmostEqual(performance.iloc[1]["포트 누적"], .05)
         self.assertAlmostEqual(performance.iloc[1]["포트 일간"], .05)
         self.assertAlmostEqual(performance.iloc[1]["A 누적"], .10)
+
+    def test_combines_common_dates_using_input_amounts(self):
+        dates = pd.to_datetime(["2026-11-09", "2026-11-10", "2026-11-11"])
+        results = {"US": pd.Series([.10, .20, .25], index=dates),
+                   "KR": pd.Series([.02, .04], index=dates[1:])}
+        actual = combine_month_performance(results, {"US": 100, "KR": 300, "empty": 0})
+        self.assertEqual(list(actual.index), list(dates[1:]))
+        self.assertAlmostEqual(actual.iloc[0]["포트 누적"], .065)
+        self.assertAlmostEqual(actual.iloc[1]["포트 일간"], 1.0925 / 1.065 - 1)
+        self.assertTrue(pd.isna(actual.iloc[0]["포트 일간"]))
+        self.assertTrue(combine_month_performance(results, {"empty": 100}).empty)
 
     def test_missing_anchor_does_not_become_zero_return(self):
         performance = month_performance(self.daily.iloc[1:], {"A": 1}, self.month)

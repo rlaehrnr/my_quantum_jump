@@ -65,6 +65,21 @@ def month_performance(daily, weights, month):
     return result.loc[portfolio.notna()]
 
 
+def combine_month_performance(returns, amounts):
+    """투자금 기준 월초 비중으로 같은 날짜에 관측된 전략 누적 수익률을 합친다."""
+    amounts = {key: amount for key, amount in amounts.items() if amount > 0}
+    if not amounts or not amounts.keys() <= returns.keys():
+        return pd.DataFrame()
+    curves = pd.DataFrame({key: returns[key] for key in amounts}).sort_index()
+    weights = pd.Series(amounts) / sum(amounts.values())
+    growth = 1 + curves.mul(weights).sum(axis=1, min_count=len(weights))
+    daily = growth.div(growth.shift()).sub(1)
+    if not growth.empty and pd.notna(growth.iloc[0]):
+        daily.iloc[:1] = growth.iloc[:1] - 1
+    result = pd.DataFrame({"포트 일간": daily, "포트 누적": growth - 1})
+    return result.join(curves.add_suffix(" 누적")).loc[growth.notna()]
+
+
 def preview_monthly(monthly, daily, tickers, month):
     """월봉의 가격 척도를 유지하며 일봉의 월중 등락률로 잠정 월봉을 만든다."""
     history = monthly.loc[monthly.index < month]
