@@ -134,7 +134,7 @@ def render_residual_ranking(master, month, archive_path, folder_hash, *, key, da
                   .sort_values("시가총액", ascending=False).head(500))
     if candidates.empty:
         st.caption(f"{month} 투자월 종목 자료가 아직 없습니다.")
-        return
+        return candidates
 
     saved = _load_scores(str(SCORE_FILE)) if SCORE_FILE.is_file() else pd.DataFrame(columns=["month", "ticker", "score"])
     scores = saved.loc[saved.month.eq(month)].set_index("ticker")["score"]
@@ -149,13 +149,14 @@ def render_residual_ranking(master, month, archive_path, folder_hash, *, key, da
     ranked = _ranking_table(candidates, scores, returns)
     if ranked.empty:
         st.caption(f"{month} 투자월 잔차 점수에 필요한 월간 가격 또는 요인 자료가 아직 없습니다.")
-        return
+        return ranked
 
     eligible = candidates["종목코드"].isin(scores.index).sum()
     end = pd.Period(month, freq="M") - 2
     daily = " · 이번달 수익률은 데일리 기준일 종가까지" if daily_returns is not None else ""
     st.caption(f"{month} 투자월 · {end}까지 36개월 회귀 · 직전 1개월 제외 · 점수 {eligible}/{len(candidates)}종{daily}")
     _render_ranking_table(add_naver_links(ranked), key=key)
+    return ranked
 
 
 def _equity(returns):

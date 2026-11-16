@@ -9,7 +9,8 @@ st.set_page_config(page_title="USA 500 통합 모멘텀", layout="wide")
 from utils.data_loader import get_folder_hash
 from utils.calculator import get_cycle_year, PRESIDENTIAL_DANGEROUS_MONTHS
 from utils.ui_usa_residual import render_residual_backtest, render_residual_ranking
-from utils.momentum_daily import render_holding_performance
+from utils.momentum_daily import render_holding_performance, usa500_holding_weights
+from utils.us_residual_backtest import RESIDUAL_DEFAULT_RANKS
 # 💡 핵심: ui_components에서 앞서 정의한 공통 설정들을 똑같이 가져옵니다.
 from utils.ui_components import (
     inject_custom_css, apply_korea_styling, style_kospi_ma, get_styled_stats, 
@@ -153,23 +154,36 @@ with tab1:
         col_order_combo = ['순위', '통합티커_L', '종목명_L', '3-1개월(%)', '6-1개월(%)', '12-1개월(%)', '이번달수익률']
         st.dataframe(df_combo_t1.style.apply(apply_custom_total_styling, top_codes=top_codes_combo, axis=1), use_container_width=True, height=600, hide_index=True, column_order=col_order_combo, column_config=us_main_cfg)
 
-        render_residual_ranking(df_master, target_month_str, archive_path, f_hash, key="residual_rank_monthly")
+        residual_ranking = render_residual_ranking(
+            df_master, target_month_str, archive_path, f_hash, key="residual_rank_monthly"
+        )
 
         st.markdown("---")
-        
+
         holding_month = pd.Period(target_month_str, freq="M")
         st.subheader(f"📈 {holding_month.month}월 일별 보유 성과")
-        st.caption("전월 마지막 거래일 종가 대비 · 월초 동일 비중 · 달러 기준 · 환율·거래비용 미포함")
-        holdings = {ticker: ticker for ticker in top_codes_combo}
         if mkt["stop"]:
-            st.caption("선정 종목 탭은 매수를 가정한 성과입니다.")
-            defense_tab, picks_tab = st.tabs(["🛡️ 방어 보유", "🎯 선정 종목"])
+            picks_tab, defense_tab = st.tabs(["🎯 50:50 매수 가정", "🛡️ 방어 보유"])
             with defense_tab:
                 render_holding_performance("US", {"CASH": "현금"}, holding_month, "usa500_defense")
-            with picks_tab:
-                render_holding_performance("US", holdings, holding_month, "usa500_combo")
         else:
-            render_holding_performance("US", holdings, holding_month, "usa500_combo")
+            picks_tab = st.container()
+        with picks_tab:
+            r_start, r_end = RESIDUAL_DEFAULT_RANKS
+            st.caption(
+                f"종합 모멘텀 {STRAT_RANK_START}~{STRAT_RANK_END}위 50% + 잔차 모멘텀 {r_start}~{r_end}위 50% 매수 가정"
+                " · 그룹 내 동일 비중 · 중복 종목 비중 합산"
+            )
+            weights = usa500_holding_weights(
+                df_combo_t1["종목코드"].tolist(), residual_ranking["종목코드"].tolist(),
+                (STRAT_RANK_START, STRAT_RANK_END), RESIDUAL_DEFAULT_RANKS,
+            )
+            if weights:
+                st.caption("전월 마지막 거래일 종가 대비 · 달러 기준 · 환율·거래비용 미포함")
+                holdings = {ticker: f"{ticker} {weight:.2%}" for ticker, weight in weights.items()}
+                render_holding_performance("US", holdings, holding_month, "usa500_combo", weights=weights)
+            else:
+                st.caption("종합 모멘텀 6종목과 잔차 모멘텀 9종목의 순위가 모두 있는 달에 표시됩니다.")
 
         st.markdown("---")
         col_total_t, col_total_i, col_total_r = st.columns([5.5, 2.5, 4.0])

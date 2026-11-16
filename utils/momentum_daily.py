@@ -56,8 +56,20 @@ def load_holding_closes(market, tickers, start, end):
     return pd.DataFrame(prices, index=sessions)
 
 
-def holding_performance(market, tickers, month):
-    """월초 동일 비중으로 계속 보유한 가격 성과. 현금은 거래일마다 0%."""
+def usa500_holding_weights(original, residual, original_ranks, residual_ranks):
+    """두 순위 구간에 절반씩 균등 배분하고 중복 종목 비중을 합산한다."""
+    weights = {}
+    for ranked, (first, last) in ((original, original_ranks), (residual, residual_ranks)):
+        selected = ranked[first - 1:last]
+        if len(set(selected)) != last - first + 1:
+            return {}
+        for ticker in selected:
+            weights[ticker] = weights.get(ticker, 0.0) + 0.5 / len(selected)
+    return weights
+
+
+def holding_performance(market, tickers, month, *, weights=None):
+    """월초에 정한 비중으로 계속 보유한 가격 성과. 현금은 거래일마다 0%."""
     tickers = tuple(dict.fromkeys(tickers))
     if not tickers:
         return pd.DataFrame()
@@ -79,14 +91,16 @@ def holding_performance(market, tickers, month):
     daily = load_holding_closes(market, tuple(sorted(set(tickers) - {"CASH"})), start, end)
     if "CASH" in tickers:
         daily = daily.assign(CASH=1.0)
-    return month_performance(daily, dict.fromkeys(tickers, 1 / len(tickers)), month)
+    if weights is None:
+        weights = dict.fromkeys(tickers, 1 / len(tickers))
+    return month_performance(daily, weights, month)
 
 
-def render_holding_performance(market, holdings, month, key):
+def render_holding_performance(market, holdings, month, key, *, weights=None):
     if not holdings:
         st.caption("선택한 순위 구간에 보유 종목이 없습니다.")
         return
-    performance = holding_performance(market, holdings, month)
+    performance = holding_performance(market, holdings, month, weights=weights)
     if performance.empty:
         st.caption("보유 종목의 전월 말과 선택한 달의 종가가 모두 준비되면 표시됩니다.")
         return

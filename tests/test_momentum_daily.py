@@ -3,7 +3,7 @@ from unittest.mock import patch
 
 import pandas as pd
 
-from utils.momentum_daily import holding_performance
+from utils.momentum_daily import holding_performance, usa500_holding_weights
 
 
 class MomentumDailyTests(unittest.TestCase):
@@ -61,3 +61,28 @@ class MomentumDailyTests(unittest.TestCase):
             {("SPY", start, end + pd.Timedelta(days=1)),
              ("BRK-B", start, end + pd.Timedelta(days=1))},
         )
+
+
+    @patch("utils.momentum_daily.load_holding_closes")
+    def test_usa500_half_allocations_keep_rank_bounds_and_add_overlapping_weights(self, load):
+        original = ["SKIP1", "SKIP2", "A", "B", "C", "D", "E", "F", "SKIP9"]
+        residual = ["F", "G", "H", "I", "J", "K", "L", "M", "N", "SKIP10"]
+        weights = usa500_holding_weights(original, residual, (3, 8), (1, 9))
+
+        self.assertEqual(list(weights), list("ABCDEFGHIJKLMN"))
+        self.assertAlmostEqual(sum(weights.values()), 1)
+        self.assertAlmostEqual(weights["A"], .5 / 6)
+        self.assertAlmostEqual(weights["N"], .5 / 9)
+        self.assertAlmostEqual(weights["F"], .5 / 6 + .5 / 9)
+
+        prices = pd.DataFrame(100.0, index=self.dates[:4], columns=list(weights))
+        prices.loc[self.dates[2], ["A", "F", "N"]] = [112, 136, 118]
+        load.return_value = prices
+        actual = holding_performance("US", weights, self.month, weights=weights)
+        self.assertAlmostEqual(actual.iloc[0]["포트 누적"], .07)
+        self.assertAlmostEqual(actual.iloc[1]["포트 일간"], 1 / 1.07 - 1)
+
+    def test_usa500_does_not_replace_an_incomplete_limb_with_the_other_limb(self):
+        original = list("ABCDEFGH")
+        self.assertEqual(usa500_holding_weights(original, list("JKLMNOPQ"), (3, 8), (1, 9)), {})
+        self.assertEqual(usa500_holding_weights(original[:-1], list("JKLMNOPQR"), (3, 8), (1, 9)), {})
