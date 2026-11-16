@@ -28,17 +28,17 @@ from utils.snowball import (
     load_ko_prices, compute_signals_ko, run_backtest_ko,
     KO_OFFENSE, KO_DEFENSE, KO_TICKER_NAMES, KO_FILTER_ASSET, KO_FILTER_WIN,
     KO_TOPK, KO_DEF_TOPK, KO_BENCHMARKS, KO_ABSMOM_WIN, KO_MOM_WINDOWS, KO_DEF_WIN,
-    # 또 연금 (국내 듀얼모멘텀)
+    # 맘 ISA (국내 듀얼모멘텀)
     load_pen_prices, compute_signals_pension, run_backtest_pension,
     PEN_NASDAQ, PEN_KOSPI, PEN_OFFENSE, PEN_DEFENSE, PEN_TICKER_NAMES,
     PEN_OFF_WIN, PEN_DEF_WIN, PEN_FILTER_WIN, PEN_BENCHMARKS,
     # 쏘 연금 (국내 나스닥 단일 + cond1 위험회피)
     load_ssopen_prices, compute_signals_ssopen, run_backtest_ssopen,
     SSOPEN_NASDAQ, SSOPEN_DEFENSE, SSOPEN_DEF_WINDOWS, SSOPEN_TICKER_NAMES, SSOPEN_BENCHMARKS,
-    # 맘 ISA (국내 글로벌 듀얼모멘텀 + cond1)
+    # 또 연금 (국내 글로벌 듀얼모멘텀 + cond1)
     load_mamtax_prices, compute_signals_mamtax, run_backtest_mamtax,
     MAMTAX_OFFENSE, MAMTAX_DEFENSE, MAMTAX_TICKER_NAMES, MAMTAX_BENCHMARKS, MAMTAX_TOP_OFF,
-    mamtax_live_ticker, mamtax_live_name,
+    MAMTAX_LIVE_ALIAS, mamtax_live_ticker, mamtax_live_name, monthly_asset_correlations,
 )
 from utils.snowball_daily import (
     SNAPSHOTS, combine_month_performance, holding_weights, month_performance,
@@ -57,6 +57,15 @@ inject_custom_css()
 # ==========================================
 # 자산별 색상
 # ==========================================
+STRATEGY_NAMES = {
+    'meritz': '또 메리츠',
+    'so': '맘·쏘 삼성',
+    'ko': '또 ISA',
+    'pen': '맘 ISA',
+    'ssopen': '쏘 연금',
+    'mamtax': '또 연금',
+}
+
 ASSET_COLORS = {
     # 또 메리츠
     'TQQQ': '#10B981', 'USD': '#F59E0B', 'GLD': '#FBBF24', 'TLT': '#3B82F6',
@@ -73,11 +82,11 @@ ASSET_COLORS = {
     '130730': '#94A3B8', '152380': '#3B82F6', '332620': '#0EA5E9', '411060': '#FBBF24',
     '137610': '#84CC16', '182480': '#14B8A6',
     '217770': '#EF4444', '225130': '#F97316', '455030': '#22C55E',
-    # 또 연금 (133690 나스닥·102110 코스피는 offense, 방어 4종)
+    # 맘 ISA (133690 나스닥·102110 코스피는 offense, 방어 4종)
     '133690': '#10B981', '305080': '#3B82F6', '261220': '#EF4444', '329200': '#14B8A6',
     # 쏘 연금 (추가 방어: 국고채10년·SOL초단기채)
     '148070': '#0EA5E9', '469830': '#94A3B8',
-    # 맘 ISA (실운용 티커 기준)
+    # 또 연금 (실운용 티커 기준)
     '379810': '#10B981', '278530': '#3B82F6', '192090': '#EF4444', '453870': '#F97316',
     '241180': '#14B8A6', '229200': '#A855F7', '360750': '#6366F1', '466940': '#F59E0B',
     '371160': '#EC4899', '144600': '#94A3B8', '455030': '#64748B',
@@ -606,7 +615,7 @@ def render_bt_title(col, rule_active):
 
 def render_backtest_section(bt, perf, cost_rate, key_prefix, strat_color, strat_name,
                            detail_df, settings_dict, excel_detail_df=None,
-                           rule_active=None):
+                           rule_active=None, asset_prices=None, asset_names=None):
     """백테스트 카드 + 자산곡선 + 월별 로그 (탭 공용).
 
     rule_active: snowball.rule_active_note() 반환값 (note, n_active, n_total) 또는 None.
@@ -680,6 +689,17 @@ def render_backtest_section(bt, perf, cost_rate, key_prefix, strat_color, strat_
     # 최신이 위로
     st.dataframe(detail_df.iloc[::-1], hide_index=True, use_container_width=True,
                  height=560, key=f"{key_prefix}_detail")
+
+    if asset_prices is not None:
+        st.markdown("#### 자산별 상관관계")
+        st.caption("확정 월말 종가 수익률의 피어슨 상관계수입니다. "
+                   "종목 쌍마다 함께 관측된 월을 사용하며 최소 12개월이 필요합니다.")
+        corr = monthly_asset_correlations(asset_prices, current_holding_month())
+        if asset_names:
+            corr = corr.rename(index=lambda code: f"{code} · {asset_names.get(code, code)}")
+        st.dataframe(corr.style.format('{:+.2f}', na_rep='—')
+                     .map(lambda value: _shade_signed(value, 1)),
+                     width="stretch", key=f"{key_prefix}_asset_corr")
 
     # 자산 곡선 — 맨 아래 접이식 (기본 접힘)
     with st.expander("📉 자산 곡선 (Log Scale) 보기", expanded=False):
@@ -859,6 +879,7 @@ def render_meritz():
                             strat_color='#10B981', strat_name='또 메리츠 전략',
                             detail_df=detail_df, settings_dict=settings_dict,
                             excel_detail_df=build_meritz_detail_excel(signals, bt, prices),
+                            asset_prices=prices.reindex(columns=OFFENSE_ASSETS + DEFENSE_ASSETS),
                             rule_active=rule_act)
 
 
@@ -1234,10 +1255,10 @@ def render_ko():
 
 
 # ==========================================
-# 또 연금 (탭 5) 렌더
+# 맘 ISA 렌더
 # ==========================================
 def build_pen_detail(signals, bt):
-    """또 연금 월별 상세 근거."""
+    """맘 ISA 월별 상세 근거."""
     sig_by_month = {str(r['signal_month']): r for _, r in signals.iterrows()}
     rows = []
     for _, b in bt.iterrows():
@@ -1261,7 +1282,7 @@ def render_pension():
         pen_prices = load_pen_prices()
 
     if pen_prices.empty:
-        st.error("📁 또 연금 데이터가 없습니다. `data/snowball_kr/monthly/`에 133690·305080·"
+        st.error(f"📁 {STRATEGY_NAMES['pen']} 데이터가 없습니다. `data/snowball_kr/monthly/`에 133690·305080·"
                  "261220·329200 등이 수집됐는지 확인하세요.")
         return
     missing = [t for t in (PEN_OFFENSE + PEN_DEFENSE) if t not in pen_prices.columns]
@@ -1383,7 +1404,7 @@ def render_pension():
     detail_df = build_pen_detail(signals, bt)
     rule_act = rule_active_note(bt, pen_prices, PEN_OFFENSE + PEN_DEFENSE)
     settings_dict = {
-        '전략': '또 연금 (국내 듀얼모멘텀)',
+        '전략': f"{STRATEGY_NAMES['pen']} (국내 듀얼모멘텀)",
         '위험회피 필터': f'나스닥·KOSPI {PEN_FILTER_WIN}M MA 이격도 하나라도 < 0 → 방어',
         '거래비용/교체': f"{cost_pct:.2f}%",
         '기간': f"{perf['n_months']}개월 ({bt['hold_month'].iloc[0]} ~ {bt['hold_month'].iloc[-1]})",
@@ -1395,9 +1416,11 @@ def render_pension():
     }
     render_bt_title(t_col, rule_act)
     render_backtest_section(bt, perf, cost_rate, key_prefix="pen",
-                            strat_color='#8B5CF6', strat_name='또 연금 전략',
+                            strat_color='#8B5CF6', strat_name=f"{STRATEGY_NAMES['pen']} 전략",
                             detail_df=detail_df, settings_dict=settings_dict,
                             excel_detail_df=_build_cf_excel(detail_df, signals, bt, pen_prices, _cf_pension, lambda t: PEN_TICKER_NAMES.get(t, t)),
+                            asset_prices=pen_prices.reindex(columns=PEN_OFFENSE + PEN_DEFENSE),
+                            asset_names=PEN_TICKER_NAMES,
                             rule_active=rule_act)
 
 
@@ -1570,14 +1593,16 @@ def render_ssopen():
                             strat_color='#EC4899', strat_name='쏘 연금 전략',
                             detail_df=detail_df, settings_dict=settings_dict,
                             excel_detail_df=_build_cf_excel(detail_df, signals, bt, ss_prices, _cf_ssopen, lambda t: SSOPEN_TICKER_NAMES.get(t, t)),
+                            asset_prices=ss_prices.reindex(columns=[SSOPEN_NASDAQ] + SSOPEN_DEFENSE),
+                            asset_names=SSOPEN_TICKER_NAMES,
                             rule_active=rule_act)
 
 
 # ==========================================
-# 맘 ISA (탭 7) 렌더 — 글로벌 듀얼모멘텀 + cond1
+# 또 연금 렌더 — 글로벌 듀얼모멘텀 + cond1
 # ==========================================
 def build_mamtax_detail(signals, bt):
-    """맘 ISA 월별 상세 근거."""
+    """또 연금 월별 상세 근거."""
     sig_by_month = {str(r['signal_month']): r for _, r in signals.iterrows()}
     rows = []
     for _, b in bt.iterrows():
@@ -1601,7 +1626,7 @@ def render_mamtax():
         us_prices = load_monthly_prices()  # cond1 신호자산(TIP/VWO/VEA/VIXY)
 
     if mp.empty:
-        st.error("📁 맘 ISA 데이터가 없습니다. `data/snowball_kr/monthly/`에 공격 10종·방어 6종이 "
+        st.error(f"📁 {STRATEGY_NAMES['mamtax']} 데이터가 없습니다. `data/snowball_kr/monthly/`에 공격 10종·방어 6종이 "
                  "수집됐는지 확인하세요.")
         return
     missing = [t for t in (MAMTAX_OFFENSE + MAMTAX_DEFENSE) if t not in mp.columns]
@@ -1742,7 +1767,7 @@ def render_mamtax():
     detail_df = build_mamtax_detail(signals, bt)
     rule_act = rule_active_note(bt, mp, MAMTAX_OFFENSE + MAMTAX_DEFENSE)
     settings_dict = {
-        '전략': '맘 ISA (글로벌 듀얼모멘텀 + cond1)',
+        '전략': f"{STRATEGY_NAMES['mamtax']} (글로벌 듀얼모멘텀 + cond1)",
         '공격': f'10종 중 12M 수익률 상위{MAMTAX_TOP_OFF} → 12M 음수 제외 → 승자 균등(듀얼모멘텀)',
         '방어': '6종 중 3M MA이격도 상위2, 각 50% (cond1 발동 시)',
         '위험회피 필터': f'cond1: TIP·VWO·VEA 6M 음수 AND (VIXY 6M 음수 또는 ≥ +{int(VIXY_SPIKE*100)}%)',
@@ -1754,10 +1779,14 @@ def render_mamtax():
         '주의': '공격 자산 상장시점이 달라 초기는 부분 유니버스(4→10종). 비과세계좌 매매용.',
     }
     render_bt_title(t_col, rule_act)
+    live_assets = list(dict.fromkeys(map(mamtax_live_ticker, MAMTAX_OFFENSE + MAMTAX_DEFENSE)))
+    alias_prices = load_mamtax_prices(tickers=tuple(MAMTAX_LIVE_ALIAS.values()))
+    asset_prices = pd.concat([mp, alias_prices], axis=1).reindex(columns=live_assets)
     render_backtest_section(bt, perf, cost_rate, key_prefix="mamtax",
-                            strat_color='#F97316', strat_name='맘 ISA 전략',
+                            strat_color='#F97316', strat_name=f"{STRATEGY_NAMES['mamtax']} 전략",
                             detail_df=detail_df, settings_dict=settings_dict,
                             excel_detail_df=_build_cf_excel(detail_df, signals, bt, mp, _cf_mamtax, mamtax_live_name),
+                            asset_prices=asset_prices, asset_names=MAMTAX_TICKER_NAMES,
                             rule_active=rule_act)
 
 
@@ -1765,14 +1794,14 @@ def render_mamtax():
 # 통합 포트 — 계좌별 전략 배정 비교
 # ==========================================
 
-STRAT_META = [
-    ('meritz',  '또 메리츠',   '#10B981'),
-    ('so',      '맘·쏘 삼성', '#F59E0B'),
-    ('ko',      '또 ISA',     '#0EA5E9'),
-    ('pen',     '또 연금',    '#8B5CF6'),
-    ('ssopen',  '쏘 연금',    '#EC4899'),
-    ('mamtax',  '맘 ISA',  '#F97316'),
-]
+STRATEGY_COLORS = {
+    'meritz': '#10B981',
+    'so': '#F59E0B',
+    'ko': '#0EA5E9',
+    'pen': '#8B5CF6',
+    'ssopen': '#EC4899',
+    'mamtax': '#F97316',
+}
 HIDDEN_STRATEGIES = {'so', 'ko'}
 
 
@@ -1942,7 +1971,7 @@ def render_combined():
     st.markdown("### 통합 포트 · 계좌별 전략 배정")
     st.caption("계좌마다 잔액 전부를 네 전략 중 하나에 배정합니다. "
                "전략당 한 계좌를 선택하면 전략이 겹치지 않는 24개 조합을 비교합니다.")
-    nmap = {k: name for k, name, _ in STRAT_META if k not in HIDDEN_STRATEGIES}
+    nmap = {key: name for key, name in STRATEGY_NAMES.items() if key not in HIDDEN_STRATEGIES}
     keys = list(nmap)
     names = [f"계좌 {i + 1}" for i in range(4)]
     for i, amount in enumerate(_allocation_default_amounts()):
@@ -2191,7 +2220,7 @@ def render_combined():
     fig = go.Figure()
     for key in W:
         s = portfolio_stats(comparison_returns[key])
-        col = dict((k, c) for k, _, c in STRAT_META)[key]
+        col = STRATEGY_COLORS[key]
         fig.add_trace(go.Scatter(x=list(s['equity'].index), y=s['equity'].values,
                                  name=nmap[key], line=dict(width=1.2, color=col),
                                  opacity=0.45))
@@ -2246,14 +2275,14 @@ def render_combined():
 # 탭 배치
 # ==========================================
 STRATEGY_TABS = [
-    ('meritz', '🇺🇸 또 메리츠', render_meritz),
-    ('so', '🇺🇸 맘·쏘 삼성', render_so),
-    ('ko', '🇰🇷 또 ISA', render_ko),
-    ('mamtax', '🇰🇷 또 연금', render_mamtax),
-    ('ssopen', '🇰🇷 쏘 연금', render_ssopen),
-    ('pen', '🇰🇷 맘 ISA', render_pension),
+    ('meritz', '🇺🇸', render_meritz),
+    ('so', '🇺🇸', render_so),
+    ('ko', '🇰🇷', render_ko),
+    ('mamtax', '🇰🇷', render_mamtax),
+    ('ssopen', '🇰🇷', render_ssopen),
+    ('pen', '🇰🇷', render_pension),
 ]
-visible_tabs = [(label, render) for key, label, render in STRATEGY_TABS
+visible_tabs = [(f"{flag} {STRATEGY_NAMES[key]}", render) for key, flag, render in STRATEGY_TABS
                 if key not in HIDDEN_STRATEGIES]
 visible_tabs.append(("📊 통합 포트", render_combined))
 for tab, (_, render) in zip(st.tabs([label for label, _ in visible_tabs]), visible_tabs):

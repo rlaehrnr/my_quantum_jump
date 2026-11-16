@@ -495,6 +495,16 @@ def compute_returns(prices, periods):
     return prices / prices.shift(periods) - 1.0
 
 
+def monthly_asset_correlations(prices, current_month):
+    """확정 월수익률이 12개월 이상 겹치는 종목 쌍의 피어슨 상관계수."""
+    closed = prices.loc[prices.index < current_month]
+    if closed.empty:
+        return pd.DataFrame(index=prices.columns, columns=prices.columns, dtype=float)
+    calendar = pd.period_range(closed.index.min(), closed.index.max(), freq='M')
+    monthly = closed.reindex(calendar)
+    return compute_returns(monthly.where(monthly > 0), 1).corr(min_periods=12)
+
+
 def compute_ma_disparity(prices, window=12):
     """
     각 ticker의 N개월 이동평균 대비 이격도(disparity) 계산.
@@ -1961,11 +1971,10 @@ def mamtax_live_name(code):
 
 
 @st.cache_data(ttl="1h", show_spinner=False)
-def load_mamtax_prices(kr_dir='data/snowball_kr/monthly'):
+def load_mamtax_prices(kr_dir='data/snowball_kr/monthly', *, tickers=None):
     """맘 비과세용 국내 ETF 월봉 로드 (공격 10 + 방어 6, 백테스트 티커).
 
-    실운용 티커(379810·278530)는 신호 계산에 불필요하므로 여기서 안 받는다
-    (엔진은 장수 티커로 계산하고 표시만 별칭으로 매핑).
+    기본값은 백테스트 티커를 로드한다. 표시용 실운용 월봉은 tickers로 지정한다.
     cond1 신호자산(TIP/VWO/VEA/VIXY)은 load_monthly_prices()에서 별도로 받는다.
     """
     def _variants(code):
@@ -1973,8 +1982,9 @@ def load_mamtax_prices(kr_dir='data/snowball_kr/monthly'):
         return (f"{code}_{nm}_과거_데이터.csv", f"{code}_과거_데이터.csv", f"{code}.csv")
 
     series = {}
-    _prefetch(KO_RAW_BASE, [_variants(c)[0] for c in MAMTAX_ALL])
-    for code in MAMTAX_ALL:
+    codes = MAMTAX_ALL if tickers is None else tickers
+    _prefetch(KO_RAW_BASE, [_variants(c)[0] for c in codes])
+    for code in codes:
         variants = _variants(code)
         s = None
         for fn in variants:
