@@ -8,7 +8,7 @@ st.set_page_config(page_title="USA 500 통합 모멘텀", layout="wide")
 
 from utils.data_loader import get_folder_hash
 from utils.calculator import get_cycle_year, PRESIDENTIAL_DANGEROUS_MONTHS
-from utils.ui_usa_residual import render_residual_backtest
+from utils.ui_usa_residual import render_residual_backtest, render_residual_ranking
 # 💡 핵심: ui_components에서 앞서 정의한 공통 설정들을 똑같이 가져옵니다.
 from utils.ui_components import (
     inject_custom_css, apply_korea_styling, style_kospi_ma, get_styled_stats, 
@@ -152,6 +152,8 @@ with tab1:
         col_order_combo = ['순위', '통합티커_L', '종목명_L', '3-1개월(%)', '6-1개월(%)', '12-1개월(%)', '이번달수익률']
         st.dataframe(df_combo_t1.style.apply(apply_custom_total_styling, top_codes=top_codes_combo, axis=1), use_container_width=True, height=600, hide_index=True, column_order=col_order_combo, column_config=us_main_cfg)
 
+        render_residual_ranking(df_master, target_month_str, archive_path, f_hash, key="residual_rank_monthly")
+
         st.markdown("---")
         
         col_total_t, col_total_i, col_total_r = st.columns([5.5, 2.5, 4.0])
@@ -252,6 +254,15 @@ with tab2:
         top_codes_combo_d = df_pick_d['종목코드'].tolist()
         col_order_combo_d = ['순위', '통합티커_L', '종목명_L', '3-1개월(%)', '6-1개월(%)', '12-1개월(%)']
         st.dataframe(df_combo_d.style.apply(apply_custom_total_styling, top_codes=top_codes_combo_d, axis=1), use_container_width=True, height=600, hide_index=True, column_order=col_order_combo_d, column_config=us_main_cfg)
+
+        # 데일리 수집기의 1개월 수익률은 최신 종가와 직전 월말 종가를 같은 조회에서 비교한다.
+        daily_returns = df_daily_raw.drop_duplicates("종목코드").set_index("종목코드").get(
+            "1개월(%)", pd.Series(dtype=float),
+        )
+        render_residual_ranking(
+            df_master, cur_month_d, archive_path, f_hash, key="residual_rank_daily",
+            daily_returns=pd.to_numeric(daily_returns, errors="coerce"),
+        )
 
         st.markdown("---")
         

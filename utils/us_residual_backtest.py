@@ -1,11 +1,40 @@
 """USA500 잔차 백테스트의 종목 선택과 월별 비중 계산."""
 
+import numpy as np
 import pandas as pd
 
 from utils.us_helpers import get_triple_momentum_us
 
 
 STRATEGY_NAMES = ("기존 전략", "잔차 전략", "기존 50% + 잔차 50%", "종목 균등 배분")
+RESIDUAL_DEFAULT_RANKS = (1, 9)
+
+
+def calculate_residual_scores(month, archive, supplemental, factors):
+    """투자월 두 달 전까지 36개월 회귀, 마지막 11개월 잔차 평균/표준편차."""
+    window = pd.period_range(end=month - 2, periods=36, freq="M")
+    ff3 = factors.reindex(window).to_numpy()
+    if not np.isfinite(ff3).all():
+        return pd.Series(dtype=float)
+
+    returns = archive.reindex(window).to_numpy(copy=True)
+    alternate = supplemental.reindex(index=window, columns=archive.columns).to_numpy()
+    complete = np.isfinite(returns).all(axis=0)
+    for col in np.flatnonzero(~complete & np.isfinite(alternate).all(axis=0)):
+        overlap = np.isfinite(returns[:, col])
+        if overlap.sum() >= 12:
+            difference = np.abs(returns[overlap, col] - alternate[overlap, col])
+            if np.median(difference) <= 0.001 and np.quantile(difference, 0.95) <= 0.01:
+                returns[:, col] = alternate[:, col]
+                complete[col] = True
+
+    x = np.column_stack([np.ones(36), ff3[:, :3]])
+    excess = returns[:, complete] - ff3[:, 3, None]
+    residual = (excess - x @ (np.linalg.pinv(x) @ excess))[-11:]
+    deviation = residual.std(axis=0, ddof=1)
+    valid = deviation > 1e-10
+    values = residual[:, valid].mean(axis=0) / deviation[valid]
+    return pd.Series(values, index=archive.columns[complete][valid], dtype=float)
 
 
 def run_residual_backtest(
