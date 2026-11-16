@@ -1688,7 +1688,7 @@ def render_mamtax():
                 return [f'background-color: {c}44; font-weight: 800;' for _ in row]
             return ['color: #9CA3AF;' for _ in row]
         st.dataframe(odf.style.apply(_off_style, axis=1), hide_index=True,
-                     use_container_width=True, key="mamtax_off",
+                     width="stretch", height="content", key="mamtax_off",
                      column_config=naver_linkcol(odf, '실운용'))
     with col_def:
         is_active = defensive_now
