@@ -22,6 +22,14 @@ FACTOR_URL = (
 )
 RESULT_KEY = "usa500_residual_result"
 SP500_LABEL = "S&P 500 (가격 지수)"
+RESIDUAL_RANKING_HELP = (
+    "**잔차**는 실제 월수익률에서 시장 전체, 기업 규모, 가치주·성장주 차이로 "
+    "모형이 설명한 수익률을 뺀 값이에요.\n\n"
+    "예를 들어 실제로 +8% 올랐고 모형이 설명한 수익률이 +5%라면, "
+    "잔차는 **+3%p**예요.\n\n"
+    "순위는 직전 1개월을 건너뛴 11개월의 **평균 잔차 ÷ 잔차의 표준편차**로 매겨요. "
+    "꾸준히 모형보다 좋은 성과를 낸 종목이 높은 점수를 받는 방식이에요."
+)
 
 
 @st.cache_data(max_entries=2, show_spinner=False)
@@ -121,7 +129,7 @@ def _render_ranking_table(ranked, *, key):
 
 
 def render_residual_ranking(master, month, archive_path, folder_hash, *, key, daily_returns=None):
-    st.markdown("#### 잔차 모멘텀 순위")
+    st.markdown("#### 잔차 모멘텀 순위", help=RESIDUAL_RANKING_HELP)
     candidates = (master.loc[master["투자월"].eq(month)]
                   .sort_values("시가총액", ascending=False).head(500))
     if candidates.empty:
