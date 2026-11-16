@@ -72,23 +72,24 @@ STRATEGY3_TICKERS = [
     '469830',  # SOL 초단기채권액티브 (2023~, 현금성)
 ]
 
-# ── 4번 전략(맘 비과세: 글로벌 모멘텀 공격 + 방어바스켓 + cond1)용 추가 종목 ──
+# ── 4번 전략(또 연금: 글로벌 모멘텀 공격 + 방어바스켓 + cond1)용 추가 종목 ──
 #    360750(S&P500)·379810(나스닥100)·411060(금현물)·217770(원유인버스)·455030(SOFR)·
-#    305080(미국채10년)·148070(국고채10년)은 위에서 이미 수집. 아래는 신규 8종.
+#    305080(미국채10년)·148070(국고채10년)은 위에서 이미 수집.
 #    ⚠️ 인도니프티50(2023~)·은행고배당 등 상장이 최근이라 히스토리 짧음 → 백테스트 시작 늦음.
 MAMTAX_TICKERS = [
     '466940',  # 은행고배당
     '371160',  # TIGER 차이나항셍테크
-    '192090',  # TIGER 차이나CSI300 (2014~, 283580 장수 대체)
+    '283580',  # KODEX 차이나CSI300
     '453870',  # TIGER 인도니프티50
     '241180',  # TIGER 일본니케이225
     '229200',  # KODEX 코스닥150
-    '144600',  # KODEX 은선물(H)
+    '0189B0',  # TIGER 은액티브
     '278530',  # KODEX 200TR ★실운용 종목 (백테스트는 102110 장수 대체 사용)
+    '218420',  # KODEX 미국S&P500에너지(합성)
+    '160580',  # TIGER 구리실물
 ]
 # 나스닥100: 백테스트=133690(2014~), 실운용=379810(둘 다 이미 수집).
 # KOSPI200: 백테스트=102110 TIGER200(2014~), 실운용=278530(위에 재추가).
-# CSI300: 백테스트·실운용 모두 192090.
 # → 엔진에서 '백테스트↔실운용' 티커를 매핑해 신호는 장수로 계산, 표시는 실운용으로.
 
 # 종목명 (로그 출력용)
@@ -105,11 +106,12 @@ TICKER_NAMES = {
     '261220': 'KODEX WTI원유선물(H)', '329200': 'TIGER 리츠부동산인프라',
     # 3번 전략용
     '148070': 'KIWOOM 국고채10년', '469830': 'SOL 초단기채권액티브',
-    # 4번 전략용 (맘 비과세)
+    # 4번 전략용 (또 연금)
     '466940': '은행고배당', '371160': 'TIGER 차이나항셍테크',
-    '192090': 'TIGER 차이나CSI300', '453870': 'TIGER 인도니프티50',
+    '283580': 'KODEX 차이나CSI300', '453870': 'TIGER 인도니프티50',
     '241180': 'TIGER 일본니케이225', '278530': 'KODEX 200TR',
-    '229200': 'KODEX 코스닥150', '144600': 'KODEX 은선물(H)',
+    '229200': 'KODEX 코스닥150', '0189B0': 'TIGER 은액티브',
+    '218420': 'KODEX 미국S&P500에너지(합성)', '160580': 'TIGER 구리실물',
 }
 
 # 중복 제거하며 순서 유지한 전체 수집 대상
@@ -117,6 +119,7 @@ ALL_TICKERS = list(dict.fromkeys(
     OFFENSE_TICKERS + DEFENSE_TICKERS + STRATEGY2_TICKERS + STRATEGY3_TICKERS + MAMTAX_TICKERS))
 
 START_DATE = '2008-01-01'   # 각 종목은 상장일부터 반환됨 (여유있게 이른 날짜)
+SHORT_HISTORY_LISTINGS = {'0189B0': pd.Period('2026-04', freq='M')}
 
 
 # ==========================================
@@ -162,14 +165,24 @@ def fetch_kr_yfinance(ticker, start=START_DATE, *, daily=False):
     return close.resample('ME').last().dropna()
 
 
+def required_monthly_bars(ticker, last_closed):
+    """신규 방어 ETF는 3개월선에 필요한 월봉이 확보되면 수집을 시작한다."""
+    listing = SHORT_HISTORY_LISTINGS.get(ticker)
+    if listing is None:
+        return 13
+    return min(13, max(3, last_closed.ordinal - listing.ordinal + 1))
+
+
 def fetch_kr(ticker):
     """FDR 우선, 실패 시 yfinance(.KS). 둘 다 실패하면 None."""
     name = TICKER_NAMES.get(ticker, ticker)
+    today = pd.Timestamp.now(tz='Asia/Seoul').tz_localize(None)
+    minimum = required_monthly_bars(ticker, today.to_period('M') - 1)
     for src, fn in [('fdr', fetch_kr_fdr), ('yfinance', fetch_kr_yfinance)]:
         try:
             s = fn(ticker)
-            s = _drop_incomplete_month(s)
-            if s is not None and len(s) > 12:
+            s = _drop_incomplete_month(s, today=today)
+            if s is not None and len(s) >= minimum:
                 print(f"  ✅ {ticker} {name}: {src}로 {len(s)}개월 (최근 {s.index[-1].date()})")
                 return s
             else:

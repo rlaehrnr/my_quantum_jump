@@ -189,9 +189,9 @@ def _snowball_status():
         ("🇺🇸 또 메리츠", lambda: sb.compute_signals(prices, div), None),
         ("🇺🇸 맘·쏘 삼성", lambda: sb.compute_signals_so(prices), None),
         ("🇰🇷 또 ISA", lambda: sb.compute_signals_ko(ko), sb.KO_TICKER_NAMES.get),
-        ("🇰🇷 또 연금", lambda: sb.compute_signals_pension(pen), sb.PEN_TICKER_NAMES.get),
+        ("🇰🇷 맘 ISA", lambda: sb.compute_signals_pension(pen), sb.PEN_TICKER_NAMES.get),
         ("🇰🇷 쏘 연금", lambda: sb.compute_signals_ssopen(sso, prices), sb.SSOPEN_TICKER_NAMES.get),
-        ("🇰🇷 맘 비과세", lambda: sb.compute_signals_mamtax(mam, prices), sb.mamtax_live_name),
+        ("🇰🇷 또 연금", lambda: sb.compute_signals_mamtax(mam, prices), sb.mamtax_live_name),
     ]
     out = []
     refmonth = None

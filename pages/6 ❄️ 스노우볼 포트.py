@@ -87,9 +87,10 @@ ASSET_COLORS = {
     # 쏘 연금 (추가 방어: 국고채10년·SOL초단기채)
     '148070': '#0EA5E9', '469830': '#94A3B8',
     # 또 연금 (실운용 티커 기준)
-    '379810': '#10B981', '278530': '#3B82F6', '192090': '#EF4444', '453870': '#F97316',
+    '379810': '#10B981', '278530': '#3B82F6', '283580': '#EF4444', '453870': '#F97316',
     '241180': '#14B8A6', '229200': '#A855F7', '360750': '#6366F1', '466940': '#F59E0B',
-    '371160': '#EC4899', '144600': '#94A3B8', '455030': '#64748B',
+    '371160': '#EC4899', '0189B0': '#94A3B8', '455030': '#64748B',
+    '218420': '#D97706', '160580': '#B45309',
 }
 
 
@@ -1626,8 +1627,8 @@ def render_mamtax():
         us_prices = load_monthly_prices()  # cond1 신호자산(TIP/VWO/VEA/VIXY)
 
     if mp.empty:
-        st.error(f"📁 {STRATEGY_NAMES['mamtax']} 데이터가 없습니다. `data/snowball_kr/monthly/`에 공격 10종·방어 6종이 "
-                 "수집됐는지 확인하세요.")
+        st.error(f"📁 {STRATEGY_NAMES['mamtax']} 데이터가 없습니다. `data/snowball_kr/monthly/`에 "
+                 f"공격 {len(MAMTAX_OFFENSE)}종·방어 {len(MAMTAX_DEFENSE)}종이 수집됐는지 확인하세요.")
         return
     missing = [t for t in (MAMTAX_OFFENSE + MAMTAX_DEFENSE) if t not in mp.columns]
     if missing:
@@ -1636,7 +1637,7 @@ def render_mamtax():
     signals = compute_signals_mamtax(mp, us_prices)
     valid = signals.index[signals['holds'].notna()]
     if len(valid) == 0:
-        st.error("유효한 신호월이 없습니다. (cond1 자산 TIP/VWO/VEA/VIXY 로드 및 공격 12M 4종 확인)")
+        st.error(f"유효한 신호월이 없습니다. (cond1 자산 TIP/VWO/VEA/VIXY와 공격 12M {MAMTAX_TOP_OFF}종 확인)")
         return
     last = signals.loc[valid[-1]]
     defensive_now = bool(last['defensive'])
@@ -1650,7 +1651,7 @@ def render_mamtax():
 
     st.markdown(
         f"<div style='font-size:1.5rem; font-weight:800; margin-bottom:8px;'>공격 · 방어 자산 현황 "
-        f"<span style='font-size:12px; color:#9CA3AF; font-weight:500;'>(기준: {valid[-1]} 월말 · 비과세계좌 매매용)</span></div>",
+        f"<span style='font-size:12px; color:#9CA3AF; font-weight:500;'>(기준: {valid[-1]} 월말)</span></div>",
         unsafe_allow_html=True)
     _mode_badge(defensive_now, hold_disp)
     render_month_monitor(signals, mp, compute_signals_mamtax,
@@ -1658,7 +1659,7 @@ def render_mamtax():
                          name=lambda t: MAMTAX_TICKER_NAMES.get(t, t),
                          alias=mamtax_live_ticker, us_inputs=SIGNAL_ASSETS, strategy="mamtax")
     st.caption("ℹ️ 신호·백테스트는 장수 종목(133690·102110)으로 계산하고, 표시·매매는 실운용 종목"
-               "(379810 KODEX 미국나스닥100·278530 KODEX 200TR)으로 안내합니다. CSI300은 192090 동일.")
+               "(379810 KODEX 미국나스닥100·278530 KODEX 200TR)으로 안내합니다.")
 
     off_scores = last.get('off_scores', {}) or {}
     def_scores = last.get('def_scores', {}) or {}
@@ -1669,7 +1670,7 @@ def render_mamtax():
         label = f"⚔️ 공격 (12M 수익률 상위{MAMTAX_TOP_OFF}·양수 균등)" + ("" if is_active else "  · 비활성")
         st.markdown(f"<div style='font-weight:800; font-size:15px; margin-bottom:4px; "
                     f"color:{'#10B981' if is_active else '#9CA3AF'};'>{label}</div>", unsafe_allow_html=True)
-        st.markdown(f"<div style='font-size:11px; color:#9CA3AF; margin-bottom:2px;'>10종 중 12M 수익률 "
+        st.markdown(f"<div style='font-size:11px; color:#9CA3AF; margin-bottom:2px;'>{len(MAMTAX_OFFENSE)}종 중 12M 수익률 "
                     f"상위 {MAMTAX_TOP_OFF}위 → 12M 음수 제외 → 남은 승자 균등(듀얼모멘텀)</div>",
                     unsafe_allow_html=True)
         ranked = sorted(off_scores, key=off_scores.get, reverse=True)
@@ -1694,8 +1695,8 @@ def render_mamtax():
         label = "🛡️ 방어 후보 (3M MA이격도 상위2)" + ("" if is_active else "  · 비활성")
         st.markdown(f"<div style='font-weight:800; font-size:15px; margin-bottom:4px; "
                     f"color:{'#EF4444' if is_active else '#9CA3AF'};'>{label}</div>", unsafe_allow_html=True)
-        st.markdown("<div style='font-size:11px; color:#9CA3AF; margin-bottom:2px;'>원유인버스·금현물·은선물·"
-                    "미국SOFR·미국채10년·국고채10년 중 3M MA이격도 상위 2종, 각 50% (cond1 발동 시)</div>",
+        st.markdown(f"<div style='font-size:11px; color:#9CA3AF; margin-bottom:2px;'>{len(MAMTAX_DEFENSE)}종 중 "
+                    "3M MA이격도 상위 2종, 각 50% (cond1 발동 시)</div>",
                     unsafe_allow_html=True)
         def_ranked = sorted(def_scores, key=def_scores.get, reverse=True)
         rows = [{'티커': c, '종목명': MAMTAX_TICKER_NAMES.get(c, c),
@@ -1768,15 +1769,15 @@ def render_mamtax():
     rule_act = rule_active_note(bt, mp, MAMTAX_OFFENSE + MAMTAX_DEFENSE)
     settings_dict = {
         '전략': f"{STRATEGY_NAMES['mamtax']} (글로벌 듀얼모멘텀 + cond1)",
-        '공격': f'10종 중 12M 수익률 상위{MAMTAX_TOP_OFF} → 12M 음수 제외 → 승자 균등(듀얼모멘텀)',
-        '방어': '6종 중 3M MA이격도 상위2, 각 50% (cond1 발동 시)',
+        '공격': f'{len(MAMTAX_OFFENSE)}종 중 12M 수익률 상위{MAMTAX_TOP_OFF} → 12M 음수 제외 → 승자 균등(듀얼모멘텀)',
+        '방어': f'{len(MAMTAX_DEFENSE)}종 중 3M MA이격도 상위2, 각 50% (cond1 발동 시)',
         '위험회피 필터': f'cond1: TIP·VWO·VEA 6M 음수 AND (VIXY 6M 음수 또는 ≥ +{int(VIXY_SPIKE*100)}%)',
         '거래비용/교체': f"{cost_pct:.2f}%",
         '기간': f"{perf['n_months']}개월 ({bt['hold_month'].iloc[0]} ~ {bt['hold_month'].iloc[-1]})",
         '규칙 실제 가동': f"{rule_act[1]}개월" if rule_act else "전 기간 (후보 전종목 상장 완료 상태로 시작)",
         '벤치마크': '나스닥100·KOSPI200 매수후보유',
-        '티커': '신호·백테스트=133690·102110·192090(장수), 실운용=379810·278530·192090',
-        '주의': '공격 자산 상장시점이 달라 초기는 부분 유니버스(4→10종). 비과세계좌 매매용.',
+        '티커': '신호·백테스트=133690·102110, 실운용=379810·278530. CSI300과 은은 실제 ETF 월봉 사용.',
+        '주의': '상장 이력이 짧은 ETF는 선택에 필요한 월봉이 쌓인 시점부터 후보에 포함.',
     }
     render_bt_title(t_col, rule_act)
     live_assets = list(dict.fromkeys(map(mamtax_live_ticker, MAMTAX_OFFENSE + MAMTAX_DEFENSE)))
