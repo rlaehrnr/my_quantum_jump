@@ -18,7 +18,7 @@ from html import escape
 from utils.snowball import (
     load_monthly_prices, load_dividend_yield,
     # 또 메리츠
-    compute_signals, run_backtest, compute_performance, rule_active_note,
+    compute_signals, run_backtest, compute_performance, filter_backtest_years, rule_active_note,
     SIGNAL_ASSETS, OFFENSE_ASSETS, DEFENSE_ASSETS, BENCHMARKS, VIXY_SPIKE,
     # 맘·쏘 삼성
     compute_signals_so, run_backtest_so, select_so_offense,
@@ -614,6 +614,18 @@ def render_bt_title(col, rule_active):
         st.markdown(f"### 📈 백테스트 성과{note}", unsafe_allow_html=True)
 
 
+def select_backtest_years(bt, key_prefix):
+    years = sorted(bt['hold_month'].str[:4].astype(int).unique())
+    if len(years) > 1:
+        start, end = st.select_slider(
+            "백테스트 연도 범위", options=years, value=(years[0], years[-1]),
+            format_func=lambda year: f"{year}년", key=f"{key_prefix}_years",
+        )
+        bt = filter_backtest_years(bt, start, end)
+    st.caption(f"보유월 {bt['hold_month'].iloc[0]}~{bt['hold_month'].iloc[-1]} · {len(bt)}개월")
+    return bt
+
+
 def render_backtest_section(bt, perf, cost_rate, key_prefix, strat_color, strat_name,
                            detail_df, settings_dict, excel_detail_df=None,
                            rule_active=None, asset_prices=None, asset_names=None):
@@ -645,7 +657,8 @@ def render_backtest_section(bt, perf, cost_rate, key_prefix, strat_color, strat_
     df_res = pd.DataFrame({'투자월': bt['hold_month'].values,
                            strat_name: (bt['ret_strategy'] * 100).values})
     equity = pd.Series(bt['cum_strategy'].values, index=bt['hold_month'].values)
-    mdd_df = get_mdd_history(equity)
+    initial_month = str(pd.Period(equity.index[0], freq='M') - 1)
+    mdd_df = get_mdd_history(pd.concat([pd.Series([1.0], index=[initial_month]), equity]))
 
     st.markdown("#### 🗓️ 월별 수익률 히트맵 & MDD TOP 10")
     col_hm, col_mdd = st.columns([7.2, 2.8])
@@ -685,7 +698,7 @@ def render_backtest_section(bt, perf, cost_rate, key_prefix, strat_color, strat_
                  for b, v in bms.items()]
         st.markdown(
             "<div style='color:#9CA3AF; font-size:13px; margin:0 0 2px 2px;'>"
-            "📊 벤치마크 전기간 &nbsp;&nbsp;" + " &nbsp;|&nbsp; ".join(parts) + "</div>",
+            "📊 벤치마크 선택 기간 &nbsp;&nbsp;" + " &nbsp;|&nbsp; ".join(parts) + "</div>",
             unsafe_allow_html=True)
     # 최신이 위로
     st.dataframe(detail_df.iloc[::-1], hide_index=True, use_container_width=True,
@@ -862,6 +875,7 @@ def render_meritz():
     if bt.empty:
         st.warning("백테스트 데이터가 충분하지 않습니다.")
         return
+    bt = select_backtest_years(bt, "meritz")
     perf = compute_performance(bt)
     detail_df = build_meritz_detail(signals, bt)
     rule_act = rule_active_note(bt, prices,
@@ -1040,6 +1054,7 @@ def render_so():
     if bt.empty:
         st.warning("백테스트 데이터가 충분하지 않습니다. (LIT 상장 시점상 2011년 전후부터 시작)")
         return
+    bt = select_backtest_years(bt, "so")
     perf = compute_performance(bt)
     detail_df = build_so_detail(signals, bt)
     rule_act = rule_active_note(bt, prices,
@@ -1215,6 +1230,7 @@ def render_ko():
     if bt.empty:
         st.warning("백테스트 데이터가 충분하지 않습니다.")
         return
+    bt = select_backtest_years(bt, "ko")
     perf = compute_performance(bt)
 
     # KOSPI200(102110) 벤치마크 비교 라인
@@ -1388,6 +1404,7 @@ def render_pension():
     if bt.empty:
         st.warning("백테스트 데이터가 충분하지 않습니다.")
         return
+    bt = select_backtest_years(bt, "pen")
     perf = compute_performance(bt)
 
     # 벤치마크 (나스닥·코스피 매수후보유)
@@ -1562,6 +1579,7 @@ def render_ssopen():
     if bt.empty:
         st.warning("백테스트 데이터가 충분하지 않습니다.")
         return
+    bt = select_backtest_years(bt, "ssopen")
     perf = compute_performance(bt)
 
     # 벤치마크 (나스닥100 매수후보유)
@@ -1752,6 +1770,7 @@ def render_mamtax():
     if bt.empty:
         st.warning("백테스트 데이터가 충분하지 않습니다.")
         return
+    bt = select_backtest_years(bt, "mamtax")
     perf = compute_performance(bt)
 
     bench_bits = []

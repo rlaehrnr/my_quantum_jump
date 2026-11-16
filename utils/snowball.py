@@ -852,6 +852,25 @@ def run_backtest(prices, signals, cost=0.0025):
     return bt
 
 
+def filter_backtest_years(bt, start_year, end_year):
+    """보유월 기준으로 자르고 선택 구간 시작 원금을 1로 다시 계산한다."""
+    years = bt['hold_month'].str[:4].astype(int)
+    in_range = years.between(start_year, end_year)
+    if in_range.all():
+        return bt
+
+    selected = bt.loc[in_range].copy()
+    selected['cum_strategy'] = (1 + selected['ret_strategy']).cumprod()
+    peak = selected['cum_strategy'].cummax().clip(lower=1.0)
+    selected['dd_strategy'] = selected['cum_strategy'] / peak - 1
+    for column in bt.columns:
+        if column.startswith('cum_') and column != 'cum_strategy':
+            returns = f'ret_{column[4:]}'
+            if returns in selected:
+                selected[column] = (1 + selected[returns].fillna(0)).cumprod()
+    return selected
+
+
 def compute_performance(bt):
     """
     명세서 §6 — 성과지표 계산.
