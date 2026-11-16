@@ -615,7 +615,7 @@ def select_backtest_years(bt, key_prefix, col):
                 label_visibility="collapsed", width=460,
             )
             bt = filter_backtest_years(bt, start, end)
-        st.caption(f"보유월 {bt['hold_month'].iloc[0]}~{bt['hold_month'].iloc[-1]} · {len(bt)}개월")
+    st.caption(f"보유월 {bt['hold_month'].iloc[0]}~{bt['hold_month'].iloc[-1]} · {len(bt)}개월")
     return bt
 
 
