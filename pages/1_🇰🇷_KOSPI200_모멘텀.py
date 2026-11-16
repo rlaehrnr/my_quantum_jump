@@ -11,6 +11,8 @@ from utils.calculator import get_cycle_year, PRESIDENTIAL_DANGEROUS_MONTHS, get_
 from utils.ui_components import inject_custom_css, apply_korea_styling, style_kospi_ma, get_styled_stats, get_mdd_history, get_monthly_heatmap, ma_cfg, main_cfg, generate_excel_report_cached, render_vix_widget, style_ma_with_gold, ma_cfg_gold
 from utils.data_loader import load_archive_data, get_folder_hash, load_daily_data
 
+from utils.momentum_daily import render_holding_performance
+
 inject_custom_css()
 
 def _fmt_ma(v, is_gold=False):
@@ -145,6 +147,30 @@ with tab1:
             st.dataframe(df_perf_t1.style.apply(apply_korea_styling, highlight_codes=df_perf_t1.head(top_n_p)['종목코드'].tolist(), overlap_codes=overlap_codes, axis=1), use_container_width=True, hide_index=True, column_order=['순위', '통합티커_L', '종목명_L', '1개월(%)', '3개월(%)', '6개월(%)', '12개월(%)', '이번달수익률'], column_config=main_cfg)
         with c_r:
             st.dataframe(df_spec_t1.style.apply(apply_korea_styling, highlight_codes=df_spec_t1.head(top_n_s)['종목코드'].tolist(), overlap_codes=overlap_codes, axis=1), use_container_width=True, hide_index=True, column_order=['순위', '통합티커_L', '종목명_L', '1개월(%)', '12개월(%)', '이번달수익률'], column_config=main_cfg)
+
+        st.markdown("---")
+        holding_month = pd.Period(target_month_str, freq="M")
+        st.subheader(f"📈 {holding_month.month}월 일별 보유 성과")
+        st.caption("전월 마지막 거래일 종가 대비 · 월초 동일 비중 · 원화 기준 · 거래비용 미포함")
+        strategy_labels = ["🔥 퍼펙트 상승", "🐎 달리는 말"]
+        if mkt["stop"]:
+            defense = {"GOLD_KRW": "국내 금"} if mkt["defense_alloc"] == "금 100" else {"CASH": "현금"}
+            st.caption("방어월의 선정 종목 탭은 매수를 가정한 성과입니다.")
+            defense_tab, perf_tab, spec_tab = st.tabs(["🛡️ 방어 보유", *strategy_labels])
+            with defense_tab:
+                render_holding_performance("KR", defense, holding_month, "kospi_defense")
+        else:
+            perf_tab, spec_tab = st.tabs(strategy_labels)
+        with perf_tab:
+            picks = df_perf_t1.head(top_n_p)
+            render_holding_performance(
+                "KR", dict(zip(picks["종목코드"], picks["종목명"])), holding_month, "kospi_perfect"
+            )
+        with spec_tab:
+            picks = df_spec_t1.head(top_n_s)
+            render_holding_performance(
+                "KR", dict(zip(picks["종목코드"], picks["종목명"])), holding_month, "kospi_running"
+            )
 
         st.markdown("---")
         st.markdown(f"### 🏆 전체 시가총액 순위 <span style='font-size: 0.85rem; color: #9ca3af; font-weight:normal;'>&nbsp;&nbsp;💡 선정일: {base_date}</span>", unsafe_allow_html=True)

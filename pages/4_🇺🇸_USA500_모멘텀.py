@@ -9,6 +9,7 @@ st.set_page_config(page_title="USA 500 통합 모멘텀", layout="wide")
 from utils.data_loader import get_folder_hash
 from utils.calculator import get_cycle_year, PRESIDENTIAL_DANGEROUS_MONTHS
 from utils.ui_usa_residual import render_residual_backtest, render_residual_ranking
+from utils.momentum_daily import render_holding_performance
 # 💡 핵심: ui_components에서 앞서 정의한 공통 설정들을 똑같이 가져옵니다.
 from utils.ui_components import (
     inject_custom_css, apply_korea_styling, style_kospi_ma, get_styled_stats, 
@@ -156,6 +157,21 @@ with tab1:
 
         st.markdown("---")
         
+        holding_month = pd.Period(target_month_str, freq="M")
+        st.subheader(f"📈 {holding_month.month}월 일별 보유 성과")
+        st.caption("전월 마지막 거래일 종가 대비 · 월초 동일 비중 · 달러 기준 · 환율·거래비용 미포함")
+        holdings = {ticker: ticker for ticker in top_codes_combo}
+        if mkt["stop"]:
+            st.caption("선정 종목 탭은 매수를 가정한 성과입니다.")
+            defense_tab, picks_tab = st.tabs(["🛡️ 방어 보유", "🎯 선정 종목"])
+            with defense_tab:
+                render_holding_performance("US", {"CASH": "현금"}, holding_month, "usa500_defense")
+            with picks_tab:
+                render_holding_performance("US", holdings, holding_month, "usa500_combo")
+        else:
+            render_holding_performance("US", holdings, holding_month, "usa500_combo")
+
+        st.markdown("---")
         col_total_t, col_total_i, col_total_r = st.columns([5.5, 2.5, 4.0])
         with col_total_t: 
             st.markdown("<h3 style='margin:0;'>🌐 USA 500 전체 순위</h3>", unsafe_allow_html=True)

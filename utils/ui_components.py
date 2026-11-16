@@ -1,7 +1,29 @@
 import pandas as pd
+import plotly.graph_objects as go
 import streamlit as st
 import os
 import io
+
+
+def render_daily_performance(performance, key, labels):
+    cumulative = performance["포트 누적"]
+    fig = go.Figure()
+    fig.add_scatter(
+        x=performance.index, y=cumulative, name="포트 누적", mode="lines+markers+text",
+        text=[f"{value:+.2%}" for value in cumulative],
+        textposition=["top center" if i % 2 == 0 else "bottom center"
+                      for i in range(len(cumulative))],
+        cliponaxis=False, hovertemplate="%{x|%m-%d} %{y:+.2%}<extra></extra>",
+    )
+    fig.update_layout(height=245, margin=dict(l=26, r=26, t=24, b=18),
+                      yaxis_tickformat=".1%", showlegend=False)
+    st.plotly_chart(fig, width="stretch", key=f"month_monitor_{key}")
+    table = performance.rename(columns=labels).sort_index()
+    table.index = table.index.strftime("%m-%d")
+    table.index.name = "거래일"
+    st.dataframe(table, width="stretch", height=210, column_config={
+        label: st.column_config.NumberColumn(format="percent") for label in table.columns
+    })
 
 
 # 💡 [중복 제거] page1, page2에 각각 정의되어 있던 엑셀 리포트 생성기를 utils로 이동.
