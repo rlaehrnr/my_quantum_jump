@@ -599,6 +599,18 @@ def build_report_excel(settings_dict, stats_df, detail_df, df_res, cum_df, mdd_d
     return out.getvalue()
 
 
+def render_backtest_controls(key_prefix):
+    title_col, years_col, cost_col = st.columns([2.5, 3.0, 1.1], vertical_alignment="center")
+    cost_options = range(0, 51, 5)
+    with cost_col:
+        cost_bps = st.selectbox(
+            "거래비용", options=cost_options, index=cost_options.index(25),
+            format_func=lambda bps: f"{bps / 100:.2f}%", key=f"{key_prefix}_cost",
+            help="새로 매수하는 비중에 적용하는 거래비용입니다.", width=130,
+        )
+    return title_col, years_col, cost_bps / 100
+
+
 def render_bt_title(col, rule_active):
     """'📈 백테스트 성과' 제목 + 가동기간 주석을 같은 줄에 렌더.
 
@@ -614,15 +626,17 @@ def render_bt_title(col, rule_active):
         st.markdown(f"### 📈 백테스트 성과{note}", unsafe_allow_html=True)
 
 
-def select_backtest_years(bt, key_prefix):
+def select_backtest_years(bt, key_prefix, col):
     years = sorted(bt['hold_month'].str[:4].astype(int).unique())
-    if len(years) > 1:
-        start, end = st.select_slider(
-            "백테스트 연도 범위", options=years, value=(years[0], years[-1]),
-            format_func=lambda year: f"{year}년", key=f"{key_prefix}_years",
-        )
-        bt = filter_backtest_years(bt, start, end)
-    st.caption(f"보유월 {bt['hold_month'].iloc[0]}~{bt['hold_month'].iloc[-1]} · {len(bt)}개월")
+    with col:
+        if len(years) > 1:
+            start, end = st.select_slider(
+                "백테스트 연도 범위", options=years, value=(years[0], years[-1]),
+                format_func=lambda year: f"{year}년", key=f"{key_prefix}_years",
+                label_visibility="collapsed", width=460,
+            )
+            bt = filter_backtest_years(bt, start, end)
+        st.caption(f"보유월 {bt['hold_month'].iloc[0]}~{bt['hold_month'].iloc[-1]} · {len(bt)}개월")
     return bt
 
 
@@ -865,17 +879,13 @@ def render_meritz():
 
     # 백테스트
     st.markdown("---")
-    t_col, s_col = st.columns([2.2, 1])
-    with s_col:
-        cost_pct = st.slider("거래비용 %/교체", 0.0, 1.0, 0.25, 0.05, format="%.2f%%",
-                             key="meritz_cost",
-                             help="종목 교체 시에만 차감(턴오버). 벤치마크는 매수 후 보유로 비용 없음.")
+    t_col, y_col, cost_pct = render_backtest_controls("meritz")
     cost_rate = cost_pct / 100.0
     bt = run_backtest(prices, signals, cost=cost_rate)
     if bt.empty:
         st.warning("백테스트 데이터가 충분하지 않습니다.")
         return
-    bt = select_backtest_years(bt, "meritz")
+    bt = select_backtest_years(bt, "meritz", y_col)
     perf = compute_performance(bt)
     detail_df = build_meritz_detail(signals, bt)
     rule_act = rule_active_note(bt, prices,
@@ -1044,17 +1054,13 @@ def render_so():
 
     # 백테스트
     st.markdown("---")
-    t_col, s_col = st.columns([2.2, 1])
-    with s_col:
-        cost_pct = st.slider("거래비용 %/교체", 0.0, 1.0, 0.25, 0.05, format="%.2f%%",
-                             key="so_cost",
-                             help="새로 매수하는 비중만큼 차감(턴오버). 벤치마크는 매수 후 보유로 비용 없음.")
+    t_col, y_col, cost_pct = render_backtest_controls("so")
     cost_rate = cost_pct / 100.0
     bt = run_backtest_so(prices, signals, cost=cost_rate)
     if bt.empty:
         st.warning("백테스트 데이터가 충분하지 않습니다. (LIT 상장 시점상 2011년 전후부터 시작)")
         return
-    bt = select_backtest_years(bt, "so")
+    bt = select_backtest_years(bt, "so", y_col)
     perf = compute_performance(bt)
     detail_df = build_so_detail(signals, bt)
     rule_act = rule_active_note(bt, prices,
@@ -1220,17 +1226,13 @@ def render_ko():
 
     # 백테스트
     st.markdown("---")
-    t_col, s_col = st.columns([2.2, 1])
-    with s_col:
-        cost_pct = st.slider("거래비용 %/교체", 0.0, 1.0, 0.25, 0.05, format="%.2f%%",
-                             key="ko_cost",
-                             help="새로 매수하는 비중만큼 차감(턴오버). 벤치마크는 매수 후 보유로 비용 없음.")
+    t_col, y_col, cost_pct = render_backtest_controls("ko")
     cost_rate = cost_pct / 100.0
     bt = run_backtest_ko(ko_prices, signals, cost=cost_rate)
     if bt.empty:
         st.warning("백테스트 데이터가 충분하지 않습니다.")
         return
-    bt = select_backtest_years(bt, "ko")
+    bt = select_backtest_years(bt, "ko", y_col)
     perf = compute_performance(bt)
 
     # KOSPI200(102110) 벤치마크 비교 라인
@@ -1395,16 +1397,13 @@ def render_pension():
 
     # 백테스트
     st.markdown("---")
-    t_col, s_col = st.columns([2.2, 1])
-    with s_col:
-        cost_pct = st.slider("거래비용 %/교체", 0.0, 1.0, 0.25, 0.05, format="%.2f%%",
-                             key="pen_cost", help="새로 매수하는 비중만큼 차감(턴오버).")
+    t_col, y_col, cost_pct = render_backtest_controls("pen")
     cost_rate = cost_pct / 100.0
     bt = run_backtest_pension(pen_prices, signals, cost=cost_rate)
     if bt.empty:
         st.warning("백테스트 데이터가 충분하지 않습니다.")
         return
-    bt = select_backtest_years(bt, "pen")
+    bt = select_backtest_years(bt, "pen", y_col)
     perf = compute_performance(bt)
 
     # 벤치마크 (나스닥·코스피 매수후보유)
@@ -1570,16 +1569,13 @@ def render_ssopen():
 
     # 백테스트
     st.markdown("---")
-    t_col, s_col = st.columns([2.2, 1])
-    with s_col:
-        cost_pct = st.slider("거래비용 %/교체", 0.0, 1.0, 0.25, 0.05, format="%.2f%%",
-                             key="ssopen_cost", help="새로 매수하는 비중만큼 차감(턴오버).")
+    t_col, y_col, cost_pct = render_backtest_controls("ssopen")
     cost_rate = cost_pct / 100.0
     bt = run_backtest_ssopen(ss_prices, signals, cost=cost_rate)
     if bt.empty:
         st.warning("백테스트 데이터가 충분하지 않습니다.")
         return
-    bt = select_backtest_years(bt, "ssopen")
+    bt = select_backtest_years(bt, "ssopen", y_col)
     perf = compute_performance(bt)
 
     # 벤치마크 (나스닥100 매수후보유)
@@ -1761,16 +1757,13 @@ def render_mamtax():
 
     # 백테스트
     st.markdown("---")
-    t_col, s_col = st.columns([2.2, 1])
-    with s_col:
-        cost_pct = st.slider("거래비용 %/교체", 0.0, 1.0, 0.25, 0.05, format="%.2f%%",
-                             key="mamtax_cost", help="새로 매수하는 비중만큼 차감(턴오버).")
+    t_col, y_col, cost_pct = render_backtest_controls("mamtax")
     cost_rate = cost_pct / 100.0
     bt = run_backtest_mamtax(mp, signals, cost=cost_rate)
     if bt.empty:
         st.warning("백테스트 데이터가 충분하지 않습니다.")
         return
-    bt = select_backtest_years(bt, "mamtax")
+    bt = select_backtest_years(bt, "mamtax", y_col)
     perf = compute_performance(bt)
 
     bench_bits = []
