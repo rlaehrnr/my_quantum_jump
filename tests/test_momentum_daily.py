@@ -3,7 +3,7 @@ from unittest.mock import patch
 
 import pandas as pd
 
-from utils.momentum_daily import holding_performance, usa500_holding_weights
+from utils.momentum_daily import holding_performance, kospi_holding_weights, usa500_holding_weights
 
 
 class MomentumDailyTests(unittest.TestCase):
@@ -86,3 +86,23 @@ class MomentumDailyTests(unittest.TestCase):
         original = list("ABCDEFGH")
         self.assertEqual(usa500_holding_weights(original, list("JKLMNOPQ"), (3, 8), (1, 9)), {})
         self.assertEqual(usa500_holding_weights(original[:-1], list("JKLMNOPQR"), (3, 8), (1, 9)), {})
+
+
+    @patch("utils.momentum_daily.load_holding_closes")
+    def test_kospi_ensemble_and_deduplicated_portfolio_use_different_weights(self, load):
+        ensemble, integrated = kospi_holding_weights(("A", "B", "C"), ("C", "D"))
+        self.assertEqual(ensemble, {"A": 1 / 6, "B": 1 / 6, "C": 1 / 6 + 1 / 4, "D": 1 / 4})
+        self.assertEqual(integrated, {"A": .25, "B": .25, "C": .25, "D": .25})
+        load.return_value = pd.DataFrame(
+            {"A": 100, "B": 100, "C": [100, 100, 124, 100], "D": 100}, index=self.dates[:4],
+        )
+        half = holding_performance("KR", ensemble, self.month, weights=ensemble)
+        unique = holding_performance("KR", integrated, self.month, weights=integrated)
+        self.assertAlmostEqual(half.iloc[0]["포트 누적"], .10)
+        self.assertAlmostEqual(unique.iloc[0]["포트 누적"], .06)
+
+    def test_kospi_ensemble_keeps_half_in_cash_for_an_empty_group(self):
+        ensemble, integrated = kospi_holding_weights((), ("A", "B"))
+        self.assertEqual(ensemble, {"CASH": .50, "A": .25, "B": .25})
+        self.assertEqual(integrated, {"A": .50, "B": .50})
+        self.assertEqual(kospi_holding_weights((), ()), ({"CASH": 1.0}, {}))

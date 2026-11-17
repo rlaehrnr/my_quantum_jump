@@ -56,6 +56,19 @@ def load_holding_closes(market, tickers, start, end):
     return pd.DataFrame(prices, index=sessions)
 
 
+def kospi_holding_weights(perfect, running):
+    """50:50 앙상블과 중복 제외 통합 전략의 월초 비중."""
+    perfect, running = tuple(dict.fromkeys(perfect)), tuple(dict.fromkeys(running))
+    ensemble = {}
+    for group in (perfect, running):
+        group = group or ("CASH",)
+        for ticker in group:
+            ensemble[ticker] = ensemble.get(ticker, 0.0) + 0.5 / len(group)
+    unique = tuple(dict.fromkeys(perfect + running))
+    integrated = dict.fromkeys(unique, 1 / len(unique)) if unique else {}
+    return ensemble, integrated
+
+
 def usa500_holding_weights(original, residual, original_ranks, residual_ranks):
     """두 순위 구간에 절반씩 균등 배분하고 중복 종목 비중을 합산한다."""
     weights = {}

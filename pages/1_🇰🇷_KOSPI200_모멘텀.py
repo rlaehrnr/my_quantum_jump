@@ -11,7 +11,7 @@ from utils.calculator import get_cycle_year, PRESIDENTIAL_DANGEROUS_MONTHS, get_
 from utils.ui_components import inject_custom_css, apply_korea_styling, style_kospi_ma, get_styled_stats, get_mdd_history, get_monthly_heatmap, ma_cfg, main_cfg, generate_excel_report_cached, render_vix_widget, style_ma_with_gold, ma_cfg_gold
 from utils.data_loader import load_archive_data, get_folder_hash, load_daily_data
 
-from utils.momentum_daily import render_holding_performance
+from utils.momentum_daily import kospi_holding_weights, render_holding_performance
 
 inject_custom_css()
 
@@ -151,26 +151,36 @@ with tab1:
         st.markdown("---")
         holding_month = pd.Period(target_month_str, freq="M")
         st.subheader(f"📈 {holding_month.month}월 일별 보유 성과")
-        st.caption("전월 마지막 거래일 종가 대비 · 월초 동일 비중 · 원화 기준 · 거래비용 미포함")
-        strategy_labels = ["🔥 퍼펙트 상승", "🐎 달리는 말"]
+        st.caption("전월 마지막 거래일 종가 대비 · 원화 기준 · 거래비용 미포함")
+        perfect_picks = df_perf_t1.head(top_n_p)
+        running_picks = df_spec_t1.head(top_n_s)
+        perfect = dict(zip(perfect_picks["종목코드"], perfect_picks["종목명"]))
+        running = dict(zip(running_picks["종목코드"], running_picks["종목명"]))
+        ensemble, integrated = kospi_holding_weights(perfect, running)
+        names = perfect | running | {"CASH": "현금"}
+        strategies = [
+            ("🔥 퍼펙트 상승", "kospi_perfect", perfect, None),
+            ("🐎 달리는 말", "kospi_running", running, None),
+            ("앙상블 50:50", "kospi_ensemble", ensemble, "두 전략에 50%씩 배분 · 중복 종목 비중 합산"),
+            ("통합 전략 (중복 제외 1/N)", "kospi_integrated", integrated, "고유 종목 전체에 월초 동일 비중 배분"),
+        ]
+        strategy_labels = [label for label, *_ in strategies]
         if mkt["stop"]:
             defense = {"GOLD_KRW": "국내 금"} if mkt["defense_alloc"] == "금 100" else {"CASH": "현금"}
-            st.caption("방어월의 선정 종목 탭은 매수를 가정한 성과입니다.")
-            defense_tab, perf_tab, spec_tab = st.tabs(["🛡️ 방어 보유", *strategy_labels])
+            st.caption("방어월의 주식 전략 탭은 매수를 가정한 성과입니다.")
+            defense_tab, *strategy_tabs = st.tabs(["🛡️ 방어 보유", *strategy_labels])
             with defense_tab:
                 render_holding_performance("KR", defense, holding_month, "kospi_defense")
         else:
-            perf_tab, spec_tab = st.tabs(strategy_labels)
-        with perf_tab:
-            picks = df_perf_t1.head(top_n_p)
-            render_holding_performance(
-                "KR", dict(zip(picks["종목코드"], picks["종목명"])), holding_month, "kospi_perfect"
-            )
-        with spec_tab:
-            picks = df_spec_t1.head(top_n_s)
-            render_holding_performance(
-                "KR", dict(zip(picks["종목코드"], picks["종목명"])), holding_month, "kospi_running"
-            )
+            strategy_tabs = st.tabs(strategy_labels)
+        for tab, (_, key, holdings, allocation) in zip(strategy_tabs, strategies):
+            with tab:
+                if allocation:
+                    st.caption(allocation)
+                    labels = {ticker: f"{names[ticker]} {weight:.2%}" for ticker, weight in holdings.items()}
+                    render_holding_performance("KR", labels, holding_month, key, weights=holdings)
+                else:
+                    render_holding_performance("KR", holdings, holding_month, key)
 
         st.markdown("---")
         st.markdown(f"### 🏆 전체 시가총액 순위 <span style='font-size: 0.85rem; color: #9ca3af; font-weight:normal;'>&nbsp;&nbsp;💡 선정일: {base_date}</span>", unsafe_allow_html=True)
