@@ -9,6 +9,7 @@ from utils.static_allocation import (
     MARKET_PLANS, PLAN_VERSION, SHEET_TABS, allocate, decimal_value, default_rows, plan_weights, read_settings,
     valid_ticker, write_settings,
 )
+from utils.static_allocation_performance import market_history, render_static_performance
 from utils.static_allocation_quotes import FX_TICKER, fetch_quotes
 
 
@@ -279,6 +280,7 @@ def main():
     refresh, tools = st.columns(2)
     if refresh.button("시세 새로고침", key="static_refresh_quotes"):
         market_quotes.clear()
+        market_history.clear()
     (_, _, saved_fx, _), _, _ = settings["us"]
     with tools.container(horizontal=True, horizontal_alignment="right"):
         with st.popover("환율 설정", icon=":material/tune:", type="tertiary"):
@@ -286,7 +288,7 @@ def main():
                 "환율 직접 입력", min_value=0.01, value=saved_fx, step=0.01,
                 format="%.2f", key="static_us_fx", help="비워두면 미국 탭에 자동 환율을 적용합니다.",
             )
-    kr, us = st.tabs(["한국", "미국"])
+    kr, us = st.tabs(["한국", "미국"], key="static_market", on_change="rerun")
     markets = {}
     for market, tab in (("kr", kr), ("us", us)):
         with tab:
@@ -299,10 +301,14 @@ def main():
         for market, market_data in markets.items()
     }
     quotes = market_quotes(tickers["kr"], tickers["us"])
-    for market, (budget, rows_by_plan, results) in markets.items():
+    for market, tab in (("kr", kr), ("us", us)):
+        budget, rows_by_plan, results = markets[market]
         for plan, container in results.items():
             with container:
                 show_plan(rows_by_plan[plan], budget, quotes, market)
+        if tab.open:
+            with tab:
+                render_static_performance(market, rows_by_plan)
 
 
 if __name__ == "__main__":

@@ -3,6 +3,7 @@ from decimal import Decimal
 from pathlib import Path
 from unittest.mock import patch
 
+import pandas as pd
 from streamlit.testing.v1 import AppTest
 
 from utils.static_allocation import (
@@ -76,6 +77,11 @@ class StaticAllocationTest(unittest.TestCase):
 
 
 class StaticAllocationPageTest(unittest.TestCase):
+    def setUp(self):
+        history = patch("utils.static_allocation_performance.market_history", return_value=pd.DataFrame())
+        self.market_history = history.start()
+        self.addCleanup(history.stop)
+
     def test_all_default_tables_show_without_scrolling_in_the_grid(self):
         with patch("utils.static_allocation_quotes.fetch_quotes", return_value={}):
             app = AppTest.from_file(str(PAGE)).run()
@@ -95,6 +101,22 @@ class StaticAllocationPageTest(unittest.TestCase):
         self.assertIn("브라질 주식", list(charts[-1].value["투자 대상"]))
         self.assertTrue(all("기준 시각 (KST)" in chart.value for chart in charts))
 
+    def test_performance_is_rendered_in_the_default_market_tab(self):
+        sessions = pd.to_datetime(["2026-04-30", "2026-05-04", "2026-05-29", "2026-06-01"])
+        korean_tickers = {a.ticker for key in ("kr_winter", "kr_summer") for a in PLANS[key] if a.ticker}
+        self.market_history.return_value = pd.DataFrame(
+            {ticker: [100.0, 110.0, 120.0, 120.0] for ticker in korean_tickers}, index=sessions,
+        )
+        with (
+            patch("utils.static_allocation_quotes.fetch_quotes", return_value={}),
+            patch("utils.static_allocation_performance.market_dates",
+                  return_value=(pd.Period("2026-06", freq="M"), sessions[-1].date())),
+        ):
+            app = AppTest.from_file(str(PAGE)).run()
+        self.assertFalse(app.exception)
+        self.assertEqual(next(m.value for m in app.metric if m.label == "이번 달 누적 수익률"), "+0.00%")
+        self.assertEqual(next(m.value for m in app.metric if m.label == "누적 수익률"), "+14.00%")
+        self.assertEqual(len(app.get("plotly_chart")), 2)
     def test_dollar_and_won_inputs_update_each_other(self):
         with patch("utils.static_allocation_quotes.fetch_quotes", return_value={}):
             app = AppTest.from_file(str(PAGE)).run()
