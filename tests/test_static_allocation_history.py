@@ -61,6 +61,23 @@ class StaticAllocationHistoryTest(unittest.TestCase):
         self.assertEqual(result.monthly.index.tolist(), [pd.Period("2026-06", freq="M")])
         self.assertAlmostEqual(result.monthly.iloc[0], 0.10)
 
+    def test_midterm_option_halves_summer_exposure_only_in_midterm_years(self):
+        dates = pd.to_datetime([
+            "2022-04-29", "2022-05-31", "2022-06-30",
+            "2022-09-30", "2022-10-31", "2022-11-30",
+            "2023-04-28", "2023-05-31",
+            "2026-04-30", "2026-05-04",
+        ])
+        prices = pd.DataFrame({"A": [100, 110, 121, 100, 110, 121, 100, 110, 100, 110]}, index=dates)
+        result = calculate_history(
+            prices, dates, {"A": 1.0}, {"A": 0.70}, pd.Period("2026-05", freq="M"),
+            midterm=True,
+        )
+        self.assertAlmostEqual(result.monthly.loc["2022-05"], 0.035)
+        self.assertAlmostEqual(result.monthly.loc["2022-10"], 0.035)
+        self.assertAlmostEqual(result.monthly.loc["2022-11"], 0.10)
+        self.assertAlmostEqual(result.monthly.loc["2023-05"], 0.07)
+        self.assertAlmostEqual(result.daily["포트 누적"].iloc[-1], 0.035)
     def test_grvt_and_cash_have_zero_return_with_weight_retained(self):
         weights = target_weights(default_rows("us_summer"), "us")
         self.assertAlmostEqual(sum(weights.values()), 0.60)

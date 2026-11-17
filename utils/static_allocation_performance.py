@@ -4,7 +4,7 @@ import streamlit as st
 
 from utils.static_allocation import MARKET_PLANS
 from utils.static_allocation_history import (
-    SESSION_PROXY, calculate_history, load_price_history, market_dates, target_weights,
+    SESSION_PROXY, calculate_history, is_midterm_summer, load_price_history, market_dates, target_weights,
 )
 from utils.static_allocation_proxies import KOREAN_PROXIES, extend_korean_prices, load_proxy_prices
 from utils.ui_components import get_mdd_history, get_monthly_heatmap, render_daily_performance
@@ -20,7 +20,7 @@ def market_proxy_prices(tickers, cutoff):
     return load_proxy_prices(tickers, cutoff)
 
 
-def render_korean_proxy_history(prices, sessions, tickers, cutoff, winter, summer, current_month):
+def render_korean_proxy_history(prices, sessions, tickers, cutoff, winter, summer, current_month, *, midterm):
     with st.spinner("상장 전 대체 ETF 시세를 불러오는 중입니다."):
         foreign, domestic = market_proxy_prices(tickers, cutoff)
     extended = extend_korean_prices(prices, sessions, foreign, domestic, tickers)
@@ -44,7 +44,7 @@ def render_korean_proxy_history(prices, sessions, tickers, cutoff, winter, summe
         )
         with st.expander("대체 ETF와 전환일"):
             st.dataframe(used, hide_index=True, width="stretch")
-        return calculate_history(extended, sessions, winter, summer, current_month)
+        return calculate_history(extended, sessions, winter, summer, current_month, midterm=midterm)
     st.caption("연결할 대체 ETF 시세를 확인하지 못해 실제 ETF 구간을 표시합니다.")
     return None
 
@@ -75,7 +75,15 @@ def render_static_performance(market, rows_by_plan):
     missing = [ticker for ticker in tickers if ticker not in prices or prices[ticker].isna().all()]
     if missing:
         st.caption("일별 시세 미확인 종목 · " + ", ".join(missing))
-    performance = calculate_history(prices, sessions, winter, summer, current_month)
+    midterm = st.toggle(
+        "미국 중간선거 해 5~10월 비중 절반", key="static_midterm",
+        help="2018·2022·2026년처럼 미국 중간선거가 있는 해에 성과 시뮬레이션만 조정합니다.",
+    )
+    if midterm:
+        summer_cash = sum(row["weight"] for row in rows_by_plan[MARKET_PLANS[market][1]]
+                          if row["asset"].group == "현금")
+        st.caption(f"해당 월에는 비현금 자산을 절반으로 줄여 현금 {50 + summer_cash / 2:g}%를 유지합니다.")
+    performance = calculate_history(prices, sessions, winter, summer, current_month, midterm=midterm)
     daily = performance.daily
     st.markdown(f"#### {current_month.month}월 일별 수익률")
     if daily.empty:
@@ -88,14 +96,16 @@ def render_static_performance(market, rows_by_plan):
         })
     st.markdown("#### 월별 백테스트")
     if market == "kr" and st.toggle("상장 전 대체 ETF 포함", value=True, key="static_kr_proxy"):
-        estimated = render_korean_proxy_history(prices, sessions, tickers, cutoff, winter, summer, current_month)
+        estimated = render_korean_proxy_history(
+            prices, sessions, tickers, cutoff, winter, summer, current_month, midterm=midterm,
+        )
         if estimated is not None:
-            render_monthly_history(estimated, market, uses_proxies=True)
+            render_monthly_history(estimated, market, uses_proxies=True, midterm=midterm)
             return
-    render_monthly_history(performance, market)
+    render_monthly_history(performance, market, midterm=midterm)
 
 
-def render_monthly_history(performance, market, uses_proxies=False):
+def render_monthly_history(performance, market, *, uses_proxies=False, midterm=False):
     monthly = performance.monthly
     if monthly.empty:
         st.caption("전월 마지막 종가부터 월말까지 시세가 갖춰진 달의 성과를 표시합니다.")
@@ -141,7 +151,11 @@ def render_monthly_history(performance, market, uses_proxies=False):
     with st.expander("월별 상세"):
         detail = pd.DataFrame({
             "투자월": monthly.index.astype(str),
-            "적용 비중": ["5월–10월" if 5 <= period.month <= 10 else "11월–4월" for period in monthly.index],
+            "적용 비중": [
+                "중간선거 · 비중 절반" if midterm and is_midterm_summer(period)
+                else "5월–10월" if 5 <= period.month <= 10 else "11월–4월"
+                for period in monthly.index
+            ],
             "월 수익률": monthly.to_numpy(),
         })
         st.dataframe(

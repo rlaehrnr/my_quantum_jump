@@ -79,7 +79,11 @@ class AllocationHistory:
     equity: pd.Series
 
 
-def calculate_history(prices, sessions, winter, summer, current_month):
+def is_midterm_summer(month):
+    return month.year % 4 == 2 and 5 <= month.month <= 10
+
+
+def calculate_history(prices, sessions, winter, summer, current_month, *, midterm=False):
     """전월 마지막 종가에서 시작한 자산의 월중 매수·보유 수익률."""
     sessions = pd.DatetimeIndex(sessions).sort_values().unique()
     month_days = {
@@ -96,6 +100,8 @@ def calculate_history(prices, sessions, winter, summer, current_month):
             continue
         previous_close = month_days[month - 1].iloc[-1]
         weights = summer if 5 <= month.month <= 10 else winter
+        if midterm and is_midterm_summer(month):
+            weights = {ticker: weight / 2 for ticker, weight in weights.items()}
         prices_for_month = prices.reindex(
             index=pd.DatetimeIndex([previous_close, *dates]), columns=list(weights),
         )

@@ -126,6 +126,10 @@ class StaticAllocationPageTest(unittest.TestCase):
         drawdowns = next(item.value for item in app.dataframe if "MDD" in item.value)
         self.assertEqual(drawdowns.iloc[0]["MDD"], "-7.00%")
         self.assertEqual(drawdowns.iloc[0]["기간"], "2026-05-04 ~ 2026-05-04")
+        app.toggle(key="static_midterm").set_value(True).run()
+        self.assertFalse(app.exception)
+        self.assertEqual(next(m.value for m in app.metric if m.label == "누적 수익률"), "+7.00%")
+        self.assertTrue(any("현금 65%" in item.value for item in app.caption))
     def test_dollar_and_won_inputs_update_each_other(self):
         with patch("utils.static_allocation_quotes.fetch_quotes", return_value={}):
             app = AppTest.from_file(str(PAGE)).run()
