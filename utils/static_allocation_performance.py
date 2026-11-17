@@ -6,6 +6,7 @@ from utils.static_allocation import MARKET_PLANS
 from utils.static_allocation_history import (
     SESSION_PROXY, calculate_history, load_price_history, market_dates, target_weights,
 )
+from utils.static_allocation_proxies import KOREAN_PROXIES, extend_korean_prices, load_proxy_prices
 from utils.ui_components import get_monthly_heatmap, render_daily_performance
 
 
@@ -13,6 +14,39 @@ from utils.ui_components import get_monthly_heatmap, render_daily_performance
 def market_history(market, tickers, cutoff):
     return load_price_history(market, tickers, cutoff)
 
+
+@st.cache_data(ttl=3600, show_spinner=False)
+def market_proxy_prices(tickers, cutoff):
+    return load_proxy_prices(tickers, cutoff)
+
+
+def render_korean_proxy_history(prices, sessions, tickers, cutoff, winter, summer, current_month):
+    with st.spinner("상장 전 대체 ETF 시세를 불러오는 중입니다."):
+        foreign, domestic = market_proxy_prices(tickers, cutoff)
+    extended = extend_korean_prices(prices, sessions, foreign, domestic, tickers)
+    used = []
+    for ticker in tickers:
+        if ticker not in KOREAN_PROXIES:
+            continue
+        actual_start = prices[ticker].first_valid_index() if ticker in prices else None
+        if actual_start is None or not extended.loc[extended.index < actual_start, ticker].notna().any():
+            continue
+        _, proxy, description = KOREAN_PROXIES[ticker]
+        used.append({
+            "실제 ETF 코드": ticker, "상장 전 대체 ETF": proxy,
+            "대체 노출": description, "실제 종가 첫날": actual_start.date(),
+        })
+
+    if used:
+        st.caption(
+            "상장 전 구간은 대체 ETF를 첫 실제 종가에 이어 붙였습니다. "
+            "미국 대체 ETF는 한국 거래일 전에 관측된 종가와 환율로 원화 환산했습니다."
+        )
+        with st.expander("대체 ETF와 전환일"):
+            st.dataframe(used, hide_index=True, width="stretch")
+        return calculate_history(extended, sessions, winter, summer, current_month)
+    st.caption("연결할 대체 ETF 시세를 확인하지 못해 실제 ETF 구간을 표시합니다.")
+    return None
 
 def render_static_performance(market, rows_by_plan):
     st.subheader("일별·월별 성과")
@@ -52,11 +86,16 @@ def render_static_performance(market, rows_by_plan):
         render_daily_performance(daily, f"static_{market}", {
             "포트 일간": "일간 수익률", "포트 누적": "월 누적 수익률",
         })
+    st.markdown("#### 월별 백테스트")
+    if market == "kr" and st.toggle("상장 전 대체 ETF 포함", value=True, key="static_kr_proxy"):
+        estimated = render_korean_proxy_history(prices, sessions, tickers, cutoff, winter, summer, current_month)
+        if estimated is not None:
+            render_monthly_history(estimated, market, uses_proxies=True)
+            return
     render_monthly_history(performance, market)
 
 
-def render_monthly_history(performance, market):
-    st.markdown("#### 월별 백테스트")
+def render_monthly_history(performance, market, uses_proxies=False):
     monthly = performance.monthly
     if monthly.empty:
         st.caption("전월 마지막 종가부터 월말까지 시세가 갖춰진 달의 성과를 표시합니다.")
@@ -65,7 +104,8 @@ def render_monthly_history(performance, market):
     equity = performance.equity
     available = monthly.dropna()
     period = f"{available.index[0]} ~ {available.index[-1]}"
-    st.caption(f"{period} · 확정 {len(available):,}개월. 필요한 종가가 없는 달은 공란으로 표시합니다.")
+    coverage = "대체 ETF 포함" if uses_proxies else "실제 ETF만"
+    st.caption(f"{period} · {len(available):,}개월 · {coverage}. 필요한 종가가 없는 달은 공란으로 표시합니다.")
     curve_start = equity.index[1].to_period("M")
     curve_months = len(monthly.loc[curve_start:])
     if len(available) != len(monthly):

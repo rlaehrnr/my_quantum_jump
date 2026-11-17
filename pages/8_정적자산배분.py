@@ -9,7 +9,7 @@ from utils.static_allocation import (
     MARKET_PLANS, PLAN_VERSION, SHEET_TABS, allocate, decimal_value, default_rows, plan_weights, read_settings,
     valid_ticker, write_settings,
 )
-from utils.static_allocation_performance import market_history, render_static_performance
+from utils.static_allocation_performance import market_history, market_proxy_prices, render_static_performance
 from utils.static_allocation_quotes import FX_TICKER, fetch_quotes
 
 
@@ -281,6 +281,7 @@ def main():
     if refresh.button("시세 새로고침", key="static_refresh_quotes"):
         market_quotes.clear()
         market_history.clear()
+        market_proxy_prices.clear()
     (_, _, saved_fx, _), _, _ = settings["us"]
     with tools.container(horizontal=True, horizontal_alignment="right"):
         with st.popover("환율 설정", icon=":material/tune:", type="tertiary"):

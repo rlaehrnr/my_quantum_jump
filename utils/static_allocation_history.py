@@ -22,7 +22,7 @@ def market_dates(market):
     return pd.Period(now.date(), freq="M"), cutoff
 
 
-def _load_close(ticker, market, cutoff):
+def _load_close(ticker, market, cutoff, adjusted):
     if market == "kr":
         response = requests.get(NAVER_HISTORY, params={
             "symbol": ticker, "requestType": 1, "startTime": "19900101",
@@ -34,7 +34,7 @@ def _load_close(ticker, market, cutoff):
         closes = pd.Series([row[4] for row in rows[1:]], index=dates, dtype="float64")
     else:
         history = yf.Ticker(ticker).history(
-            period="max", interval="1d", auto_adjust=True, timeout=10,
+            period="max", interval="1d", auto_adjust=adjusted, timeout=10,
         )
         if history.empty:
             return pd.Series(dtype="float64")
@@ -44,12 +44,12 @@ def _load_close(ticker, market, cutoff):
     return closes.loc[(closes.index <= pd.Timestamp(cutoff)) & closes.gt(0)]
 
 
-def load_price_history(market, tickers, cutoff):
+def load_price_history(market, tickers, cutoff, *, adjusted=True):
     all_tickers = tuple(sorted(set(tickers) | {SESSION_PROXY[market]}))
 
     def get_close(ticker):
         try:
-            return _load_close(ticker, market, cutoff)
+            return _load_close(ticker, market, cutoff, adjusted)
         except (requests.RequestException, ValueError, SyntaxError, KeyError, TypeError, IndexError):
             return pd.Series(dtype="float64")
 

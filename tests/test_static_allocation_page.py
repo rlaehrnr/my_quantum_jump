@@ -81,6 +81,12 @@ class StaticAllocationPageTest(unittest.TestCase):
         history = patch("utils.static_allocation_performance.market_history", return_value=pd.DataFrame())
         self.market_history = history.start()
         self.addCleanup(history.stop)
+        proxies = patch(
+            "utils.static_allocation_performance.market_proxy_prices",
+            return_value=(pd.DataFrame(), pd.DataFrame()),
+        )
+        proxies.start()
+        self.addCleanup(proxies.stop)
 
     def test_all_default_tables_show_without_scrolling_in_the_grid(self):
         with patch("utils.static_allocation_quotes.fetch_quotes", return_value={}):
