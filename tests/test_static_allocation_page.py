@@ -111,7 +111,7 @@ class StaticAllocationPageTest(unittest.TestCase):
         sessions = pd.to_datetime(["2026-04-30", "2026-05-04", "2026-05-29", "2026-06-01"])
         korean_tickers = {a.ticker for key in ("kr_winter", "kr_summer") for a in PLANS[key] if a.ticker}
         self.market_history.return_value = pd.DataFrame(
-            {ticker: [100.0, 110.0, 120.0, 120.0] for ticker in korean_tickers}, index=sessions,
+            {ticker: [100.0, 90.0, 120.0, 120.0] for ticker in korean_tickers}, index=sessions,
         )
         with (
             patch("utils.static_allocation_quotes.fetch_quotes", return_value={}),
@@ -123,6 +123,9 @@ class StaticAllocationPageTest(unittest.TestCase):
         self.assertEqual(next(m.value for m in app.metric if m.label == "이번 달 누적 수익률"), "+0.00%")
         self.assertEqual(next(m.value for m in app.metric if m.label == "누적 수익률"), "+14.00%")
         self.assertEqual(len(app.get("plotly_chart")), 2)
+        drawdowns = next(item.value for item in app.dataframe if "MDD" in item.value)
+        self.assertEqual(drawdowns.iloc[0]["MDD"], "-7.00%")
+        self.assertEqual(drawdowns.iloc[0]["기간"], "2026-05-04 ~ 2026-05-04")
     def test_dollar_and_won_inputs_update_each_other(self):
         with patch("utils.static_allocation_quotes.fetch_quotes", return_value={}):
             app = AppTest.from_file(str(PAGE)).run()

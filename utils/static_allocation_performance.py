@@ -7,7 +7,7 @@ from utils.static_allocation_history import (
     SESSION_PROXY, calculate_history, load_price_history, market_dates, target_weights,
 )
 from utils.static_allocation_proxies import KOREAN_PROXIES, extend_korean_prices, load_proxy_prices
-from utils.ui_components import get_monthly_heatmap, render_daily_performance
+from utils.ui_components import get_mdd_history, get_monthly_heatmap, render_daily_performance
 
 
 @st.cache_data(ttl=3600, show_spinner=False)
@@ -125,8 +125,19 @@ def render_monthly_history(performance, market, uses_proxies=False):
     st.plotly_chart(fig, width="stretch", key=f"static_{market}_equity")
 
     months = pd.DataFrame({"투자월": monthly.index.astype(str), "수익률": monthly.to_numpy() * 100})
-    st.dataframe(get_monthly_heatmap(months, "수익률"), width="stretch", key=f"static_{market}_heatmap")
-    st.caption("연수익률은 각 연도에 자료가 확보된 월을 복리로 연결한 값입니다.")
+    heatmap, drawdowns = st.columns([2, 1])
+    with heatmap:
+        st.markdown("##### 월별 수익률 히트맵")
+        st.dataframe(get_monthly_heatmap(months, "수익률"), width="stretch", key=f"static_{market}_heatmap")
+        st.caption("연수익률은 각 연도에 자료가 확보된 월을 복리로 연결한 값입니다.")
+    with drawdowns:
+        st.markdown("##### MDD TOP 10")
+        daily_equity = equity.set_axis(equity.index.strftime("%Y-%m-%d"))
+        deepest = get_mdd_history(daily_equity)
+        if deepest.empty:
+            st.info("낙폭 구간 없음")
+        else:
+            st.dataframe(deepest, width="stretch", hide_index=True, key=f"static_{market}_mdd")
     with st.expander("월별 상세"):
         detail = pd.DataFrame({
             "투자월": monthly.index.astype(str),
