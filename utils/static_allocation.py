@@ -37,16 +37,16 @@ KR_SUMMER = (
     Asset("개도국 주식", "KODEX 차이나CSI300", "283580", 5),
     Asset("개도국 주식", "KODEX 차이나항셍테크", "372330", 2),
     Asset("개도국 주식", "TIGER 인도니프티50", "453870", 3),
-    Asset("채권", "RISE KIS국고채30년Enhanced", "385560", 7.5),
-    Asset("채권", "PLUS 미국채30년액티브", "464470", 7.5),
-    Asset("실물자산", "ACE KRX금현물", "411060", 10),
+    Asset("채권", "RISE KIS국고채30년Enhanced", "385560", 10),
+    Asset("채권", "PLUS 미국채30년액티브", "464470", 10),
+    Asset("실물자산", "ACE KRX금현물", "411060", 14),
     Asset("실물자산", "TIGER 은액티브", "0189B0", 3),
-    Asset("실물자산", "TIGER 구리실물", "160580", 2),
-    Asset("현금", "현금", "", 40),
+    Asset("실물자산", "TIGER 구리실물", "160580", 3),
+    Asset("현금", "현금", "", 30),
 )
-US_ALL_WEATHER = (
+US_WINTER = (
     Asset("선진국 주식", "한국 주식 (EWY / FLKR)", "EWY", 10),
-    Asset("선진국 주식", "미국 가치주", "XLE", 3),
+    Asset("선진국 주식", "미국 에너지 주식", "XLE", 3),
     Asset("선진국 주식", "미국 성장주 (QQQ / QQQM)", "QQQ", 9),
     Asset("선진국 주식", "미국 배당주", "SCHD", 4),
     Asset("선진국 주식", "폴란드 주식", "EPOL", 4),
@@ -59,11 +59,32 @@ US_ALL_WEATHER = (
     Asset("채권", "GRVT", "", 10),
     Asset("실물자산", "금 (GLD / GLDM)", "GLD", 12),
     Asset("실물자산", "은 (SLV / SIVR)", "SLV", 4),
-    Asset("실물자산", "구리", "COPX", 4),
+    Asset("실물자산", "구리 선물", "CPER", 4),
     Asset("실물자산", "종합원자재", "PDBC", 5),
 )
-PLANS = {"kr_winter": KR_WINTER, "kr_summer": KR_SUMMER, "us": US_ALL_WEATHER}
-MARKET_PLANS = {"kr": ("kr_winter", "kr_summer"), "us": ("us",)}
+US_SUMMER = (
+    Asset("선진국 주식", "한국 주식", "EWY", 7),
+    Asset("선진국 주식", "미국 에너지 주식", "XLE", 2),
+    Asset("선진국 주식", "미국 성장주", "QQQ", 6),
+    Asset("선진국 주식", "미국 배당주", "SCHD", 2),
+    Asset("선진국 주식", "폴란드 주식", "EPOL", 3),
+    Asset("개도국 주식", "중국 주식", "ASHR", 4),
+    Asset("개도국 주식", "중국 주식", "FXI", 2),
+    Asset("개도국 주식", "칠레 주식", "ECH", 2),
+    Asset("개도국 주식", "브라질 주식 (EWZ / FLBR)", "EWZ", 2),
+    Asset("채권", "미국 장기 국채", "TLT", 10),
+    Asset("채권", "GRVT", "", 10),
+    Asset("실물자산", "금", "GLD", 10),
+    Asset("실물자산", "은", "SLV", 2.5),
+    Asset("실물자산", "구리 선물", "CPER", 2.5),
+    Asset("실물자산", "종합원자재", "PDBC", 5),
+    Asset("현금", "현금", "", 30),
+)
+# "us"는 기존 저장 시트의 11~4월 행 식별자다.
+PLANS = {"kr_winter": KR_WINTER, "kr_summer": KR_SUMMER, "us": US_WINTER, "us_summer": US_SUMMER}
+MARKET_PLANS = {"kr": ("kr_winter", "kr_summer"), "us": ("us", "us_summer")}
+BUDGET_HEADERS = {"원": "총 자산 (원)", "USD": "총 자산 (USD)"}
+PLAN_VERSION = "2026-11-17-v2"
 SHEET_TABS = {"kr": "한국", "us": "미국"}
 SHEET_HEADER = ["배분표", "자산 ID", "자산군", "ETF/전략", "선택 종목코드", "목표 비중 (%)", "직접 입력 가격"]
 ZERO = Decimal(0)
@@ -110,22 +131,20 @@ class Allocation:
     planned_cash: Decimal
     lot_remainder: Decimal
     pending: Decimal
-    external: Decimal
 
     @property
     def cash_remaining(self):
-        return self.planned_cash + self.lot_remainder + self.pending + self.external
+        return self.planned_cash + self.lot_remainder + self.pending
 
 
-def allocate(assets, rows, quotes, fx=1):
+def allocate(assets, rows, quotes):
     assets = decimal_value(assets)
-    fx = decimal_value(fx)
     weights = plan_weights(rows)
     if assets is None or assets < 0 or weights is None or sum(weights) != 100:
         return None
 
     lines = []
-    purchase_total = planned_cash = lot_remainder = pending = external = ZERO
+    purchase_total = planned_cash = lot_remainder = pending = ZERO
     for row, weight in zip(rows, weights):
         target = assets * weight / 100
         asset = row["asset"]
@@ -133,9 +152,11 @@ def allocate(assets, rows, quotes, fx=1):
         if asset.group == "현금":
             planned_cash += target
         elif not asset.ticker:
-            external += target
-        elif price is not None and price > 0 and fx is not None and fx > 0:
-            cost = price * fx
+            purchase_total += target
+            lines.append(Order(target, purchase=target))
+            continue
+        elif price is not None and price > 0:
+            cost = price
             quantity = int(target // cost)
             purchase = quantity * cost
             purchase_total += purchase
@@ -145,22 +166,27 @@ def allocate(assets, rows, quotes, fx=1):
         else:
             pending += target
         lines.append(Order(target))
-    return Allocation(lines, purchase_total, planned_cash, lot_remainder, pending, external)
+    return Allocation(lines, purchase_total, planned_cash, lot_remainder, pending)
 
 
 def read_settings(worksheet, plans):
     values = worksheet.get("A1:G40", value_render_option="UNFORMATTED_VALUE")
     rows = {plan: default_rows(plan) for plan in plans}
     if not values:
-        return None, None, rows
-    if len(values) < 2 or values[0][0:4:2] != ["총 자산 (원)", "직접 입력 환율"] or values[1] != SHEET_HEADER:
+        return None, None, None, rows
+    if len(values) < 2 or len(values[0]) < 3 or values[0][2] != "직접 입력 환율" or values[1] != SHEET_HEADER:
         raise ValueError("배분표 저장 형식이 다릅니다.")
 
+    market = "us" if "us" in plans else "kr"
+    allowed = ("원", "USD") if market == "us" else ("원",)
+    currency = next((code for code in allowed if BUDGET_HEADERS[code] == values[0][0]), None)
+    if currency is None:
+        raise ValueError("저장된 총 자산 통화를 확인해 주세요.")
+    current_version = values[0][4:6] == ["배분표 버전", PLAN_VERSION]
     budget = decimal_value(values[0][1])
     fx = decimal_value(values[0][3]) if len(values[0]) > 3 else None
-    if (budget is not None and (budget < 0 or budget != int(budget))) or (fx is not None and fx <= 0):
+    if (budget is not None and (budget < 0 or (currency == "원" and budget != int(budget)))) or (fx is not None and fx <= 0):
         raise ValueError("저장된 총 자산 또는 환율을 확인해 주세요.")
-    market = "us" if plans == ("us",) else "kr"
     saved = {}
     for line in values[2:]:
         if not any(line):
@@ -179,12 +205,18 @@ def read_settings(worksheet, plans):
             price = decimal_value(line[6]) if len(line) > 6 else None
             if (asset.ticker and not valid_ticker(ticker, market)) or weight is None or not 0 <= weight <= 100:
                 raise ValueError("저장된 종목코드 또는 목표 비중을 확인해 주세요.")
-            row.update(ticker=ticker, weight=float(weight), manual_price=float(price) if price and price > 0 else None)
-    return int(budget) if budget is not None else None, float(fx) if fx is not None else None, rows
+            row.update(ticker=ticker, weight=float(weight) if current_version else asset.weight, manual_price=float(price) if price and price > 0 else None)
+    if budget is not None:
+        budget = int(budget) if currency == "원" else float(budget)
+    return budget, currency, float(fx) if fx is not None else None, rows
 
 
 def write_settings(worksheet, budget, fx, plans):
-    values = [["총 자산 (원)", "" if budget is None else budget, "직접 입력 환율", fx or ""], SHEET_HEADER]
+    currency = "USD" if "us" in plans else "원"
+    values = [[
+        BUDGET_HEADERS[currency], "" if budget is None else budget, "직접 입력 환율",
+        fx or "", "배분표 버전", PLAN_VERSION,
+    ], SHEET_HEADER]
     for plan, rows in plans.items():
         for row in rows:
             asset = row["asset"]

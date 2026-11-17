@@ -6,19 +6,17 @@ import streamlit as st
 from google.oauth2.service_account import Credentials
 
 from utils.static_allocation import (
-    MARKET_PLANS, SHEET_TABS, allocate, decimal_value, default_rows, plan_weights, read_settings,
+    MARKET_PLANS, PLAN_VERSION, SHEET_TABS, allocate, decimal_value, default_rows, plan_weights, read_settings,
     valid_ticker, write_settings,
 )
 from utils.static_allocation_quotes import FX_TICKER, fetch_quotes
 
 
 WEIGHT = "목표 비중 (%)"
-TARGET = "목표 금액 (원)"
 SHARES = "매수 (주)"
-PURCHASE = "매수 금액 (원)"
 TICKER = "종목코드"
 ROW_HEIGHT = 32
-SEASONS = {"kr_winter": "11월–4월", "kr_summer": "5월–10월"}
+SEASONS = ("11월–4월", "5월–10월")
 
 
 def open_sheet():
@@ -36,10 +34,10 @@ def open_sheet():
 
 
 def session_settings():
-    key = "static_allocation_settings"
+    key = f"static_allocation_settings_{PLAN_VERSION}"
     if key not in st.session_state:
         st.session_state[key] = {
-            market: ((None, None, {p: default_rows(p) for p in plans}), None, None)
+            market: ((None, None, None, {p: default_rows(p) for p in plans}), None, None)
             for market, plans in MARKET_PLANS.items()
         }
         try:
@@ -68,15 +66,15 @@ def market_quotes(kr_tickers, us_tickers):
     return fetch_quotes(kr_tickers, us_tickers)
 
 
-def quote_source(quote):
+def quote_time(quote):
     if pd.isna(quote.timestamp):
-        return quote.source
+        return ""
     if quote.source == "Yahoo 일봉":
-        return f"{quote.source} {quote.timestamp:%m-%d}"
+        return f"{quote.timestamp:%m-%d}"
     timestamp = quote.timestamp
     if timestamp.tzinfo is not None:
         timestamp = timestamp.tz_convert("Asia/Seoul")
-    return f"{quote.source} {timestamp:%m-%d %H:%M}"
+    return f"{timestamp:%m-%d %H:%M}"
 
 
 def table_height(rows):
@@ -111,93 +109,109 @@ def edit_plan(plan, rows, currency):
     } for row, values in zip(rows, edited.to_dict("records"))]
 
 
-def show_plan(rows, budget, quotes, market, fx):
+def show_plan(rows, budget, quotes, market):
     currency = "USD" if market == "us" else "원"
-    result = allocate(budget, rows, {code: quote.price for code, quote in quotes.items()}, fx)
+    result = allocate(budget, rows, {code: quote.price for code, quote in quotes.items()})
     weights = plan_weights(rows)
     if weights is None or sum(weights) != 100:
         total = sum(weights) if weights else sum(row["weight"] or 0 for row in rows)
         st.warning(f"목표 비중 합계 {total:g}%. 비중을 모두 입력하고 합계를 100%로 맞춰 주세요.")
-    total_name = f"현재가 ({currency})"
+    price_column = f"현재가 ({currency})"
+    target_column = f"목표 금액 ({currency})"
+    purchase_column = "매수·배정 금액 (USD)" if market == "us" else "매수 금액 (원)"
     table = []
     group_targets = {}
     for index, row in enumerate(rows):
         asset = row["asset"]
         quote = quotes.get(row["ticker"])
         price = row["manual_price"] or (quote.price if quote else None)
-        source = "직접 입력" if row["manual_price"] else quote_source(quote) if quote else "미확인"
-        if not asset.ticker:
-            source = "계획 현금" if asset.group == "현금" else "별도 배정"
         order = result.lines[index] if result else None
-        label = asset.label
-        if asset.ticker and market == "us":
-            label = row["ticker"]
-        elif asset.ticker and row["ticker"] != asset.ticker:
-            label = f"{asset.label} [{row['ticker']}]"
-        record = {
-            "자산군": asset.group,
-            "ETF/전략": label,
-            WEIGHT: row["weight"],
-            total_name: price,
-            TARGET: float(order.target) if order else None,
-            SHARES: order.shares if order else None,
-            PURCHASE: float(order.purchase) if order and order.purchase is not None else None,
-        }
+        record = {"자산군": asset.group}
         if market == "us":
-            record["매수 금액 (USD)"] = (
-                float(order.purchase / decimal_value(fx)) if order and order.purchase is not None else None
+            record["투자 대상"] = asset.label.split(" (", 1)[0]
+            record["ETF"] = row["ticker"]
+        else:
+            record["ETF/전략"] = (
+                f"{asset.label} [{row['ticker']}]"
+                if asset.ticker and row["ticker"] != asset.ticker else asset.label
             )
-        record["시세 기준 (KST)"] = source
+        record.update({
+            WEIGHT: row["weight"],
+            price_column: price,
+            target_column: float(order.target) if order else None,
+            SHARES: order.shares if order else None,
+            purchase_column: float(order.purchase) if order and order.purchase is not None else None,
+            "기준 시각 (KST)": quote_time(quote) if quote and not row["manual_price"] else "",
+        })
         table.append(record)
         group_targets[asset.group] = group_targets.get(asset.group, 0) + (row["weight"] or 0)
-    won = st.column_config.NumberColumn(format="localized", step=1)
+    money_column = (
+        st.column_config.NumberColumn(format="%.2f") if market == "us"
+        else st.column_config.NumberColumn(format="localized", step=1)
+    )
     st.dataframe(
         pd.DataFrame(table), width="stretch", hide_index=True,
         height=table_height(rows), row_height=ROW_HEIGHT,
         column_config={
             WEIGHT: st.column_config.NumberColumn(format="%.2f"),
-            total_name: st.column_config.NumberColumn(format="%.2f") if market == "us" else won,
-            TARGET: won,
+            price_column: money_column,
+            target_column: money_column,
             SHARES: st.column_config.NumberColumn(format="localized", step=1),
-            PURCHASE: won,
-            "매수 금액 (USD)": st.column_config.NumberColumn(format="%.2f"),
+            purchase_column: money_column,
         },
     )
     st.markdown(" · ".join(f"**{group}** {weight:g}%" for group, weight in group_targets.items()))
     if result:
         left, right = st.columns(2)
-        left.metric("예상 매수 합계", f"{result.purchase_total:,.0f}원")
-        right.metric("매수 후 남는 금액", f"{result.cash_remaining:,.0f}원")
+        def amount(value):
+            return f"{value:,.2f} USD" if market == "us" else f"{value:,.0f}원"
+
+        left.metric("예상 매수·배정 합계" if market == "us" else "예상 매수 합계", amount(result.purchase_total))
+        right.metric("남는 금액", amount(result.cash_remaining))
         st.caption(
-            f"계획 현금 {result.planned_cash:,.0f}원 · 정수 주 잔액 {result.lot_remainder:,.0f}원"
-            f" · 시세·환율 대기 {result.pending:,.0f}원 · 별도 배정 {result.external:,.0f}원"
+            f"계획 현금 {amount(result.planned_cash)} · 정수 주 잔액 {amount(result.lot_remainder)}"
+            f" · 시세 대기 {amount(result.pending)}"
         )
     elif budget is None:
         st.caption("총 자산을 입력하면 목표 금액과 매수 가능 수량이 표시됩니다.")
 
 
 def render_market(market, storage):
-    (saved_budget, saved_fx, saved_plans), worksheet, error = storage
+    (saved_budget, saved_currency, saved_fx, saved_plans), worksheet, error = storage
     if error:
         st.warning(error)
-    budget = st.number_input(
-        "총 자산 (원)", min_value=0, value=saved_budget, step=10_000,
-        key=f"static_{market}_assets",
-    )
-    fx_override = None
-    if market == "us":
-        fx_display = st.empty()
-        with st.expander("환율 직접 입력"):
-            fx_override = st.number_input(
-                "원/달러 환율 (1 USD당 원)", min_value=0.01, value=saved_fx, step=0.01,
-                key="static_us_fx",
-            )
-
+    fx_display = fx_override = None
+    awaiting_legacy_fx = False
     if market == "kr":
-        slots = dict(zip(SEASONS, st.tabs(list(SEASONS.values()))))
+        manwon = st.number_input(
+            "총 자산 (만원)", min_value=0.0,
+            value=None if saved_budget is None else saved_budget / 10_000,
+            step=1.0, format="%.4f", key="static_kr_manwon",
+            help="예: 1,500만원은 1500으로 입력하세요.",
+        )
+        budget = None if manwon is None else int(round(decimal_value(manwon) * 10_000))
     else:
-        slots = {"us": st.container()}
+        budget_slot = st.container()
+        fx_col, override_col = st.columns([3, 1], vertical_alignment="center")
+        fx_display = fx_col.empty()
+        fx_override = override_col.number_input(
+            "환율 직접 입력", min_value=0.01, value=saved_fx, step=0.01,
+            format="%.2f", key="static_us_fx", help="비워두면 자동 환율을 표시합니다.",
+        )
+        usd_budget = saved_budget
+        if saved_budget is not None and saved_currency == "원":
+            auto_fx = market_quotes((), ()).get(FX_TICKER) if fx_override is None else None
+            rate = fx_override or (auto_fx.price if auto_fx else None)
+            awaiting_legacy_fx = rate is None
+            usd_budget = None if rate is None else float(round(decimal_value(saved_budget) / decimal_value(rate), 2))
+        budget = budget_slot.number_input(
+            "총 자산 (USD)", min_value=0.0, value=usd_budget, step=10.0,
+            format="%.2f", key="static_us_dollars",
+        )
+        if awaiting_legacy_fx and budget is None:
+            st.caption("기존 원화 저장액을 환산하려면 환율을 입력하거나 달러 금액을 직접 입력하세요.")
 
+    slots = dict(zip(MARKET_PLANS[market], st.tabs(SEASONS)))
     rows_by_plan = {}
     results = {}
     for plan, slot in slots.items():
@@ -206,7 +220,10 @@ def render_market(market, storage):
             with st.expander("종목코드·비중·가격 수정"):
                 rows_by_plan[plan] = edit_plan(plan, saved_plans[plan], "USD" if market == "us" else "원")
 
-    if worksheet is not None and st.button("Google Sheets에 저장", key=f"static_save_{market}"):
+    if worksheet is not None and st.button(
+        "Google Sheets에 저장", key=f"static_save_{market}",
+        disabled=awaiting_legacy_fx and budget is None,
+    ):
         if any(sum(plan_weights(rows) or ()) != 100 for rows in rows_by_plan.values()):
             st.error("모든 배분표의 목표 비중을 100%로 맞춰 주세요.")
         elif any(
@@ -220,7 +237,7 @@ def render_market(market, storage):
                 st.success("저장했습니다. 다른 브라우저에서 페이지를 열면 이 설정을 불러옵니다.")
             except Exception:
                 st.error("저장하지 못했습니다. 시트의 연결과 편집 권한을 확인해 주세요.")
-    return budget, fx_override, rows_by_plan, results, fx_display if market == "us" else None
+    return budget, fx_override, rows_by_plan, results, fx_display
 
 
 def main():
@@ -247,18 +264,17 @@ def main():
     }
     quotes = market_quotes(tickers["kr"], tickers["us"])
     for market, (budget, fx_override, rows_by_plan, results, fx_display) in markets.items():
-        fx = 1
-        if market == "us":
+        if fx_display is not None:
             fx_quote = quotes.get(FX_TICKER)
             fx = fx_override or (fx_quote.price if fx_quote else None)
-            source = "직접 입력" if fx_override else (quote_source(fx_quote) if fx_quote else "")
             if fx is None:
-                fx_display.warning("원/달러 환율을 확인하지 못했습니다. 환율을 직접 입력해 주세요.")
+                fx_display.caption("원/달러 환율을 확인하지 못했습니다.")
             else:
-                fx_display.caption(f"원/달러 환율 {fx:,.2f}원 · {source}")
+                time = quote_time(fx_quote) if fx_override is None and fx_quote else ""
+                fx_display.markdown(f"**원/달러 환율 {fx:,.2f}원**" + (f" · {time} KST" if time else ""))
         for plan, container in results.items():
             with container:
-                show_plan(rows_by_plan[plan], budget, quotes, market, fx)
+                show_plan(rows_by_plan[plan], budget, quotes, market)
 
 
 if __name__ == "__main__":
