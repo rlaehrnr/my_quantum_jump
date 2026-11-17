@@ -185,21 +185,21 @@ def set_currency_source(key):
     st.session_state[CURRENCY_SOURCE] = key
 
 
-def render_us_budget(saved_budget, saved_currency, saved_fx):
-    left, center, right = st.columns(3)
-    fx_display = center.empty()
-    fx_override = center.number_input(
-        "환율 직접 입력", min_value=0.01, value=saved_fx, step=0.01,
-        format="%.2f", key="static_us_fx", help="비워두면 자동 환율을 사용합니다.",
-    )
+def render_us_budget(saved_budget, saved_currency, fx_override):
+    left, center, right = st.columns(3, vertical_alignment="center")
     quote = market_quotes((), (FX_TICKER,)).get(FX_TICKER) if fx_override is None else None
     rate = decimal_value(fx_override if fx_override is not None else (quote.price if quote else None))
-    if rate is None:
-        fx_display.caption("원/달러 환율을 확인하지 못했습니다.")
-    else:
-        time = quote_time(quote) if quote else ""
-        fx_display.markdown(f"**원/달러 환율 {rate:,.2f}원**" + (f" · {time} KST" if time else ""))
-
+    rate_label = f"원/달러 환율 {rate:,.2f}원" if rate is not None else "원/달러 환율 미확인"
+    time = quote_time(quote) if quote else ""
+    center.markdown(
+        '<div style="text-align:center">'
+        f"<strong>{rate_label}</strong>"
+        '<div role="img" aria-label="달러와 원화 양방향 환산" '
+        'style="font-size:1.75rem;line-height:1.15">⇄</div>'
+        + (f"<small>{time} KST</small>" if time else "")
+        + "</div>",
+        unsafe_allow_html=True,
+    )
     if CURRENCY_SOURCE not in st.session_state:
         initial_key = KRW_INPUT if saved_currency == "원" else USD_INPUT
         st.session_state[CURRENCY_SOURCE] = initial_key
@@ -225,14 +225,13 @@ def render_us_budget(saved_budget, saved_currency, saved_fx):
         key=KRW_INPUT, on_change=set_currency_source, args=(KRW_INPUT,),
     )
     if source == KRW_INPUT:
-        return dollars, fx_override, won, "원"
-    return dollars, fx_override, dollars, "USD"
+        return dollars, won, "원"
+    return dollars, dollars, "USD"
 
-def render_market(market, storage):
-    (saved_budget, saved_currency, saved_fx, saved_plans), worksheet, error = storage
+def render_market(market, storage, fx_override=None):
+    (saved_budget, saved_currency, _, saved_plans), worksheet, error = storage
     if error:
         st.warning(error)
-    fx_override = None
     if market == "kr":
         manwon = st.number_input(
             "총 자산 (만원)", min_value=0.0,
@@ -243,7 +242,7 @@ def render_market(market, storage):
         budget = None if manwon is None else int(round(decimal_value(manwon) * 10_000))
         saved_amount, currency = budget, "원"
     else:
-        budget, fx_override, saved_amount, currency = render_us_budget(saved_budget, saved_currency, saved_fx)
+        budget, saved_amount, currency = render_us_budget(saved_budget, saved_currency, fx_override)
     slots = dict(zip(MARKET_PLANS[market], st.tabs(SEASONS)))
     rows_by_plan = {}
     results = {}
@@ -277,14 +276,21 @@ def main():
     settings = session_settings()
     if all(worksheet is None and error is None for _, worksheet, error in settings.values()):
         st.caption("Google Sheets 미연결 · 입력은 현재 브라우저 세션에만 유지됩니다.")
-    if st.button("시세 새로고침", key="static_refresh_quotes"):
+    refresh, tools = st.columns(2)
+    if refresh.button("시세 새로고침", key="static_refresh_quotes"):
         market_quotes.clear()
-
+    (_, _, saved_fx, _), _, _ = settings["us"]
+    with tools.container(horizontal=True, horizontal_alignment="right"):
+        with st.popover("환율 설정", icon=":material/tune:", type="tertiary"):
+            fx_override = st.number_input(
+                "환율 직접 입력", min_value=0.01, value=saved_fx, step=0.01,
+                format="%.2f", key="static_us_fx", help="비워두면 미국 탭에 자동 환율을 적용합니다.",
+            )
     kr, us = st.tabs(["한국", "미국"])
     markets = {}
     for market, tab in (("kr", kr), ("us", us)):
         with tab:
-            markets[market] = render_market(market, settings[market])
+            markets[market] = render_market(market, settings[market], fx_override if market == "us" else None)
     tickers = {
         market: tuple(sorted({
             row["ticker"] for rows in market_data[1].values() for row in rows

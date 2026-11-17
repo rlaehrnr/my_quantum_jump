@@ -87,8 +87,9 @@ class StaticAllocationPageTest(unittest.TestCase):
         self.assertTrue(all(x.proto.row_height == 32 for x in charts))
         self.assertEqual(
             [widget.label for widget in app.number_input],
-            ["총 자산 (만원)", "총 자산 (USD)", "환율 직접 입력", "총 자산 (원)"],
+            ["환율 직접 입력", "총 자산 (만원)", "총 자산 (USD)", "총 자산 (원)"],
         )
+        self.assertTrue(any("⇄" in item.value for item in app.markdown))
         self.assertIn("칠레 주식", list(charts[-1].value["투자 대상"]))
         self.assertIn("브라질 주식", list(charts[-1].value["투자 대상"]))
         self.assertTrue(all("기준 시각 (KST)" in chart.value for chart in charts))
