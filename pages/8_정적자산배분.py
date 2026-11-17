@@ -234,12 +234,12 @@ def render_market(market, storage, fx_override=None):
         st.warning(error)
     if market == "kr":
         manwon = st.number_input(
-            "총 자산 (만원)", min_value=0.0,
-            value=None if saved_budget is None else saved_budget / 10_000,
-            step=1.0, format="%.4f", key="static_kr_manwon",
+            "총 자산 (만원)", min_value=0,
+            value=None if saved_budget is None else (saved_budget + 5_000) // 10_000,
+            step=1, format="%d", key="static_kr_manwon_integer",
             help="예: 1,500만원은 1500으로 입력하세요.",
         )
-        budget = None if manwon is None else int(round(decimal_value(manwon) * 10_000))
+        budget = None if manwon is None else manwon * 10_000
         saved_amount, currency = budget, "원"
     else:
         budget, saved_amount, currency = render_us_budget(saved_budget, saved_currency, fx_override)

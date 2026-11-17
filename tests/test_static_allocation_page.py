@@ -90,6 +90,7 @@ class StaticAllocationPageTest(unittest.TestCase):
             ["환율 직접 입력", "총 자산 (만원)", "총 자산 (USD)", "총 자산 (원)"],
         )
         self.assertTrue(any("⇄" in item.value for item in app.markdown))
+        self.assertEqual(app.number_input(key="static_kr_manwon_integer").proto.format, "%d")
         self.assertIn("칠레 주식", list(charts[-1].value["투자 대상"]))
         self.assertIn("브라질 주식", list(charts[-1].value["투자 대상"]))
         self.assertTrue(all("기준 시각 (KST)" in chart.value for chart in charts))
