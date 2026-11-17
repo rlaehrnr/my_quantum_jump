@@ -211,8 +211,9 @@ def read_settings(worksheet, plans):
     return budget, currency, float(fx) if fx is not None else None, rows
 
 
-def write_settings(worksheet, budget, fx, plans):
-    currency = "USD" if "us" in plans else "원"
+def write_settings(worksheet, budget, fx, plans, *, currency=None):
+    if currency is None:
+        currency = "USD" if "us" in plans else "원"
     values = [[
         BUDGET_HEADERS[currency], "" if budget is None else budget, "직접 입력 환율",
         fx or "", "배분표 버전", PLAN_VERSION,

@@ -60,7 +60,7 @@ def fetch_quotes(kr_tickers, us_tickers):
     except (requests.RequestException, ValueError, TypeError, AttributeError):
         quotes = {}
     yahoo_codes = {code: code + ".KS" for code in kr_tickers if code not in quotes}
-    yahoo_codes.update({code: code for code in (*us_tickers, FX_TICKER)})
+    yahoo_codes.update({code: code for code in us_tickers})
     with ThreadPoolExecutor(max_workers=8) as pool:
         for code, quote in zip(yahoo_codes, pool.map(yahoo_quote, yahoo_codes.values())):
             if quote is not None:

@@ -87,12 +87,32 @@ class StaticAllocationPageTest(unittest.TestCase):
         self.assertTrue(all(x.proto.row_height == 32 for x in charts))
         self.assertEqual(
             [widget.label for widget in app.number_input],
-            ["총 자산 (만원)", "총 자산 (USD)", "환율 직접 입력"],
+            ["총 자산 (만원)", "총 자산 (USD)", "환율 직접 입력", "총 자산 (원)"],
         )
         self.assertIn("칠레 주식", list(charts[-1].value["투자 대상"]))
         self.assertIn("브라질 주식", list(charts[-1].value["투자 대상"]))
         self.assertTrue(all("기준 시각 (KST)" in chart.value for chart in charts))
 
+    def test_dollar_and_won_inputs_update_each_other(self):
+        with patch("utils.static_allocation_quotes.fetch_quotes", return_value={}):
+            app = AppTest.from_file(str(PAGE)).run()
+            usd = "static_us_dollars"
+            krw = "static_us_won"
+            fx = "static_us_fx"
+            app.number_input(key=fx).set_value(1_250.0)
+            app.number_input(key=usd).set_value(120.0)
+            app.run()
+            self.assertEqual(app.number_input(key=krw).value, 150_000)
+
+            app.number_input(key=krw).set_value(200_000).run()
+            self.assertEqual(app.number_input(key=usd).value, 160.0)
+            app.number_input(key=fx).set_value(1_000.0).run()
+            self.assertEqual(app.number_input(key=krw).value, 200_000)
+            self.assertEqual(app.number_input(key=usd).value, 200.0)
+
+            app.number_input(key=usd).set_value(None).run()
+            self.assertIsNone(app.number_input(key=krw).value)
+            self.assertFalse(app.exception)
     def test_save_then_new_browser_loads_settings_and_recalculates_in_usd(self):
         from unittest.mock import Mock
         from utils.static_allocation_quotes import Quote
@@ -124,6 +144,20 @@ class StaticAllocationPageTest(unittest.TestCase):
             self.assertFalse(new_browser.exception)
             self.assertEqual(new_browser.number_input(key="static_us_dollars").value, 120.0)
             self.assertEqual(new_browser.number_input(key="static_us_fx").value, 1_250.0)
+            self.assertEqual(new_browser.number_input(key="static_us_won").value, 150_000)
             result = next(x.value for x in new_browser.dataframe if "매수·배정 금액 (USD)" in x.value)
             self.assertEqual(result.iloc[0]["매수 (주)"], 1)
             self.assertEqual(result.iloc[0]["매수·배정 금액 (USD)"], 12)
+
+            new_browser.number_input(key="static_us_won").set_value(150_001)
+            new_browser.button(key="static_save_us").click()
+            new_browser.run()
+            self.assertFalse(new_browser.exception)
+            self.assertEqual(worksheets["미국"].values[0][:2], ["총 자산 (원)", 150_001])
+
+            won_browser = AppTest.from_file(str(PAGE))
+            won_browser.secrets.update(app.secrets)
+            won_browser.run()
+            self.assertFalse(won_browser.exception)
+            self.assertEqual(won_browser.number_input(key="static_us_won").value, 150_001)
+            self.assertEqual(won_browser.number_input(key="static_us_dollars").value, 120.0)

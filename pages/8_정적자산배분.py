@@ -176,12 +176,63 @@ def show_plan(rows, budget, quotes, market):
         st.caption("총 자산을 입력하면 목표 금액과 매수 가능 수량이 표시됩니다.")
 
 
+USD_INPUT = "static_us_dollars"
+KRW_INPUT = "static_us_won"
+CURRENCY_SOURCE = "static_us_currency_source"
+
+
+def set_currency_source(key):
+    st.session_state[CURRENCY_SOURCE] = key
+
+
+def render_us_budget(saved_budget, saved_currency, saved_fx):
+    left, center, right = st.columns(3)
+    fx_display = center.empty()
+    fx_override = center.number_input(
+        "환율 직접 입력", min_value=0.01, value=saved_fx, step=0.01,
+        format="%.2f", key="static_us_fx", help="비워두면 자동 환율을 사용합니다.",
+    )
+    quote = market_quotes((), (FX_TICKER,)).get(FX_TICKER) if fx_override is None else None
+    rate = decimal_value(fx_override if fx_override is not None else (quote.price if quote else None))
+    if rate is None:
+        fx_display.caption("원/달러 환율을 확인하지 못했습니다.")
+    else:
+        time = quote_time(quote) if quote else ""
+        fx_display.markdown(f"**원/달러 환율 {rate:,.2f}원**" + (f" · {time} KST" if time else ""))
+
+    if CURRENCY_SOURCE not in st.session_state:
+        initial_key = KRW_INPUT if saved_currency == "원" else USD_INPUT
+        st.session_state[CURRENCY_SOURCE] = initial_key
+        st.session_state.setdefault(initial_key, saved_budget)
+
+    source = st.session_state[CURRENCY_SOURCE]
+    amount = decimal_value(st.session_state[source])
+    if source == KRW_INPUT:
+        st.session_state[USD_INPUT] = (
+            float(round(amount / rate, 2)) if amount is not None and rate else None
+        )
+    else:
+        st.session_state[KRW_INPUT] = (
+            int(round(amount * rate)) if amount is not None and rate else None
+        )
+
+    dollars = left.number_input(
+        "총 자산 (USD)", min_value=0.0, value=None, step=10.0, format="%.2f",
+        key=USD_INPUT, on_change=set_currency_source, args=(USD_INPUT,),
+    )
+    won = right.number_input(
+        "총 자산 (원)", min_value=0, value=None, step=10_000,
+        key=KRW_INPUT, on_change=set_currency_source, args=(KRW_INPUT,),
+    )
+    if source == KRW_INPUT:
+        return dollars, fx_override, won, "원"
+    return dollars, fx_override, dollars, "USD"
+
 def render_market(market, storage):
     (saved_budget, saved_currency, saved_fx, saved_plans), worksheet, error = storage
     if error:
         st.warning(error)
-    fx_display = fx_override = None
-    awaiting_legacy_fx = False
+    fx_override = None
     if market == "kr":
         manwon = st.number_input(
             "총 자산 (만원)", min_value=0.0,
@@ -190,27 +241,9 @@ def render_market(market, storage):
             help="예: 1,500만원은 1500으로 입력하세요.",
         )
         budget = None if manwon is None else int(round(decimal_value(manwon) * 10_000))
+        saved_amount, currency = budget, "원"
     else:
-        budget_slot = st.container()
-        fx_col, override_col = st.columns([3, 1], vertical_alignment="center")
-        fx_display = fx_col.empty()
-        fx_override = override_col.number_input(
-            "환율 직접 입력", min_value=0.01, value=saved_fx, step=0.01,
-            format="%.2f", key="static_us_fx", help="비워두면 자동 환율을 표시합니다.",
-        )
-        usd_budget = saved_budget
-        if saved_budget is not None and saved_currency == "원":
-            auto_fx = market_quotes((), ()).get(FX_TICKER) if fx_override is None else None
-            rate = fx_override or (auto_fx.price if auto_fx else None)
-            awaiting_legacy_fx = rate is None
-            usd_budget = None if rate is None else float(round(decimal_value(saved_budget) / decimal_value(rate), 2))
-        budget = budget_slot.number_input(
-            "총 자산 (USD)", min_value=0.0, value=usd_budget, step=10.0,
-            format="%.2f", key="static_us_dollars",
-        )
-        if awaiting_legacy_fx and budget is None:
-            st.caption("기존 원화 저장액을 환산하려면 환율을 입력하거나 달러 금액을 직접 입력하세요.")
-
+        budget, fx_override, saved_amount, currency = render_us_budget(saved_budget, saved_currency, saved_fx)
     slots = dict(zip(MARKET_PLANS[market], st.tabs(SEASONS)))
     rows_by_plan = {}
     results = {}
@@ -220,10 +253,7 @@ def render_market(market, storage):
             with st.expander("종목코드·비중·가격 수정"):
                 rows_by_plan[plan] = edit_plan(plan, saved_plans[plan], "USD" if market == "us" else "원")
 
-    if worksheet is not None and st.button(
-        "Google Sheets에 저장", key=f"static_save_{market}",
-        disabled=awaiting_legacy_fx and budget is None,
-    ):
+    if worksheet is not None and st.button("Google Sheets에 저장", key=f"static_save_{market}"):
         if any(sum(plan_weights(rows) or ()) != 100 for rows in rows_by_plan.values()):
             st.error("모든 배분표의 목표 비중을 100%로 맞춰 주세요.")
         elif any(
@@ -233,11 +263,11 @@ def render_market(market, storage):
             st.error("종목코드 형식을 확인해 주세요.")
         else:
             try:
-                write_settings(worksheet, budget, fx_override, rows_by_plan)
+                write_settings(worksheet, saved_amount, fx_override, rows_by_plan, currency=currency)
                 st.success("저장했습니다. 다른 브라우저에서 페이지를 열면 이 설정을 불러옵니다.")
             except Exception:
                 st.error("저장하지 못했습니다. 시트의 연결과 편집 권한을 확인해 주세요.")
-    return budget, fx_override, rows_by_plan, results, fx_display
+    return budget, rows_by_plan, results
 
 
 def main():
@@ -257,21 +287,13 @@ def main():
             markets[market] = render_market(market, settings[market])
     tickers = {
         market: tuple(sorted({
-            row["ticker"] for rows in market_data[2].values() for row in rows
+            row["ticker"] for rows in market_data[1].values() for row in rows
             if row["asset"].ticker and not row["manual_price"] and valid_ticker(row["ticker"], market)
         }))
         for market, market_data in markets.items()
     }
     quotes = market_quotes(tickers["kr"], tickers["us"])
-    for market, (budget, fx_override, rows_by_plan, results, fx_display) in markets.items():
-        if fx_display is not None:
-            fx_quote = quotes.get(FX_TICKER)
-            fx = fx_override or (fx_quote.price if fx_quote else None)
-            if fx is None:
-                fx_display.caption("원/달러 환율을 확인하지 못했습니다.")
-            else:
-                time = quote_time(fx_quote) if fx_override is None and fx_quote else ""
-                fx_display.markdown(f"**원/달러 환율 {fx:,.2f}원**" + (f" · {time} KST" if time else ""))
+    for market, (budget, rows_by_plan, results) in markets.items():
         for plan, container in results.items():
             with container:
                 show_plan(rows_by_plan[plan], budget, quotes, market)
