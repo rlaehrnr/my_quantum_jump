@@ -3,6 +3,7 @@ import streamlit as st
 from datetime import datetime, timedelta
 
 from utils.kr_index import load_kr_index
+from utils.kr_inverse import KOSPI_INVERSE_FIRST_MONTH, KOSPI_INVERSE_NAME, fetch_inverse_daily, read_inverse_daily
 
 # ==========================================
 # 🇰🇷 한국 주식 전용 함수
@@ -50,7 +51,7 @@ def get_kospi_ma_all(target_date_str):
         mas = {
             4: round(df['Close'].rolling(80).mean().iloc[-1], 2), 
             5: round(df['Close'].rolling(100).mean().iloc[-1], 2), 
-            6: round(df['Close'].rolling(120).mean().iloc[-1], 2), 
+            6: df['Close'].rolling(120).mean().iloc[-1],
             10: round(df['Close'].rolling(200).mean().iloc[-1], 2), 
             12: round(df['Close'].rolling(240).mean().iloc[-1], 2)
         }
@@ -317,20 +318,85 @@ def get_gold_returns():
 #     m월 진입 판단에는 m-1월말 시점 값 below[m-1]을 써야 한다.
 # 반환: {'YYYY-MM': True/False}. True = 금이 MA 아래 → 금 대신 현금 보유 신호.
 # ==========================================
+def _gold_month_end_prices():
+    gold = get_gold_krw_monthly()
+    if gold is None or gold.empty:
+        return pd.Series(dtype=float)
+    price = gold["price"].astype(float).sort_index()
+    months = pd.period_range(price.index[0], price.index[-1], freq="M").astype(str)
+    return price.reindex(months)
+
+
 @st.cache_data(ttl="6h", show_spinner=False)
-def get_gold_timing_for_backtest(gold_ma_months):
-    """금(KRX 환노출) N개월선 이탈 여부 dict. True면 금 대신 현금."""
-    gdf = get_gold_krw_monthly()  # index='YYYY-MM', columns=['price','ret']
-    if gdf is None or gdf.empty:
+def get_gold_timing_for_backtest(gold_ma_months, *, require_consecutive=False):
+    """금(KRX 환노출) N개월선 이탈 여부 dict."""
+    if require_consecutive:
+        price = _gold_month_end_prices()
+    else:
+        gold = get_gold_krw_monthly()
+        price = gold["price"].astype(float) if gold is not None and not gold.empty else pd.Series(dtype=float)
+    if price.empty:
         return {}
-    price = gdf['price'].astype(float)
     ma = price.rolling(int(gold_ma_months)).mean()
     below = price < ma  # 각 월말 종가가 그 시점 N개월 MA 아래인가 (MA=NaN이면 False)
     below_shifted = below.shift(1)  # 투자월 m의 신호 = 직전 월(m-1) 시점 값
+    if require_consecutive:
+        next_month = str(pd.Period(below.index[-1], freq="M") + 1)
+        below_shifted.loc[next_month] = below.iloc[-1]  # 새 달 금 종가 없이도 전달 말로 판정
     out = {}
     for ym, v in below_shifted.items():
         out[str(ym)] = (False if pd.isna(v) else bool(v))
     return out
+
+
+def get_gold_month_end_ma(target_date):
+    """종목선정월 말 종가와 월말 종가 이동평균."""
+    month = pd.Timestamp(target_date).strftime("%Y-%m")
+    price = _gold_month_end_prices()
+    if month not in price.index or pd.isna(price.loc[month]):
+        return 0.0, {}
+    price = price.loc[:month]
+    return price.iloc[-1], {n: price.rolling(n).mean().iloc[-1] for n in (4, 5, 6, 10, 12)}
+
+
+@st.cache_data(ttl=3600, show_spinner=False)
+def get_kospi_inverse_daily():
+    """로봇 CSV를 우선 사용하고 최신 시세가 필요할 때 원천을 조회한다."""
+    try:
+        local = read_inverse_daily()
+    except (OSError, KeyError, ValueError):
+        local = pd.Series(dtype=float)
+    if not local.empty:
+        recent = pd.Timestamp.now(tz="Asia/Seoul").tz_localize(None).normalize() - pd.Timedelta(days=1)
+        if local.index[-1] >= recent:
+            return local
+    try:
+        fresh = fetch_inverse_daily()
+        if not fresh.empty and local.index.isin(fresh.index).all():
+            return fresh
+    except (OSError, ValueError, SyntaxError, IndexError, TypeError) as exc:
+        print(f"⚠️ KODEX 인버스 시세 조회 실패: {exc}")
+    return local
+
+
+def get_kospi_inverse_returns():
+    """직전 월말 종가가 있는 월의 실제 ETF 가격수익률(%)."""
+    daily = get_kospi_inverse_daily()
+    if daily.empty:
+        return {}
+    monthly = daily.groupby(daily.index.to_period("M")).last()
+    last_day = daily.index[-1]
+    if monthly.index[-1] < pd.Timestamp.now(tz="Asia/Seoul").tz_localize(None).to_period("M"):
+        try:
+            market = _load_kospi_index()
+            sessions = market.index[market.index.to_period("M") == monthly.index[-1]]
+            if len(sessions) and sessions.max() > last_day:
+                monthly.iloc[-1] = float("nan")
+        except (OSError, ValueError, AttributeError):
+            pass
+    full_index = pd.period_range(monthly.index[0], monthly.index[-1], freq="M")
+    returns = monthly.reindex(full_index).pct_change(fill_method=None).dropna() * 100
+    return {str(month): ret for month, ret in returns.items()}
 
 
 # ==========================================
@@ -465,6 +531,7 @@ def get_strategy_stocks_korea(df):
 
 
 KOREA_GOLD_DEFENSE_MA_MONTHS = 6
+KOSPI_USE_INVERSE = True  # 라이브와 백테스트 화면의 공통 기본값
 GOLD_CHART_URL = "https://m.stock.naver.com/fchart/marketindex/metals/M04020000"
 
 
@@ -474,12 +541,33 @@ def get_gold_defense_allocation(gold_curr, gold_ma_6):
     return "현금 100" if gold_below_6 else "금 100"
 
 
+def _kospi200_universe(frame):
+    cap = '시가총액(억)' if '시가총액(억)' in frame.columns else '시가총액'
+    return frame.sort_values(cap, ascending=False).head(200) if cap in frame.columns else frame
+
+
+def _kospi_breadth_counts(frame):
+    return tuple(int(pd.to_numeric(frame[col], errors="coerce").lt(0).sum())
+                 if col in frame.columns else 0 for col in ('1개월(%)', '3개월(%)'))
+
+
+def _kospi_breadth_is_weak(counts):
+    return min(counts) >= 100
+
+
+def _kospi_defense_asset(gold_below, is_extension, inverse_available):
+    """직접 방어 중 금선 아래에서만 1배 인버스를 허용한다."""
+    if not gold_below:
+        return '금'
+    return '인버스' if inverse_available and not is_extension else '현금'
+
+
 def get_gold_chart_link(display_value):
     """네이버 국내 금 현재가 차트 링크에 화면 표시값을 붙인다."""
     return f"{GOLD_CHART_URL}#{display_value}"
 
 
-def get_korea_market_status(df_month):
+def get_korea_market_status(df_month, df_previous=None):
     """월간(저번달 말 선정) 데이터 한 달치로 '이번달 투자/중지'를 판정한다.
 
     ⚠️ 판정의 단일 출처. KOSPI200 페이지 '월별 상세 분석'(탭1)과 홈 대시보드가
@@ -491,10 +579,11 @@ def get_korea_market_status(df_month):
       - 하락장:      1개월 & 3개월 수익률이 음수인 종목이 각각 100개 이상
       - 6개월선 이탈: KOSPI 종가 < 120일(6개월) 이동평균
       - 둘 중 하나라도 참이면 투자 중지
-    방어 시 금 배분: 금이 6개월선 이상→금100 / 6개월선 아래→현금100
+    직접 방어의 금선 이탈에 1배 인버스를 사용하고, 하락장 후 연장에는 현금을 사용한다.
 
     Args:
         df_month: 한 투자월치 월간 데이터 (종목선정일·1/3/6/12개월(%) 포함)
+        df_previous: 연장 판단에 사용할 직전 투자월 데이터
 
     Returns:
         dict 또는 None(빈 입력). 키:
@@ -508,30 +597,42 @@ def get_korea_market_status(df_month):
                  and not pd.isna(df_month['종목선정일'].iloc[0])
                  else datetime.today().strftime('%Y-%m-%d'))
 
-    df_all, _, _ = get_strategy_stocks_korea(df_month)
-    neg_1m = int((pd.to_numeric(df_all['1개월(%)'], errors='coerce') < 0).sum()) if '1개월(%)' in df_all else 0
-    neg_3m = int((pd.to_numeric(df_all['3개월(%)'], errors='coerce') < 0).sum()) if '3개월(%)' in df_all else 0
-    is_bad_market = (neg_1m >= 100) and (neg_3m >= 100)
+    neg_1m, neg_3m = _kospi_breadth_counts(_kospi200_universe(df_month))
+    is_bad_market = _kospi_breadth_is_weak((neg_1m, neg_3m))
 
     kospi_curr, kospi_mas = get_kospi_ma_all(base_date)
     is_below_ma = (kospi_curr > 0) and (kospi_curr < kospi_mas.get(6, 0))
 
-    gold_curr, gold_mas = get_gold_ma_all(base_date)
-    defense_alloc = get_gold_defense_allocation(
-        gold_curr, gold_mas.get(KOREA_GOLD_DEFENSE_MA_MONTHS, 0)
+    selection_month = pd.Period(base_date, freq="M")
+    month = df_month['투자월'].iloc[0] if '투자월' in df_month else str(selection_month + 1)
+    prev_breadth = (
+        df_previous is not None and not df_previous.empty and '투자월' in df_previous
+        and df_previous['투자월'].eq(str(pd.Period(month, freq="M") - 1)).all()
+        and _kospi_breadth_is_weak(_kospi_breadth_counts(_kospi200_universe(df_previous)))
     )
+    is_direct = is_bad_market or is_below_ma
+    is_extension = not is_direct and prev_breadth
+    stop = is_direct or is_extension
+    gold_curr, gold_mas = get_gold_month_end_ma(selection_month.end_time)
+    gold_ma = gold_mas.get(KOREA_GOLD_DEFENSE_MA_MONTHS, float("nan"))
+    gold_below = gold_curr > 0 and gold_curr < gold_ma
+    asset = _kospi_defense_asset(
+        gold_below, is_extension, KOSPI_USE_INVERSE and str(month) >= KOSPI_INVERSE_FIRST_MONTH,
+    ) if gold_curr > 0 else '현금'
+    defense_alloc = f"{asset} 100"
 
-    stop = is_bad_market or is_below_ma
     reason = (("하락장" if is_bad_market else "")
               + (" + " if is_bad_market and is_below_ma else "")
-              + ("6개월선 이탈" if is_below_ma else "")) or "안전"
+              + ("6개월선 이탈" if is_below_ma else "")) or ("하락장 연장" if is_extension else "안전")
     status = f"🛑 투자 중지 ({defense_alloc})" if stop else "✅ 투자 진행"
 
     return {
         'stop': stop, 'reason': reason, 'status': status, 'defense_alloc': defense_alloc,
+        'defense_asset': asset if stop else None, 'is_extension': is_extension,
         'is_bad_market': is_bad_market, 'is_below_ma': is_below_ma,
         'neg_1m': neg_1m, 'neg_3m': neg_3m, 'base_date': base_date,
         'kospi_curr': kospi_curr, 'kospi_mas': kospi_mas,
+        'gold_curr': gold_curr, 'gold_mas': gold_mas,
     }
 
 
@@ -550,7 +651,8 @@ def get_korea_market_status(df_month):
 def run_backtest_k200(df, start_year, end_year, ma_months, apply_timing, 
                      rank_p, rank_s, perf_pct, spec_12m_pct,
                      trading_cost_pct=0.25, gold_returns=None, use_gold=False,
-                     use_gold_ma=False, gold_ma_months=KOREA_GOLD_DEFENSE_MA_MONTHS):
+                     use_gold_ma=False, gold_ma_months=KOREA_GOLD_DEFENSE_MA_MONTHS, *,
+                     use_inverse=False, inverse_returns=None):
     """
     Args:
         df: 한국 데이터프레임
@@ -568,6 +670,8 @@ def run_backtest_k200(df, start_year, end_year, ma_months, apply_timing,
         use_gold_ma: True면(그리고 use_gold=True) 방어 구간이라도 금이 N개월 이동평균선
                      아래이면 금 매수를 중지하고 현금(0%)을 보유.
         gold_ma_months: 금 이동평균 기간(월). use_gold_ma=True일 때만 사용.
+        use_inverse: 금선 이탈로 인한 직접 방어 현금을 1배 인버스로 대체.
+        inverse_returns: 월별 실제 ETF 수익률(%). 미상장·결측 월은 현금.
 
     Returns:
         (df_res, df_trades, df_counterfactual)
@@ -583,11 +687,20 @@ def run_backtest_k200(df, start_year, end_year, ma_months, apply_timing,
     # 🥇 금 오버레이용: 직전 '처리된' 달의 원시(raw) 신호 추적
     #    (raw = 금 오버레이 적용 전의 순수 마켓타이밍 신호)
     gold_ret_map = gold_returns if isinstance(gold_returns, dict) else {}
-    prev_raw_invested = None   # 직전 달 주식 투자 신호(True/False)
-    prev_raw_reason = ""       # 직전 달 방어 사유(raw)
+    use_inverse = use_inverse and apply_timing and use_gold and use_gold_ma
+    inverse_ret_map = inverse_returns if isinstance(inverse_returns, dict) else {}
+    previous_breadth = False
+    previous_month = None
+    if use_inverse:
+        previous_month = f"{start_year - 1}-12"
+        warmup = _kospi200_universe(df[df['투자월'] == previous_month])
+        previous_breadth = _kospi_breadth_is_weak(_kospi_breadth_counts(warmup))
 
     # 🥇 금 N개월선 이탈 신호 맵 (use_gold_ma=True일 때만). True면 방어 구간에서 금 대신 현금.
-    gold_below_map = get_gold_timing_for_backtest(gold_ma_months) if (use_gold and use_gold_ma) else {}
+    gold_below_map = {}
+    if use_gold and use_gold_ma:
+        gold_below_map = (get_gold_timing_for_backtest(gold_ma_months, require_consecutive=True) if use_inverse
+                          else get_gold_timing_for_backtest(gold_ma_months))
 
     for m in sorted(df['투자월'].dropna().unique()):
         m_yr = int(m.split('-')[0])
@@ -596,16 +709,13 @@ def run_backtest_k200(df, start_year, end_year, ma_months, apply_timing,
         if m_data.empty: continue
 
         # [K200 전용] 시총 상위 200위 자르기
-        cap_col = '시가총액(억)' if '시가총액(억)' in m_data.columns else '시가총액'
-        if cap_col in m_data.columns:
-            m_data = m_data.sort_values(by=cap_col, ascending=False).head(200)
+        m_data = _kospi200_universe(m_data)
 
         ret_col = '다음달수익률(%)' if '다음달수익률(%)' in m_data.columns else '이번달수익률'
         is_below_ma = timing_dict.get(m, False)
         
         # [K200 전용] 하락 종목 100개 이상 시 현금 방어
-        neg_1m, neg_3m = (m_data['1개월(%)'] < 0).sum(), (m_data['3개월(%)'] < 0).sum()
-        is_bad_market = (neg_1m >= 100 and neg_3m >= 100)
+        is_bad_market = _kospi_breadth_is_weak(_kospi_breadth_counts(m_data))
         
         mult = 0.0 if (apply_timing and (is_bad_market or is_below_ma)) else 1.0
         q_p, q_s = 1.0 - (perf_pct / 100.0), 1.0 - (spec_12m_pct / 100.0)
@@ -685,9 +795,8 @@ def run_backtest_k200(df, start_year, end_year, ma_months, apply_timing,
         raw_invested = (mult > 0)                       # 순수 주식 투자 신호
         is_defense = (not raw_invested)                 # 이번 달 방어(투자중지)?
         # 직전 달이 '하락장' 포함 사유로 방어였고, 이번 달은 재개 신호 → 금 1개월 연장
-        is_extension = (use_gold and raw_invested
-                        and (prev_raw_invested is False)
-                        and ("하락장" in str(prev_raw_reason)))
+        consecutive = not use_inverse or previous_month == str(pd.Period(m, freq="M") - 1)
+        is_extension = use_gold and raw_invested and previous_breadth and consecutive
         is_gold = use_gold and (is_defense or is_extension)
 
         # 전략별 수익(%) 묶음
@@ -715,16 +824,24 @@ def run_backtest_k200(df, start_year, end_year, ma_months, apply_timing,
             gold_below = bool(gold_below_map.get(m, False)) if use_gold_ma else False
 
             if gold_below:
-                # 금이 N개월선 아래 → 금 매수 중지, 현금(0%) 보유 (비용 없음)
+                inverse_ret = inverse_ret_map.get(m)
+                inverse_requested = use_inverse and not is_extension
+                defense_asset = _kospi_defense_asset(
+                    gold_below, is_extension,
+                    inverse_requested and m >= KOSPI_INVERSE_FIRST_MONTH and pd.notna(inverse_ret),
+                )
+                net_ret = float(inverse_ret) - cost_pct if defense_asset == '인버스' else 0.0
                 for kc in strat_vals:
-                    strat_vals[kc] = 0.0
-                defense_asset = '현금'
-                _ma_tag = f"(금 {gold_ma_months}M선이탈→현금)"
+                    strat_vals[kc] = net_ret
+                target = defense_asset
+                if inverse_requested and defense_asset == '현금':
+                    target = "현금(인버스 종가 없음)"
+                _ma_tag = f"(금 {gold_ma_months}M선이탈→{target})"
                 if is_extension:
                     rec_reason = f"하락장 연장 {_ma_tag}"
                 else:
                     rec_reason = (raw_reason + f" {_ma_tag}") if raw_reason else f"방어 {_ma_tag}"
-                gold_log = ('현금(금 MA이탈)', 0.0)
+                gold_log = (KOSPI_INVERSE_NAME, round(net_ret, 2)) if defense_asset == '인버스' else ('현금(금 MA이탈)', 0.0)
             else:
                 gv = gold_ret_map.get(m)
                 g_ret = None if (gv is None or pd.isna(gv)) else float(gv)
@@ -774,7 +891,7 @@ def run_backtest_k200(df, start_year, end_year, ma_months, apply_timing,
 
         # 거래 로그
         if is_gold:
-            trade_logs.append({'투자월': m, '전략': '금 방어', '순위': '-',
+            trade_logs.append({'투자월': m, '전략': '인버스 방어' if defense_asset == '인버스' else '금 방어', '순위': '-',
                               '종목명': gold_log[0], '수익률(%)': gold_log[1]})
         elif record_invested:
             for i, (_, r) in enumerate(target_p.iterrows()):
@@ -788,8 +905,8 @@ def run_backtest_k200(df, start_year, end_year, ma_months, apply_timing,
                               '종목명': '현금보유(CASH)', '수익률(%)': 0.0})
 
         # 다음 달 연장 판정을 위해 '원시 신호' 기준으로 갱신 (연장 달은 raw_invested=True라 체인 안 됨)
-        prev_raw_invested = raw_invested
-        prev_raw_reason = raw_reason
+        previous_breadth = apply_timing and is_bad_market
+        previous_month = m
 
     return pd.DataFrame(records), pd.DataFrame(trade_logs), pd.DataFrame(records_full)
 

@@ -103,7 +103,8 @@ def _kospi_status():
     latest_m = sorted(dm['투자월'].dropna().unique())[-1]
     dmm = dm[dm['투자월'] == latest_m].copy()
 
-    mkt = get_korea_market_status(dmm)
+    previous_m = str(pd.Period(latest_m, freq="M") - 1)
+    mkt = get_korea_market_status(dmm, dm[dm['투자월'] == previous_m])
     stop = bool(mkt['stop']) if mkt else False
     reason = mkt['reason'] if mkt else "안전"
 
@@ -122,7 +123,7 @@ def _kospi_status():
     refdate = (str(df_daily['기준일'].iloc[0])
                if df_daily is not None and not df_daily.empty and '기준일' in df_daily.columns
                else None)
-    return {'stop': stop, 'reason': reason, 'avg': avg, 'avg_p': avg_p, 'avg_s': avg_s,
+    return {'stop': stop, 'reason': reason, 'defense_alloc': mkt['defense_alloc'], 'avg': avg, 'avg_p': avg_p, 'avg_s': avg_s,
             'perf': perf, 'spec': spec, 'refdate': refdate, 'month': latest_m}
 
 
@@ -299,7 +300,7 @@ def render_kospi():
     ens = f"<span class='avg-chip'>앙상블 평균 {_fmt(d['avg'])}</span>"
     if d['stop']:
         st.markdown(f"<div style='font-size:0.8rem; color:#F87171; padding:2px 0 5px 0;'>"
-                    f"🛑 현재 방어(투자중지) — 공격이었다면 담았을 종목 {ens}</div>", unsafe_allow_html=True)
+                    f"🛑 이번달 방어 · {d['defense_alloc']} — 공격 가정 종목 {ens}</div>", unsafe_allow_html=True)
     else:
         st.markdown(f"<div style='font-size:0.8rem; color:#34D399; padding:2px 0 5px 0;'>"
                     f"⚔️ 이번달 투자 종목 {ens}</div>", unsafe_allow_html=True)

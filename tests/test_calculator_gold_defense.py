@@ -18,7 +18,7 @@ class GoldDefenseTests(unittest.TestCase):
         self.assertEqual(allocate(100.0, 100.0), "금 100")
         self.assertEqual(allocate(105.0, 100.0), "금 100")
 
-    @patch("utils.calculator.get_gold_ma_all", return_value=(95.0, {6: 100.0, 12: 90.0}))
+    @patch("utils.calculator.get_gold_month_end_ma", return_value=(95.0, {6: 100.0, 12: 90.0}))
     @patch("utils.calculator.get_kospi_ma_all", return_value=(90.0, {6: 100.0}))
     def test_monthly_market_status_uses_six_month_gold_rule(self, _kospi, _gold):
         monthly = pd.DataFrame(
@@ -33,8 +33,8 @@ class GoldDefenseTests(unittest.TestCase):
 
         status = calculator.get_korea_market_status(monthly)
 
-        self.assertEqual(status["defense_alloc"], "현금 100")
-        self.assertEqual(status["status"], "🛑 투자 중지 (현금 100)")
+        self.assertEqual(status["defense_alloc"], "인버스 100")
+        self.assertEqual(status["status"], "🛑 투자 중지 (인버스 100)")
 
     def test_gold_price_link_opens_naver_chart(self):
         make_link = getattr(calculator, "get_gold_chart_link", lambda *_: None)

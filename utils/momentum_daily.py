@@ -6,8 +6,9 @@ import FinanceDataReader as fdr
 import pandas as pd
 import streamlit as st
 
-from utils.calculator import get_gold_krw_daily
+from utils.calculator import get_gold_krw_daily, get_kospi_inverse_daily
 from utils.kr_index import load_kr_index
+from utils.kr_inverse import KOSPI_INVERSE_CODE
 from utils.snowball_daily import month_performance
 from utils.ui_components import render_daily_performance
 
@@ -41,7 +42,10 @@ def load_holding_closes(market, tickers, start, end):
     if sessions.empty or not tickers:
         return pd.DataFrame(index=sessions)
 
-    stock_tickers = [ticker for ticker in tickers if ticker != "GOLD_KRW"]
+    special = {"GOLD_KRW": get_gold_krw_daily}
+    if market == "KR":
+        special[KOSPI_INVERSE_CODE] = get_kospi_inverse_daily
+    stock_tickers = [ticker for ticker in tickers if ticker not in special]
 
     def stock_close(ticker):
         # 월간 수집기와 같은 FDR 티커 형식(예: BRK.B → BRK-B).
@@ -51,8 +55,9 @@ def load_holding_closes(market, tickers, start, end):
     if stock_tickers:
         with ThreadPoolExecutor(max_workers=min(6, len(stock_tickers))) as pool:
             prices.update(zip(stock_tickers, pool.map(stock_close, stock_tickers)))
-    if "GOLD_KRW" in tickers:
-        prices["GOLD_KRW"] = get_gold_krw_daily()
+    for ticker in tickers:
+        if ticker in special:
+            prices[ticker] = special[ticker]()
     return pd.DataFrame(prices, index=sessions)
 
 

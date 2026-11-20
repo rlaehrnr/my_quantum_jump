@@ -197,6 +197,13 @@ def update_daily_momentum_kr():
 
     sync_archive_returns('archive_kospi')
     sync_archive_returns('archive_korea')
+    try:
+        from utils.kr_inverse import update_inverse_daily
+
+        inverse_close = update_inverse_daily()
+        print(f"✅ KODEX 인버스 종가 {len(inverse_close)}행 · 최신 {inverse_close.index[-1]:%Y-%m-%d}")
+    except (OSError, ValueError, SyntaxError, IndexError, TypeError) as exc:
+        print(f"::warning::KODEX 인버스 종가 갱신 실패 — 기존 파일 보존 ({exc})")
     print("🎉 🇰🇷 한국 업데이트 완벽 종료!")
 
 if __name__ == "__main__":

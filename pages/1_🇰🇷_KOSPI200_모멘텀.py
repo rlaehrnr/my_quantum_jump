@@ -6,10 +6,15 @@ import os
 
 st.set_page_config(page_title="KOSPI 200 모멘텀", layout="wide")
 
-from utils.data_loader import load_archive_data, get_folder_hash
-from utils.calculator import get_cycle_year, PRESIDENTIAL_DANGEROUS_MONTHS, get_kospi_ma_all, get_kosdaq_ma_all, get_strategy_stocks_korea, run_backtest_k200, get_idx_kr, get_gold_returns, get_kospi_benchmark_stats, get_gold_ma_all, get_korea_market_status, get_gold_defense_allocation, get_gold_chart_link, KOREA_GOLD_DEFENSE_MA_MONTHS
+from utils.calculator import (
+    KOREA_GOLD_DEFENSE_MA_MONTHS, KOSPI_USE_INVERSE, PRESIDENTIAL_DANGEROUS_MONTHS,
+    get_cycle_year, get_gold_chart_link, get_gold_ma_all, get_gold_returns, get_idx_kr,
+    get_korea_market_status, get_kosdaq_ma_all, get_kospi_benchmark_stats, get_kospi_inverse_returns,
+    get_kospi_ma_all, get_strategy_stocks_korea, run_backtest_k200,
+)
 from utils.ui_components import inject_custom_css, apply_korea_styling, style_kospi_ma, get_styled_stats, get_mdd_history, get_monthly_heatmap, ma_cfg, main_cfg, generate_excel_report_cached, render_vix_widget, style_ma_with_gold, ma_cfg_gold
 from utils.data_loader import load_archive_data, get_folder_hash, load_daily_data
+from utils.kr_inverse import KOSPI_INVERSE_CODE, KOSPI_INVERSE_NAME
 
 from utils.momentum_daily import kospi_holding_weights, render_holding_performance
 
@@ -55,8 +60,21 @@ years_list = sorted(df_master['투자연도'].unique().astype(int))
 min_y, max_y = min(years_list), max(years_list)
 
 @st.cache_data(show_spinner=False)
-def cached_run_backtest_korea(df, start_year, end_year, ma_months, apply_timing, rank_p, rank_s, perf_pct, spec_12m_pct, trading_cost_pct=0.25, use_gold=False, use_gold_ma=False, gold_ma_months=KOREA_GOLD_DEFENSE_MA_MONTHS, _gold_returns=None):
-    return run_backtest_k200(df, start_year, end_year, ma_months, apply_timing, rank_p, rank_s, perf_pct, spec_12m_pct, trading_cost_pct=trading_cost_pct, gold_returns=_gold_returns, use_gold=use_gold, use_gold_ma=use_gold_ma, gold_ma_months=gold_ma_months)
+def cached_run_backtest_korea(df, start_year, end_year, ma_months, apply_timing, rank_p, rank_s, perf_pct,
+                              spec_12m_pct, trading_cost_pct, use_gold, use_gold_ma, gold_ma_months,
+                              gold_returns, use_inverse, inverse_returns):
+    return run_backtest_k200(
+        df, start_year, end_year, ma_months, apply_timing, rank_p, rank_s, perf_pct, spec_12m_pct,
+        trading_cost_pct=trading_cost_pct, gold_returns=gold_returns, use_gold=use_gold,
+        use_gold_ma=use_gold_ma, gold_ma_months=gold_ma_months, use_inverse=use_inverse,
+        inverse_returns=inverse_returns,
+    )
+
+
+def _monthly_status(month):
+    previous = str(pd.Period(month, freq="M") - 1)
+    return get_korea_market_status(df_master[df_master['투자월'] == month],
+                                   df_master[df_master['투자월'] == previous])
 
 tab1, tab2, tab3 = st.tabs(["📅 월별 상세 분석", "🕒 실시간 데일리 순위", "📈 전략 조합 백테스트"])
 
@@ -79,20 +97,21 @@ with tab1:
         base_date = df_monthly['종목선정일'].iloc[0]
         month_label.markdown(f"<div style='margin-bottom: 5px; font-size:0.95rem; font-weight:600;'><b>🌙 투자 월</b> <span style='font-size: 0.85rem; color: #9ca3af; font-weight:normal;'>&nbsp;&nbsp;💡 선정일: {base_date}</span></div>", unsafe_allow_html=True)
 
-        kospi_curr, kospi_mas = get_kospi_ma_all(base_date)
+        mkt = _monthly_status(target_month_str)
+        kospi_curr, kospi_mas = mkt['kospi_curr'], mkt['kospi_mas']
         kosdaq_curr, kosdaq_mas = get_kosdaq_ma_all(base_date)
-        gold_curr, gold_mas = get_gold_ma_all(base_date)
+        gold_curr, gold_mas = mkt['gold_curr'], mkt['gold_mas']
         ma_df = pd.DataFrame([
             {'지수_L': "https://m.stock.naver.com/domestic/index/KOSPI/total#KOSPI", '현재가_L': f"https://m.stock.naver.com/fchart/domestic/index/KOSPI#{kospi_curr:,.2f}", 'base_price': round(kospi_curr, 2), '4개월선': _fmt_ma(kospi_mas.get(4, 0)), '5개월선': _fmt_ma(kospi_mas.get(5, 0)), '6개월선': _fmt_ma(kospi_mas.get(6, 0)), '10개월선': _fmt_ma(kospi_mas.get(10, 0)), '12개월선': _fmt_ma(kospi_mas.get(12, 0))},
             {'지수_L': "https://m.stock.naver.com/domestic/index/KOSDAQ/total#KOSDAQ", '현재가_L': f"https://m.stock.naver.com/fchart/domestic/index/KOSDAQ#{kosdaq_curr:,.2f}", 'base_price': round(kosdaq_curr, 2), '4개월선': _fmt_ma(kosdaq_mas.get(4, 0)), '5개월선': _fmt_ma(kosdaq_mas.get(5, 0)), '6개월선': _fmt_ma(kosdaq_mas.get(6, 0)), '10개월선': _fmt_ma(kosdaq_mas.get(10, 0)), '12개월선': _fmt_ma(kosdaq_mas.get(12, 0))},
             {'지수_L': "https://m.stock.naver.com/marketindex/metals/M04020000#국내 금(KRX)", '현재가_L': get_gold_chart_link(f"{gold_curr:,.0f}"), 'base_price': round(gold_curr, 0), '4개월선': _fmt_ma(gold_mas.get(4, 0), True), '5개월선': _fmt_ma(gold_mas.get(5, 0), True), '6개월선': _fmt_ma(gold_mas.get(6, 0), True), '10개월선': _fmt_ma(gold_mas.get(10, 0), True), '12개월선': _fmt_ma(gold_mas.get(12, 0), True)}
         ])
         st.dataframe(style_ma_with_gold(ma_df), use_container_width=True, hide_index=True, column_config=ma_cfg_gold)
+        st.caption("금 이동평균은 월말 종가 기준입니다.")
         
         df_korea_t1, df_perf_t1, df_spec_t1 = get_strategy_stocks_korea(df_monthly)
         kospi_1m, kospi_3m = get_idx_kr(base_date)
-        neg_1m_cnt = (df_korea_t1['1개월(%)'] < 0).sum()
-        neg_3m_cnt = (df_korea_t1['3개월(%)'] < 0).sum()
+        neg_1m_cnt, neg_3m_cnt = mkt['neg_1m'], mkt['neg_3m']
         
         df_perf_t1['순위'] = range(1, len(df_perf_t1) + 1)
         df_spec_t1['순위'] = range(1, len(df_spec_t1) + 1)
@@ -104,7 +123,6 @@ with tab1:
         bad_m_str_t1 = ", ".join(f"{m}월" for m in PRESIDENTIAL_DANGEROUS_MONTHS.get(cycle_year_t1, [])) or "없음"
         
         # 투자/중지 판정은 공통 함수 하나로 계산한다 (홈 대시보드와 동일 결과 보장).
-        mkt = get_korea_market_status(df_monthly)
         status, reason_desc = mkt['status'], mkt['reason']
         box_c, text_c = ("#FFEBEE", "#C62828") if mkt['stop'] else ("#E8F5E9", "#2E7D32")
 
@@ -166,7 +184,11 @@ with tab1:
         ]
         strategy_labels = [label for label, *_ in strategies]
         if mkt["stop"]:
-            defense = {"GOLD_KRW": "국내 금"} if mkt["defense_alloc"] == "금 100" else {"CASH": "현금"}
+            defense = {
+                "금": {"GOLD_KRW": "국내 금"},
+                "현금": {"CASH": "현금"},
+                "인버스": {KOSPI_INVERSE_CODE: KOSPI_INVERSE_NAME},
+            }[mkt["defense_asset"]]
             st.caption("방어월의 주식 전략 탭은 매수를 가정한 성과입니다.")
             defense_tab, *strategy_tabs = st.tabs(["🛡️ 방어 보유", *strategy_labels])
             with defense_tab:
@@ -188,6 +210,9 @@ with tab1:
         st.dataframe(df_korea_t1.style.apply(apply_korea_styling, axis=1), use_container_width=True, height=600, hide_index=True, column_order=cols_m, column_config=main_cfg)
 
 with tab2:
+    latest_month = df_master['투자월'].max()
+    live_monthly = _monthly_status(latest_month)
+    st.caption(f"{latest_month} 월간 운용 · {live_monthly['status']} · {live_monthly['reason']}")
     df_daily = load_daily_data("momentum_data_daily.csv")
     if not df_daily.empty:
         df_daily['종목코드'] = df_daily['종목코드'].astype(str).str.zfill(6)
@@ -233,11 +258,7 @@ with tab2:
 
         is_below_ma_d = (kospi_curr_d > 0) and (kospi_curr_d < kospi_mas_d.get(6, 0))
         is_bad_market_d = (neg_1m_d >= 100) and (neg_3m_d >= 100)
-        # 🥇 방어 시 금 배분: 금이 6개월선 이상→금100 / 6개월선 아래→현금100
-        defense_alloc_d = get_gold_defense_allocation(
-            gold_curr_d, gold_mas_d.get(KOREA_GOLD_DEFENSE_MA_MONTHS, 0)
-        )
-        status_d, box_d, text_d = (f"🛑 투자 중지 ({defense_alloc_d})", "#FFEBEE", "#C62828") if (is_bad_market_d or is_below_ma_d) else ("✅ 투자 진행", "#E8F5E9", "#2E7D32")
+        status_d, box_d, text_d = ("🛑 방어 조건", "#FFEBEE", "#C62828") if (is_bad_market_d or is_below_ma_d) else ("✅ 공격 조건", "#E8F5E9", "#2E7D32")
         reason_desc_d = ("하락장" if is_bad_market_d else "") + (" + " if is_bad_market_d and is_below_ma_d else "") + ("6개월선 이탈" if is_below_ma_d else "")
         if not is_bad_market_d and not is_below_ma_d: reason_desc_d = "안전"
 
@@ -281,10 +302,18 @@ with tab3:
     with head_c:
         st.markdown("<h4 style='margin:0; padding-top:6px;'>⚙️ 시뮬레이션 설정</h4>", unsafe_allow_html=True)
     with chk_c:
-        cca, ccb, ccc = st.columns(3)
-        with cca: apply_timing = st.checkbox("🛑 마켓타이밍 적용 (1&3M 하락 100개↑ & MA 이탈 시 현금)", value=True, key='t3_chk')
+        cca, ccb, ccc, ccd = st.columns(4)
+        with cca: apply_timing = st.checkbox("🛑 마켓타이밍 적용", value=True, key='t3_chk')
         with ccb: use_gold_t3 = st.checkbox("🥇 방어 시 금 투자 (하락장 1개월 연장)", value=True, key='t3_gold')
-        with ccc: use_gold_ma_t3 = st.checkbox("📉 금 N개월선 이탈 시 현금", value=True, key='t3_gold_ma')
+        with ccc: use_gold_ma_t3 = st.checkbox("📉 방어 시 금 이동평균 적용", value=True, key='t3_gold_ma')
+        inverse_enabled = apply_timing and use_gold_t3 and use_gold_ma_t3
+        with ccd:
+            inverse_checked = st.checkbox(
+                "인버스 추가 (114800)", value=KOSPI_USE_INVERSE, key='t3_inverse',
+                disabled=not inverse_enabled,
+                help="직접 방어 중 금 이동평균선 아래면 1배 인버스에 투자합니다. 하락장 뒤 연장월은 금선 아래면 현금, 금선 이상이면 금을 보유합니다.",
+            )
+        use_inverse_t3 = inverse_enabled and inverse_checked
 
     c1, c_ma, c_gma, c_cost = st.columns([1, 1, 1, 1])
     with c1: start_year, end_year = st.slider("📅 테스트 기간", min_y, max_y, (min_y, max_y), key='t3_yr')
@@ -301,11 +330,19 @@ with tab3:
 
     # 🥇 금(KRX 환노출) 월별 수익률 로드 — 방어 구간(무조건 금 보유)용
     gold_returns_t3 = get_gold_returns() if use_gold_t3 else {}
+    inverse_returns_t3 = get_kospi_inverse_returns() if use_inverse_t3 else {}
+    if use_inverse_t3 and not inverse_returns_t3:
+        st.warning("KODEX 인버스 종가를 불러오지 못해 해당 월은 현금으로 계산합니다.")
     if use_gold_t3 and not gold_returns_t3:
         st.warning("⚠️ 금 데이터를 불러오지 못해 방어 구간이 현금(0%)으로 처리됩니다. `data/krx_gold_price.csv`(KRX 일별) 또는 FDR(GC=F·USD/KRW)를 확인하세요.")
 
     with st.spinner("엔진 구동 중..."):
-        df_res, df_trades, df_cf_t3 = cached_run_backtest_korea(df_master, start_year, end_year, ma_months_t3, apply_timing, (rank_p_s, rank_p_e), (rank_s_s, rank_s_e), perf_pct_t3, spec_12m_pct_t3, trading_cost_pct=trading_cost_pct_t3, use_gold=use_gold_t3, use_gold_ma=(use_gold_t3 and use_gold_ma_t3), gold_ma_months=gold_ma_months_t3, _gold_returns=gold_returns_t3)
+        df_res, df_trades, df_cf_t3 = cached_run_backtest_korea(
+            df_master, start_year, end_year, ma_months_t3, apply_timing, (rank_p_s, rank_p_e),
+            (rank_s_s, rank_s_e), perf_pct_t3, spec_12m_pct_t3, trading_cost_pct_t3,
+            use_gold_t3, use_gold_t3 and use_gold_ma_t3, gold_ma_months_t3, gold_returns_t3,
+            use_inverse_t3, inverse_returns_t3,
+        )
         if not df_res.empty:
             s_cols = [c for c in df_res.columns if c not in ['투자월', 'invested', '중지 사유']]
             df_cum = (1 + df_res.set_index('투자월')[s_cols] / 100).cumprod() * 100
@@ -368,9 +405,10 @@ with tab3:
                 '테스트 시작 연도': f"{start_year}년",
                 '테스트 종료 연도': f"{end_year}년",
                 '마켓타이밍 (개월선)': f"{ma_months_t3}개월선",
-                '마켓타이밍 적용': "적용(현금)" if apply_timing else "미적용",
+                '마켓타이밍 적용': "적용" if apply_timing else "미적용",
                 '방어 자산': ("금(KRX 환노출, 하락장 1개월 연장)" if use_gold_t3 else "현금"),
-                '금 N개월선 이탈 시 현금': (f"적용 ({gold_ma_months_t3}개월선 이탈 시 현금)" if (use_gold_t3 and use_gold_ma_t3) else "미적용"),
+                '금 이동평균': f"{gold_ma_months_t3}개월선 적용" if use_gold_t3 and use_gold_ma_t3 else "미적용",
+                '인버스 추가': KOSPI_INVERSE_NAME + " · 직접 방어에서 금선 이탈 시" if use_inverse_t3 else "미적용",
                 '퍼펙트 상위 %': f"상위 {perf_pct_t3}% 이내",
                 '퍼펙트 매수 순위': f"{rank_p_s}위 ~ {rank_p_e}위",
                 '달리는말 상위 %': f"상위 {spec_12m_pct_t3}% 이내",

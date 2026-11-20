@@ -32,7 +32,7 @@ def _ensemble_offense_defense_summary(df_cf, ens_col='앙상블 (50:50 전략)')
     카운터팩추얼 월별 레코드(df_cf)에서 '앙상블 (50:50 전략)'을 기준으로
     공격/방어 성과 요약을 만든다.
       - 공격: invested==True (실제 주식 앙상블 투자 달)
-      - 방어: invested==False → 방어자산('금'/'현금')으로 세분
+      - 방어: invested==False → 방어자산('금'/'현금'/'인버스')으로 세분
     각 구간별 횟수 · 승률(수익>0 비율) · 평균수익률 · 누적수익률(복리).
     """
     if df_cf is None or df_cf.empty or ens_col not in df_cf.columns:
@@ -58,17 +58,21 @@ def _ensemble_offense_defense_summary(df_cf, ens_col='앙상블 (50:50 전략)')
     if '방어자산' in d.columns:
         d_gold = defense[defense['방어자산'] == '금']
         d_cash = defense[defense['방어자산'] == '현금']
+        d_inverse = defense[defense['방어자산'] == '인버스']
     else:
         d_gold = defense.iloc[0:0]
         d_cash = defense.iloc[0:0]
+        d_inverse = defense.iloc[0:0]
 
     rows = [
         ['공격 (주식 앙상블 50:50)'] + _stats(offense),
         ['방어 - 금'] + _stats(d_gold),
         ['방어 - 현금'] + _stats(d_cash),
-        ['방어 합계 (금+현금)'] + _stats(defense),
+        ['방어 합계 (금+현금+인버스)' if not d_inverse.empty else '방어 합계 (금+현금)'] + _stats(defense),
         ['전체 (공격+방어)'] + _stats(d),
     ]
+    if not d_inverse.empty:
+        rows.insert(3, ['방어 - 인버스'] + _stats(d_inverse))
     return pd.DataFrame(rows, columns=['구분', '횟수', '승률(%)', '평균수익률(%)', '누적수익률(%)'])
 
 
