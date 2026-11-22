@@ -1,0 +1,254 @@
+{
+  "baseline_app": {
+    "months": 131,
+    "cagr": 0.3706403379901473,
+    "mdd": -0.209058295311488,
+    "trough": "2026-07",
+    "peak": "2026-06",
+    "wealth": 31.24268184415628,
+    "worst_month": -0.209058295311488,
+    "sortino": 3.1570155501239925
+  },
+  "baseline_continuous": {
+    "months": 123,
+    "cagr": 0.4059696530214796,
+    "mdd": -0.209058295311488,
+    "trough": "2026-07",
+    "peak": "2026-06",
+    "wealth": 32.866499764193314,
+    "worst_month": -0.209058295311488,
+    "sortino": 3.3871847096659797
+  },
+  "missing_live_months": [
+    "2015-07",
+    "2015-08",
+    "2015-09",
+    "2015-10",
+    "2016-02",
+    "2016-03",
+    "2016-04",
+    "2016-05",
+    "2016-07"
+  ],
+  "daily_continuous": {
+    "daily_mdd": -0.40627937070081044,
+    "daily_peak": "2026-06-22",
+    "daily_trough": "2026-07-30",
+    "daily_trough_ticker": "102110"
+  },
+  "losses_worst_baseline_daily": "               wealth  ticker    month        dd\n2026-07-30  19.909998  102110  2026-07 -0.406279\n2026-07-29  20.232939  102110  2026-07 -0.396649\n2026-07-28  21.659682  102110  2026-07 -0.354103\n2026-08-05  22.616326  261220  2026-08 -0.325576\n2026-08-06  22.703237  261220  2026-08 -0.322984",
+  "baseline_attribution": [
+    {
+      "ticker": "102110",
+      "months": 34,
+      "wins": 26,
+      "losses": 8,
+      "mean": 0.04193579877275665,
+      "held_months_compound": 2.489241658714302,
+      "sum_log_returns": 1.2496844228368185,
+      "log_wealth_share": 0.363091931053395,
+      "pnl_per_100_initial": 919.002076458483,
+      "pnl_share": 0.3038758537335403
+    },
+    {
+      "ticker": "133690",
+      "months": 43,
+      "wins": 31,
+      "losses": 12,
+      "mean": 0.017007836131281404,
+      "held_months_compound": 0.9730020578642866,
+      "sum_log_returns": 0.6795562700527507,
+      "log_wealth_share": 0.1974429654750643,
+      "pnl_per_100_initial": 161.1255263625503,
+      "pnl_share": 0.05327752584669808
+    },
+    {
+      "ticker": "261220",
+      "months": 23,
+      "wins": 17,
+      "losses": 6,
+      "mean": 0.06335121948997005,
+      "held_months_compound": 2.4100824768003903,
+      "sum_log_returns": 1.2267364777479133,
+      "log_wealth_share": 0.3564244768195305,
+      "pnl_per_100_initial": 1835.82963538015,
+      "pnl_share": 0.6070326847468003
+    },
+    {
+      "ticker": "305080",
+      "months": 17,
+      "wins": 11,
+      "losses": 6,
+      "mean": 0.010244896227075705,
+      "held_months_compound": 0.1845874824307793,
+      "sum_log_returns": 0.16939459788845254,
+      "log_wealth_share": 0.04921707475372996,
+      "pnl_per_100_initial": 49.523381307720435,
+      "pnl_share": 0.016375327281793205
+    },
+    {
+      "ticker": "329200",
+      "months": 5,
+      "wins": 4,
+      "losses": 1,
+      "mean": 0.007608715279727618,
+      "held_months_compound": 0.03664665760631606,
+      "sum_log_returns": 0.03599113599237008,
+      "log_wealth_share": 0.010457112875433038,
+      "pnl_per_100_initial": 13.416916758641609,
+      "pnl_share": 0.004436417652303586
+    },
+    {
+      "ticker": "411060",
+      "months": 9,
+      "wins": 4,
+      "losses": 5,
+      "mean": 0.010436390439043208,
+      "held_months_compound": 0.08374459658752238,
+      "sum_log_returns": 0.08042226325245495,
+      "log_wealth_share": 0.02336643902284707,
+      "pnl_per_100_initial": 45.370648148082196,
+      "pnl_share": 0.015002190738864336
+    }
+  ],
+  "common_attribution": [
+    {
+      "ticker": "102110",
+      "months": 23,
+      "wins": 18,
+      "losses": 5,
+      "mean": 0.057924773741864645,
+      "held_months_compound": 2.1870535312360846,
+      "sum_log_returns": 1.159096832042201,
+      "log_wealth_share": 0.3833781533865173,
+      "pnl_per_100_initial": 597.9949667455284,
+      "pnl_share": 0.3057137812584335
+    },
+    {
+      "ticker": "133690",
+      "months": 26,
+      "wins": 18,
+      "losses": 8,
+      "mean": 0.01848367542541932,
+      "held_months_compound": 0.5535354314162715,
+      "sum_log_returns": 0.44053325706836255,
+      "log_wealth_share": 0.14570898818060757,
+      "pnl_per_100_initial": 86.77216819697911,
+      "pnl_share": 0.044360653722324395
+    },
+    {
+      "ticker": "261220",
+      "months": 16,
+      "wins": 12,
+      "losses": 4,
+      "mean": 0.08495777124452014,
+      "held_months_compound": 2.120331608639506,
+      "sum_log_returns": 1.1379392809939142,
+      "log_wealth_share": 0.3763801678629249,
+      "pnl_per_100_initial": 1200.015632704676,
+      "pnl_share": 0.6134856262084438
+    },
+    {
+      "ticker": "305080",
+      "months": 17,
+      "wins": 11,
+      "losses": 6,
+      "mean": 0.010244896227075705,
+      "held_months_compound": 0.1845874824307793,
+      "sum_log_returns": 0.16939459788845254,
+      "log_wealth_share": 0.05602826816263969,
+      "pnl_per_100_initial": 32.59103032701137,
+      "pnl_share": 0.01666155681978979
+    },
+    {
+      "ticker": "329200",
+      "months": 5,
+      "wins": 4,
+      "losses": 1,
+      "mean": 0.007608715279727618,
+      "held_months_compound": 0.03664665760631606,
+      "sum_log_returns": 0.03599113599237008,
+      "log_wealth_share": 0.011904281742127553,
+      "pnl_per_100_initial": 8.829589770109406,
+      "pnl_share": 0.004513963203187971
+    },
+    {
+      "ticker": "411060",
+      "months": 9,
+      "wins": 4,
+      "losses": 5,
+      "mean": 0.010436390439043208,
+      "held_months_compound": 0.08374459658752238,
+      "sum_log_returns": 0.08042226325245495,
+      "log_wealth_share": 0.026600140665183007,
+      "pnl_per_100_initial": 29.85814237041586,
+      "pnl_share": 0.015264418787820403
+    }
+  ],
+  "oil_by_year_log": {
+    "2018": 0.08879719675399911,
+    "2019": 0.029664326433063132,
+    "2021": -0.0716241872372403,
+    "2022": 0.35667700451009704,
+    "2023": -0.07968846791446367,
+    "2026": 0.9029106052024578
+  },
+  "oil_months_recent": [
+    {
+      "month": "2026-03",
+      "ticker": "261220",
+      "defensive": true,
+      "gross": 0.6153846153846154,
+      "fee": 0.0025,
+      "net": 0.6128846153846155,
+      "drop_ticker": "329200",
+      "drop_net": -0.012337565774422297
+    },
+    {
+      "month": "2026-04",
+      "ticker": "261220",
+      "defensive": true,
+      "gross": 0.15516545601291365,
+      "fee": 0.0,
+      "net": 0.15516545601291365,
+      "drop_ticker": "305080",
+      "drop_net": -0.04003157704799715
+    },
+    {
+      "month": "2026-08",
+      "ticker": "261220",
+      "defensive": true,
+      "gross": 0.05229759299781178,
+      "fee": 0.0025,
+      "net": 0.04979759299781178,
+      "drop_ticker": "329200",
+      "drop_net": 0.02501592356687893
+    },
+    {
+      "month": "2026-09",
+      "ticker": "261220",
+      "defensive": true,
+      "gross": 0.09066333957163653,
+      "fee": 0.0,
+      "net": 0.09066333957163653,
+      "drop_ticker": "329200",
+      "drop_net": -0.007438631291842301
+    },
+    {
+      "month": "2026-10",
+      "ticker": "261220",
+      "defensive": true,
+      "gross": 0.15633937082936122,
+      "fee": 0.0,
+      "net": 0.15633937082936122,
+      "drop_ticker": "329200",
+      "drop_net": -0.02198351236572571
+    }
+  ],
+  "inputs": {
+    "snapshot.tar": "f76fd5b528effbba420eb42f8278c116973e15af85021de5eec0bae5f8349085",
+    "research_daily_kr.csv": "1133592af71983baeeae1109b75f70907861e1872bd5f406d416e913bab81708",
+    "research_daily_us.csv": "57fb169f28ccac4fcecacb4397526c75bb5e4c67e7a601089eb0e6faf27d53af"
+  },
+  "spec_count": 38
+}
