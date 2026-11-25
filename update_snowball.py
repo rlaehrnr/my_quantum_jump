@@ -21,6 +21,8 @@ import numpy as np
 from datetime import datetime, timedelta
 
 MONTHLY_DIR = 'data/snowball/monthly'
+# 역사적 배당률 범위를 넉넉히 포함하되, 지수 포인트 등 다른 단위는 거부한다.
+MAX_DIVIDEND_YIELD_PCT = 20
 
 # 스노우볼 자산
 #  · 또 메리츠:   TIP, VWO, VEA, VIXY, TQQQ, USD, GLD, TLT, SQQQ, SLV, SPY
@@ -267,23 +269,26 @@ def fetch_div_multpl(completed_through=None):
 
 
 def fetch_div_dqydj(completed_through=None):
-    """
-    dqydj.com에서 배당수익률 파싱 (테이블 또는 임베디드 데이터).
-    Returns: Series 또는 None
-    """
+    """DQYDJ의 월별 표에서 퍼센트로 표시된 배당수익률을 읽는다."""
     from bs4 import BeautifulSoup
     html = _http_get("https://dqydj.com/sp-500-dividend-yield/")
     soup = BeautifulSoup(html, 'lxml')
-    # dqydj는 테이블 형태로 제공
     for table in soup.find_all('table'):
+        for row in (table.find('thead') or table).find_all('tr'):
+            columns = [cell.get_text(' ', strip=True).casefold() for cell in row.find_all('th')]
+            if 'month' in columns and 'dividend yield' in columns:
+                break
+        else:
+            continue
+        date_col = columns.index('month')
+        yield_col = columns.index('dividend yield')
         records = []
         for tr in table.find_all('tr'):
             cells = [td.get_text(strip=True) for td in tr.find_all('td')]
-            if len(cells) >= 2:
+            if len(cells) > max(date_col, yield_col) and cells[yield_col].endswith('%'):
                 try:
-                    date = pd.to_datetime(cells[0])
-                    val = float(cells[1].replace('%', '').strip())
-                    records.append((date, val))
+                    date = pd.to_datetime(cells[date_col], format='%m-%Y') + pd.offsets.MonthEnd(0)
+                    records.append((date, float(cells[yield_col][:-1])))
                 except (ValueError, TypeError):
                     continue
         if len(records) > 12:  # 충분한 데이터가 있는 테이블
@@ -310,6 +315,9 @@ def update_dividend():
         try:
             s = fn(completed_through=completed_through)
             if s is not None and len(s) > 0:
+                if not s.between(0, MAX_DIVIDEND_YIELD_PCT, inclusive='right').all():
+                    print(f"  ⚠️ {name}: 배당수익률 허용 범위 초과")
+                    continue
                 latest_date = s.index[-1].to_timestamp(how='end').date()
                 print(f"  ✅ {name}로 {len(s)}개 데이터 수집 (최근 {latest_date}={s.iloc[-1]}%)")
                 new_series = s
@@ -338,7 +346,7 @@ def update_dividend():
     except Exception as e:
         print(f"  ⚠️ 기존 배당 파일 읽기 실패 ({e}) — 새 데이터만 사용")
     
-    # 월 단위로 병합 (새 데이터 우선)
+    # 월 단위로 병합
     new_monthly = new_series.copy()
     if isinstance(new_monthly.index, pd.PeriodIndex):
         new_monthly.index = new_monthly.index.asfreq('M')
@@ -349,11 +357,15 @@ def update_dividend():
     if existing is not None and len(existing) > 0:
         existing.index = pd.to_datetime(existing.index).to_period('M')
         existing = existing[~existing.index.duplicated(keep='last')]
+        existing = existing[existing.between(0, MAX_DIVIDEND_YIELD_PCT, inclusive='right')]
         # 이전 로직이 현월의 미래 추정치를 저장했을 수 있다. 이번 수집값으로
         # 현월을 다시 만들기 위해 기존 현월·미래월 값은 베이스에서 제거한다.
         existing = existing[existing.index < pd.Period(completed_through, freq='M')]
-        # 기존을 베이스로, 새 데이터로 덮어쓰기 (combine_first 반대 방향)
-        merged = new_monthly.combine_first(existing).sort_index()
+        # DQYDJ는 지수 월평균을 기준으로 산출한다. 주 소스 이력의 빈 달만 채운다.
+        if name == 'dqydj':
+            merged = existing.combine_first(new_monthly).sort_index()
+        else:
+            merged = new_monthly.combine_first(existing).sort_index()
     else:
         merged = new_monthly.sort_index()
     
