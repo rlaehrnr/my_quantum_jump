@@ -200,6 +200,8 @@ def render_portfolio_tab(port_name, port_key, prices):
 
     with c_file:
         with st.expander("📂 엑셀 업로드"):
+            st.caption("동일 비중 성과는 종목명과 종목코드만으로 계산합니다. 업로드하면 이 계좌를 통째로 교체하며, "
+                       "파일에 없는 매수단가와 수량은 0으로 저장됩니다.")
             up_file = st.file_uploader("CSV/XLSX 선택", type=['csv', 'xlsx'], key=f"up_{port_key}_{st.session_state[f'up_key_{port_key}']}")
             if st.button("구글 시트에 반영", key=f"btn_{port_key}") and up_file:
                 try:

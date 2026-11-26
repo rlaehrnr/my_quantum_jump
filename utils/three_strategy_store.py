@@ -66,5 +66,4 @@ def smallcap_positions():
             unread.append(name)
     if not frames:
         return pd.DataFrame(columns=[*POSITION_COLUMNS, "계좌"]), unread
-    positions = pd.concat(frames, ignore_index=True)
-    return positions.loc[positions["수량"].gt(0)], unread
+    return pd.concat(frames, ignore_index=True), unread

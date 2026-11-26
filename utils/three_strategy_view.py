@@ -9,7 +9,7 @@ from utils import three_strategy_live as live
 from utils.snowball_allocation import portfolio_stats
 from utils.three_strategy import (
     Allocation, DEFAULT_ALLOCATION, LEG_LABELS, LEGS, SNOW, VERIFIED_HISTORY_END,
-    backtest_window, combine, current_month, ratio_part,
+    backtest_window, combine, current_month,
 )
 from utils.three_strategy_preferences import (
     HOME_ICON, HOME_TITLE, STRATEGY_PAGES, STRATEGY_TAB_PARAM, current_allocation, save_preferences, share_url,
@@ -23,47 +23,45 @@ INNER_LABELS = tuple(LEG_LABELS[key] for key in SNOW)
 PCT = st.column_config.NumberColumn(format="percent")
 
 
-def _allocation_summary(allocation):
+def _allocation_form(allocation):
     with st.container(border=True):
         st.subheader("현재 투자비율")
-        *metrics, edit = st.columns([1, 1, 1, 1.05], vertical_alignment="center")
         total = sum(allocation.outer)
-        for column, label, part in zip(metrics, OUTER_LABELS, allocation.outer):
-            column.metric(label, f"{part / total:.1%}", border=True)
-        with edit:
-            with st.popover("비율 수정", icon=":material/tune:", width="stretch"):
-                with st.form(f"three_ratio_form_{allocation.encode()}"):
-                    st.markdown("**3전략 비율**")
-                    outer = tuple(st.number_input(label, min_value=0.0, value=float(part), step=1.0)
-                                  for label, part in zip(OUTER_LABELS, allocation.outer))
-                    st.markdown("**스노우볼 내부 비율**")
-                    inner = tuple(st.number_input(label, min_value=0.0, value=float(part), step=1.0)
-                                  for label, part in zip(INNER_LABELS, allocation.inner))
-                    save, reset = st.columns(2)
-                    submitted = save.form_submit_button("비율 저장", type="primary")
-                    restored = reset.form_submit_button("기본값 복원")
-                if submitted or restored:
-                    try:
-                        edited = DEFAULT_ALLOCATION if restored else Allocation(outer, inner)
-                    except ValueError as exc:
-                        st.error(str(exc))
-                    else:
-                        save_preferences(edited)
-                        st.rerun()
-                url = share_url(allocation)
-                if url:
-                    st.markdown(f"[현재 비율 공유 링크]({url})")
-        if sum(allocation.inner):
-            st.caption("스노우볼 내부 · " + "  /  ".join(
-                f"{label} {ratio_part(part)}" for label, part in zip(INNER_LABELS, allocation.inner)
-            ))
+        for column, label, part in zip(st.columns(3), OUTER_LABELS, allocation.outer):
+            column.metric(label, f"{part / total:.1%}")
+        with st.form(f"three_ratio_form_{allocation.encode()}", border=False):
+            st.markdown("**3전략 비율**")
+            outer = tuple(column.number_input(label, min_value=0.0, value=float(part), step=1.0)
+                          for column, label, part in zip(st.columns(3), OUTER_LABELS, allocation.outer))
+            st.markdown("**스노우볼 내부 비율**")
+            inner = tuple(column.number_input(label, min_value=0.0, value=float(part), step=1.0)
+                          for column, label, part in zip(st.columns(4), INNER_LABELS, allocation.inner))
+            with st.container(horizontal=True):
+                submitted = st.form_submit_button("비율 저장", type="primary")
+                restored = st.form_submit_button("기본값 복원")
+        if submitted or restored:
+            try:
+                edited = DEFAULT_ALLOCATION if restored else Allocation(outer, inner)
+            except ValueError as exc:
+                st.error(str(exc))
+            else:
+                save_preferences(edited)
+                st.rerun()
+        url = share_url(allocation)
+        if url:
+            st.markdown(f"[현재 비율 공유 링크]({url})")
 
 
-def _read_current(loader, month):
+def _read_current(key, month, allocation):
     try:
-        return loader(month), False
+        if key == "snowball":
+            curves, holdings = live.snowball_current(month)
+            performance = live.combine_daily(curves, dict(zip(SNOW, allocation.inner)))
+            return live.CurrentHoldings(holdings, performance)
+        loader = live.kospi_current if key == "kospi" else live.smallcap_current
+        return loader(month)
     except Exception:
-        return None, True
+        return live.CurrentHoldings(pd.DataFrame(), pd.DataFrame(), "보유 자료를 불러오지 못했습니다.")
 
 
 def _daily_panel(performance, key, labels, note, *, common_dates=False):
@@ -78,69 +76,52 @@ def _daily_panel(performance, key, labels, note, *, common_dates=False):
     render_daily_performance(performance, key, labels, date_label="공통 종가일" if common_dates else "거래일")
 
 
-def _strategy_panel(key, current, failed, labels):
+@st.fragment(run_every="60s")
+def _strategy_panel(key, allocation):
     _, page, title = STRATEGY_PAGES[key]
     with st.container(key=f"three-strategy-detail-title-{key}"):
         st.page_link(page, label=title, icon=":material/arrow_outward:")
-    if failed:
-        st.warning("보유 자료를 불러오지 못했습니다.")
-        return
+    month = pd.Period(current_month(), freq="M")
+    current = _read_current(key, month, allocation)
     if current.note:
         st.warning(current.note)
     if current.holdings.empty:
         if current.note:
             return
-        st.info("등록된 보유 종목이 없습니다." if key == "small" else "이번 달의 확정 보유 자료를 기다리고 있습니다.")
+        st.info("상세 페이지의 엑셀 업로드에서 종목명과 종목코드를 등록하면 성과가 표시됩니다."
+                if key == "small" else "이번 달의 확정 보유 자료를 기다리고 있습니다.")
         return
-    st.markdown("**현재 보유**")
+    st.markdown("**등록 종목**" if key == "small" else "**현재 보유**")
     st.dataframe(current.holdings, hide_index=True, width="stretch", column_config={"보유 비중": PCT})
     if current.note:
         return
     if key == "small":
-        st.caption("현재 등록 수량을 월초부터 보유했다고 가정한 가격 수익률입니다. 매매·입출금은 반영하지 않습니다.")
+        st.caption("현재 등록 종목에 월초 동일 금액을 배분한 가격 수익률입니다. 같은 종목코드는 한 번만 반영합니다.")
+    labels = {f"{sleeve} 누적": f"{LEG_LABELS[sleeve]} 누적" for sleeve in SNOW} if key == "snowball" else {}
     _daily_panel(current.performance, key, labels, "전월 말과 이번 달의 보유 종목 종가가 준비되면 표시됩니다.",
                  common_dates=key == "snowball")
 
 
 @st.fragment(run_every="60s")
-def _current_section(allocation, active_tab):
+def _combined_month(allocation):
     month = pd.Period(current_month(), freq="M")
-    kospi, kospi_failed = _read_current(live.kospi_current, month)
-    snowball, snowball_failed = _read_current(live.snowball_current, month)
-    small, small_failed = _read_current(live.smallcap_current, month)
-    snow_curves, snow_holdings = snowball if snowball is not None else ({}, pd.DataFrame())
-    snow_daily = live.combine_daily(snow_curves, dict(zip(SNOW, allocation.inner)))
-    empty = live.CurrentHoldings(pd.DataFrame(), pd.DataFrame())
-    kospi = kospi if kospi is not None else empty
-    small = small if small is not None else empty
-    snapshots = {"kospi": kospi.performance, "snowball": snow_daily, "small": small.performance}
-    curves = {key: table["포트 누적"] for key, table in snapshots.items() if not table.empty}
-    amounts = dict(zip(STRATEGY_PAGES, allocation.outer))
-
     st.subheader(f"📈 {month.month}월 일별 수익률")
     st.caption("월초 투자비율로 합산 · 공통 종가일의 원화 기준 · 거래비용 제외")
+    amounts = dict(zip(STRATEGY_PAGES, allocation.outer))
+    curves = {}
+    for key, amount in amounts.items():
+        if amount > 0:
+            daily = _read_current(key, month, allocation).performance
+            if not daily.empty:
+                curves[key] = daily["포트 누적"]
     labels = {f"{key} 누적": f"{title} 누적" for key, title in zip(STRATEGY_PAGES, OUTER_LABELS)}
     unavailable = [STRATEGY_PAGES[key][0] for key, amount in amounts.items() if amount > 0 and key not in curves]
     note = ("수익률 대기 · " + ", ".join(unavailable) if unavailable else
             "비중이 있는 전략의 공통 종가일 자료가 준비되면 표시됩니다.")
     combined = live.combine_daily(curves, amounts)
     if not combined.empty and amounts["small"] > 0:
-        st.caption("소형주는 현재 수량을 월초부터 보유한 것으로 계산 · 월중 매매·입출금 제외")
+        st.caption("소형주는 현재 등록 종목에 월초 동일 금액을 배분한 기준")
     _daily_panel(combined, "three", labels, note, common_dates=True)
-
-    st.subheader("전략별 보유 현황")
-    tabs = st.tabs([label for label, *_ in STRATEGY_PAGES.values()], default=active_tab,
-                   key="three_strategy_tabs", on_change="rerun")
-    snow_labels = {f"{key} 누적": f"{LEG_LABELS[key]} 누적" for key in SNOW}
-    panels = (
-        ("kospi", kospi, kospi_failed, {}),
-        ("snowball", live.CurrentHoldings(snow_holdings, snow_daily), snowball_failed, snow_labels),
-        ("small", small, small_failed, {}),
-    )
-    for tab, arguments in zip(tabs, panels):
-        if tab.open:
-            with tab:
-                _strategy_panel(*arguments)
 
 
 @st.cache_data(show_spinner=False)
@@ -177,7 +158,7 @@ def _backtest(allocation):
     )
     for column, (label, value) in zip(st.columns(6), metrics):
         column.metric(label, value)
-    st.caption("확정 월수익률 · 매월 현재 비율 적용 · 초기 이력 미가용 비중은 현금으로 가정")
+    st.caption("확정 월수익률 · 매월 현재 비율 적용 · 초기 이력 미가용 비중은 현금으로 가정 · 소형주는 월수익률 원장 기준")
 
     st.markdown("#### 🗓️ 월별 수익률 히트맵 & MDD TOP 10")
     heatmap, drawdown = st.columns([7.2, 2.8])
@@ -214,11 +195,21 @@ def render_combination():
         }
         </style>
     """)
-    st.title(f"{HOME_ICON} {HOME_TITLE}")
+    strategy = st.query_params.get(STRATEGY_TAB_PARAM)
+    strategy_labels = {key: label for key, (label, _, _) in STRATEGY_PAGES.items()}
+    combined, *details = st.tabs([HOME_TITLE, *strategy_labels.values()],
+                                 default=strategy_labels.get(strategy, HOME_TITLE),
+                                 key="three_strategy_tabs", on_change="rerun")
     allocation = current_allocation()
-    _allocation_summary(allocation)
-    strategy = st.query_params.get(STRATEGY_TAB_PARAM, "kospi")
-    active = STRATEGY_PAGES.get(strategy, STRATEGY_PAGES["kospi"])[0]
-    _current_section(allocation, active)
-    st.divider()
-    _backtest(allocation)
+    if combined.open:
+        with combined:
+            st.title(f"{HOME_ICON} {HOME_TITLE}")
+            _combined_month(allocation)
+            st.divider()
+            _backtest(allocation)
+            st.divider()
+            _allocation_form(allocation)
+    for key, tab in zip(STRATEGY_PAGES, details):
+        if tab.open:
+            with tab:
+                _strategy_panel(key, allocation)

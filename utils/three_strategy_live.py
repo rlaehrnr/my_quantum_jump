@@ -184,8 +184,8 @@ def smallcap_current(month):
     holdings = positions[["계좌", "종목명", "종목코드"]]
     if unread:
         return CurrentHoldings(holdings, pd.DataFrame(), "보유 자료를 읽지 못한 계좌 · " + ", ".join(unread))
-    quantities = positions.groupby("종목코드")["수량"].sum().to_dict()
-    performance = holding_performance("KR", tuple(quantities), month, quantities=quantities)
+    tickers = tuple(holdings["종목코드"].unique())
+    performance = holding_performance("KR", tickers, month)
     return CurrentHoldings(holdings, performance[["포트 일간", "포트 누적"]] if not performance.empty else performance)
 
 
