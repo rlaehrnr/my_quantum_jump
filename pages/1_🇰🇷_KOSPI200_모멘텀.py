@@ -17,6 +17,7 @@ from utils.data_loader import load_archive_data, get_folder_hash, load_daily_dat
 from utils.kr_inverse import KOSPI_INVERSE_CODE, KOSPI_INVERSE_NAME
 
 from utils.momentum_daily import kospi_holding_weights, render_holding_performance
+from utils.three_strategy_live import KOSPI_COST_PCT, KOSPI_CUT, KOSPI_RANK_P, KOSPI_RANK_S, KOSPI_TIMING_MONTHS
 
 inject_custom_css()
 
@@ -34,7 +35,7 @@ st.markdown('''<style>
 [data-testid="stPageLink-NavLink"] p { font-size:2.2rem !important; font-weight:800 !important; line-height:1.2 !important; margin:0 !important; word-break:keep-all; }
 [data-testid="stPageLink-NavLink"]:hover p { color:#93C5FD !important; }
 </style>''', unsafe_allow_html=True)
-st.page_link("app.py", label="🎯 KOSPI 200 모멘텀 터미널")
+st.page_link("pages/00_종합_대시보드.py", label="🎯 KOSPI 200 모멘텀 터미널")
 
 archive_path = "archive_kospi"
 f_hash = get_folder_hash(archive_path) 
@@ -317,16 +318,16 @@ with tab3:
 
     c1, c_ma, c_gma, c_cost = st.columns([1, 1, 1, 1])
     with c1: start_year, end_year = st.slider("📅 테스트 기간", min_y, max_y, (min_y, max_y), key='t3_yr')
-    with c_ma: ma_months_t3 = st.slider("📉 마켓타이밍 (개월선)", 1, 12, 6, key='t3_ma')
+    with c_ma: ma_months_t3 = st.slider("📉 마켓타이밍 (개월선)", 1, 12, KOSPI_TIMING_MONTHS, key='t3_ma')
     with c_gma: gold_ma_months_t3 = st.slider("🥇 금 이동평균 (개월선)", 1, 12, KOREA_GOLD_DEFENSE_MA_MONTHS, key='t3_gold_ma_n', disabled=not (use_gold_t3 and use_gold_ma_t3))
-    with c_cost: trading_cost_pct_t3 = st.slider("💰 거래비용(편도%)", 0.0, 0.5, 0.25, 0.05, key='t3_cost')
+    with c_cost: trading_cost_pct_t3 = st.slider("💰 거래비용(편도%)", 0.0, 0.5, KOSPI_COST_PCT, 0.05, key='t3_cost')
 
     st.markdown("<hr style='margin: 10px 0px;'>", unsafe_allow_html=True)
     c2, c3, c4, c5 = st.columns([1, 1, 1, 1])
-    with c2: perf_pct_t3 = st.slider("🔥 퍼펙트 상위 %", 5, 50, 30, step=5)
-    with c3: rank_p_s, rank_p_e = st.slider("🔥 퍼펙트 매수 순위", 1, 30, (1, 6))
-    with c4: spec_12m_pct_t3 = st.slider("🐎 달리는말 상위 %", 5, 50, 30, step=5)
-    with c5: rank_s_s, rank_s_e = st.slider("🐎 달리는말 매수 순위", 1, 30, (1, 2))
+    with c2: perf_pct_t3 = st.slider("🔥 퍼펙트 상위 %", 5, 50, KOSPI_CUT, step=5)
+    with c3: rank_p_s, rank_p_e = st.slider("🔥 퍼펙트 매수 순위", 1, 30, KOSPI_RANK_P)
+    with c4: spec_12m_pct_t3 = st.slider("🐎 달리는말 상위 %", 5, 50, KOSPI_CUT, step=5)
+    with c5: rank_s_s, rank_s_e = st.slider("🐎 달리는말 매수 순위", 1, 30, KOSPI_RANK_S)
 
     # 🥇 금(KRX 환노출) 월별 수익률 로드 — 방어 구간(무조건 금 보유)용
     gold_returns_t3 = get_gold_returns() if use_gold_t3 else {}

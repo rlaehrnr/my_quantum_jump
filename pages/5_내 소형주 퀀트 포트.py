@@ -12,7 +12,7 @@ import os
 # --- [1. 설정 및 경로] ---
 st.set_page_config(page_title="내 퀀트 포트폴리오", layout="wide")
 
-SHEET_URL = "https://docs.google.com/spreadsheets/d/1XTroUdH7iKN40dQSrSjz3nsZ1l1k2mr5skXSzlEfl7Y/edit"
+from utils.three_strategy_store import PORTFOLIO_SHEET_URL as SHEET_URL
 FACE_VALUE_PATH = 'data/krx_stock_info.csv' 
 
 st.markdown("""
@@ -327,7 +327,7 @@ st.markdown('''<style>
 [data-testid="stPageLink-NavLink"] p { font-size:2.2rem !important; font-weight:800 !important; line-height:1.2 !important; margin:0 !important; word-break:keep-all; }
 [data-testid="stPageLink-NavLink"]:hover p { color:#93C5FD !important; }
 </style>''', unsafe_allow_html=True)
-st.page_link("app.py", label="💼 내 퀀트 포트폴리오 종합 대시보드")
+st.page_link("pages/00_종합_대시보드.py", label="💼 내 퀀트 포트폴리오 종합 대시보드")
 tabs = st.tabs(["📊 종합 요약", "🌱 또", "🌿 쏘", "🍀 맘", "⚖️ 리밸런싱 계산기"])
 
 with tabs[0]:

@@ -30,7 +30,7 @@ st.markdown('''<style>
 .now-lab   { font-size:0.78rem; color:#9CA3AF; }
 .now-val   { font-size:1.15rem; font-weight:800; }
 </style>''', unsafe_allow_html=True)
-st.page_link("app.py", label="📅 계절성 · 사이클 분석")
+st.page_link("pages/00_종합_대시보드.py", label="📅 계절성 · 사이클 분석")
 
 MONTHS = [f"{m}월" for m in range(1, 13)]
 COLS = MONTHS + ["합계"]

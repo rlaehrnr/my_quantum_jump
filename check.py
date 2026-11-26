@@ -85,22 +85,20 @@ def fingerprints():
 def run_pages():
     """app.py + 켜져 있는 페이지를 AppTest로 실제 실행. (예외건수, 상세) 반환.
 
-    AppTest로 페이지 파일을 직접 돌리면 st.page_link가 페이지 레지스트리를
-    못 찾아 KeyError를 낸다 — 하네스 한계라 무력화하고 본문을 실행한다.
+    실제 앱 진입점에서 페이지를 전환해 메뉴와 링크 등록까지 검증한다.
     """
     warnings.filterwarnings('ignore')
     from streamlit.testing.v1 import AppTest
-    shim = ('import streamlit as st\n'
-            'st.page_link = lambda *a, **k: None\n'
-            'exec(compile(open(r"{p}", encoding="utf-8").read(), r"{p}", "exec"), '
-            '{{"__name__": "__main__"}})\n')
     pages_dir = os.path.join(REPO, 'pages')
     targets = ['app.py'] + sorted(
         'pages/' + f for f in os.listdir(pages_dir) if f.endswith('.py'))
     rows, bad = [], 0
     for t in targets:
         try:
-            at = AppTest.from_string(shim.format(p=t), default_timeout=300).run()
+            at = AppTest.from_file(os.path.join(REPO, 'app.py'), default_timeout=300)
+            if t != 'app.py':
+                at.switch_page(t)
+            at.run()
             errs = [str(e.value) for e in at.exception]
         except Exception as e:
             errs = [type(e).__name__ + ': ' + str(e)]

@@ -43,7 +43,7 @@ st.markdown('''<style>
 [data-testid="stPageLink-NavLink"] p { font-size:2.2rem !important; font-weight:800 !important; line-height:1.2 !important; margin:0 !important; word-break:keep-all; }
 [data-testid="stPageLink-NavLink"]:hover p { color:#93C5FD !important; }
 </style>''', unsafe_allow_html=True)
-st.page_link("app.py", label="🇺🇸 USA 500 통합 모멘텀 (Top 500)")
+st.page_link("pages/00_종합_대시보드.py", label="🇺🇸 USA 500 통합 모멘텀 (Top 500)")
 
 archive_path = "archive_usa"
 f_hash = get_folder_hash(archive_path)
