@@ -102,7 +102,9 @@ st.markdown('''<style>
 [data-testid="stPageLink-NavLink"] p { font-size:2.2rem !important; font-weight:800 !important; line-height:1.2 !important; margin:0 !important; word-break:keep-all; }
 [data-testid="stPageLink-NavLink"]:hover p { color:#93C5FD !important; }
 </style>''', unsafe_allow_html=True)
-st.page_link("pages/00_종합_대시보드.py", label="❄️ 스노우볼 포트")
+from utils.three_strategy_preferences import PAGE, STRATEGY_TAB_PARAM
+
+st.page_link(PAGE, label="❄️ 스노우볼 포트", query_params={STRATEGY_TAB_PARAM: "snowball"})
 
 
 # ==========================================

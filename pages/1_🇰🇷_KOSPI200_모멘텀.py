@@ -13,11 +13,14 @@ from utils.calculator import (
     get_kospi_ma_all, get_strategy_stocks_korea, run_backtest_k200,
 )
 from utils.ui_components import inject_custom_css, apply_korea_styling, style_kospi_ma, get_styled_stats, get_mdd_history, get_monthly_heatmap, ma_cfg, main_cfg, generate_excel_report_cached, render_vix_widget, style_ma_with_gold, ma_cfg_gold
-from utils.data_loader import load_archive_data, get_folder_hash, load_daily_data
+from utils.data_loader import load_daily_data
 from utils.kr_inverse import KOSPI_INVERSE_CODE, KOSPI_INVERSE_NAME
 
 from utils.momentum_daily import kospi_holding_weights, render_holding_performance
-from utils.three_strategy_live import KOSPI_COST_PCT, KOSPI_CUT, KOSPI_RANK_P, KOSPI_RANK_S, KOSPI_TIMING_MONTHS
+from utils.three_strategy_live import (
+    KOSPI_COST_PCT, KOSPI_CUT, KOSPI_RANK_P, KOSPI_RANK_S, KOSPI_TIMING_MONTHS, kospi_records,
+)
+from utils.three_strategy_preferences import PAGE, STRATEGY_TAB_PARAM
 
 inject_custom_css()
 
@@ -35,27 +38,13 @@ st.markdown('''<style>
 [data-testid="stPageLink-NavLink"] p { font-size:2.2rem !important; font-weight:800 !important; line-height:1.2 !important; margin:0 !important; word-break:keep-all; }
 [data-testid="stPageLink-NavLink"]:hover p { color:#93C5FD !important; }
 </style>''', unsafe_allow_html=True)
-st.page_link("pages/00_종합_대시보드.py", label="🎯 KOSPI 200 모멘텀 터미널")
+st.page_link(PAGE, label="🎯 KOSPI 200 모멘텀 터미널", query_params={STRATEGY_TAB_PARAM: "kospi"})
 
-archive_path = "archive_kospi"
-f_hash = get_folder_hash(archive_path) 
-df_master = load_archive_data(archive_path, f_hash) 
-f_daily = 'data/momentum_data_daily.csv'
+df_master = kospi_records()
 
 if df_master.empty:
     st.error("🚨 archive_kospi 폴더에 데이터가 없습니다!")
     st.stop()
-
-df_master['종목코드'] = df_master['종목코드'].astype(str).str.zfill(6)
-df_master = df_master[df_master['종목코드'].str.endswith('0')].copy()
-
-target_cols = ['시가총액', '종가', '거래량', '1개월(%)', '3개월(%)', '6개월(%)', '12개월(%)', '다음달수익률(%)', '이번달수익률']
-for col in target_cols:
-    if col in df_master.columns:
-        df_master[col] = pd.to_numeric(df_master[col], errors='coerce').fillna(0)
-
-if '시가총액' in df_master.columns and df_master['시가총액'].max() > 1000000000:
-    df_master['시가총액'] = df_master['시가총액'] / 100000000
 
 years_list = sorted(df_master['투자연도'].unique().astype(int))
 min_y, max_y = min(years_list), max(years_list)

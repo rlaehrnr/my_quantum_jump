@@ -12,7 +12,8 @@ import os
 # --- [1. 설정 및 경로] ---
 st.set_page_config(page_title="내 퀀트 포트폴리오", layout="wide")
 
-from utils.three_strategy_store import PORTFOLIO_SHEET_URL as SHEET_URL
+from utils.three_strategy_preferences import PAGE, STRATEGY_TAB_PARAM
+from utils.three_strategy_store import POSITION_COLUMNS, PORTFOLIO_SHEET_URL as SHEET_URL, read_positions, smallcap_positions
 FACE_VALUE_PATH = 'data/krx_stock_info.csv' 
 
 st.markdown("""
@@ -114,25 +115,12 @@ def load_stock_info_from_gsheet():
     return info_map
 
 def load_portfolio_from_gsheet(ws_name):
-    df_empty = pd.DataFrame(columns=["종목명", "종목코드", "매수단가", "수량"])
     try:
         client = get_gspread_client()
         sheet = client.open_by_url(SHEET_URL)
-        ws = sheet.worksheet(ws_name)
-        data = ws.get_all_values()
-        if len(data) > 1:
-            df = pd.DataFrame(data[1:], columns=data[0])
-            df.columns = df.columns.str.strip()
-            df['종목코드'] = df['종목코드'].apply(normalize_code)
-            df = df[df['종목코드'] != ""]
-            for req_col in ["종목명", "종목코드", "매수단가", "수량"]:
-                if req_col not in df.columns: df[req_col] = "" if "종목" in req_col else 0
-            df = df[["종목명", "종목코드", "매수단가", "수량"]].copy()
-            for c in ['매수단가', '수량']:
-                df[c] = pd.to_numeric(df[c].astype(str).str.replace(r'[^0-9.-]', '', regex=True), errors='coerce').fillna(0).astype(int)
-            return df
-    except: pass
-    return df_empty
+        return read_positions(sheet, ws_name)
+    except Exception:
+        return pd.DataFrame(columns=POSITION_COLUMNS)
 
 def save_portfolio_to_gsheet(ws_name, df):
     try:
@@ -142,6 +130,7 @@ def save_portfolio_to_gsheet(ws_name, df):
         ws.clear()
         save_df = df[["종목명", "종목코드", "매수단가", "수량"]].copy()
         ws.update(values=[save_df.columns.values.tolist()] + save_df.fillna("").values.tolist(), range_name='A1')
+        smallcap_positions.clear()
     except Exception as e: st.error(f"저장 오류: {e}")
 
 # --- [3. 실시간 데이터 수집 엔진] ---
@@ -327,7 +316,7 @@ st.markdown('''<style>
 [data-testid="stPageLink-NavLink"] p { font-size:2.2rem !important; font-weight:800 !important; line-height:1.2 !important; margin:0 !important; word-break:keep-all; }
 [data-testid="stPageLink-NavLink"]:hover p { color:#93C5FD !important; }
 </style>''', unsafe_allow_html=True)
-st.page_link("pages/00_종합_대시보드.py", label="💼 내 퀀트 포트폴리오 종합 대시보드")
+st.page_link(PAGE, label="💼 내 퀀트 포트폴리오", query_params={STRATEGY_TAB_PARAM: "small"})
 tabs = st.tabs(["📊 종합 요약", "🌱 또", "🌿 쏘", "🍀 맘", "⚖️ 리밸런싱 계산기"])
 
 with tabs[0]:

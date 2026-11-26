@@ -86,7 +86,7 @@ def usa500_holding_weights(original, residual, original_ranks, residual_ranks):
     return weights
 
 
-def holding_performance(market, tickers, month, *, weights=None):
+def holding_performance(market, tickers, month, *, weights=None, quantities=None):
     """월초에 정한 비중으로 계속 보유한 가격 성과. 현금은 거래일마다 0%."""
     tickers = tuple(dict.fromkeys(tickers))
     if not tickers:
@@ -109,6 +109,14 @@ def holding_performance(market, tickers, month, *, weights=None):
     daily = load_holding_closes(market, tuple(sorted(set(tickers) - {"CASH"})), start, end)
     if "CASH" in tickers:
         daily = daily.assign(CASH=1.0)
+    if quantities is not None:
+        previous = daily.loc[daily.index.to_period("M") == month - 1]
+        if previous.empty:
+            return pd.DataFrame()
+        values = previous.iloc[-1].reindex(tickers).mul(pd.Series(quantities))
+        if values.isna().any() or not values.gt(0).all():
+            return pd.DataFrame()
+        weights = (values / values.sum()).to_dict()
     if weights is None:
         weights = dict.fromkeys(tickers, 1 / len(tickers))
     return month_performance(daily, weights, month)

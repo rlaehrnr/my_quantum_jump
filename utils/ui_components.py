@@ -5,7 +5,7 @@ import os
 import io
 
 
-def render_daily_performance(performance, key, labels):
+def render_daily_performance(performance, key, labels, *, date_label="거래일"):
     cumulative = performance["포트 누적"]
     fig = go.Figure()
     fig.add_scatter(
@@ -20,7 +20,7 @@ def render_daily_performance(performance, key, labels):
     st.plotly_chart(fig, width="stretch", key=f"month_monitor_{key}")
     table = performance.rename(columns=labels).sort_index()
     table.index = table.index.strftime("%m-%d")
-    table.index.name = "거래일"
+    table.index.name = date_label
     st.dataframe(table, width="stretch", height=210, column_config={
         label: st.column_config.NumberColumn(format="percent") for label in table.columns
     })
