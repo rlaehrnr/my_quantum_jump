@@ -7,48 +7,21 @@ from pandas.io.formats.style import Styler
 
 from utils.snowball_allocation import portfolio_stats
 from utils.three_strategy import (
-    LEG_LABELS, LEGS, SNOW, VERIFIED_HISTORY_END, backtest_window, combine, current_month, ratio_table,
-    schedule_table, seasonal_tables,
+    Allocation, DEFAULT_ALLOCATION, LEG_LABELS, LEGS, SNOW, VERIFIED_HISTORY_END, backtest_window,
+    combine, current_month, ratio_part, ratio_table, schedule_table, seasonal_tables,
 )
 from utils.three_strategy_live import KOSPI_ENSEMBLE_COLUMN, extend_history, kospi_results, snowball_current
-from utils.three_strategy_store import (
-    AMOUNT_TAB, HISTORY_TAB, PORTFOLIO_SHEET_URL, check_access, load_history, portfolio_sheet,
-    read_amounts, save_amounts,
-)
+from utils.three_strategy_preferences import PAGE, current_allocation, save_preferences, share_url
+from utils.three_strategy_store import HISTORY_TAB, load_history
 
 
-AUTH = "three_strategy_unlocked"
-PAGE = "pages/0_3전략_조합.py"
+OUTER_LABELS = ("코스피200", "스노우볼", "소형주 퀀트")
+INNER_LABELS = tuple(LEG_LABELS[key] for key in SNOW)
 PCT = st.column_config.NumberColumn(format="percent")
 
 
 def percent(value):
     return f"{value:+.2%}" if value is not None and pd.notna(value) and math.isfinite(value) else "—"
-
-
-def _access():
-    if st.session_state.get(AUTH):
-        return True
-    st.caption("투자금액과 백테스트는 기존 구글 시트의 투자배분 탭에서 연동 암호를 확인해 열 수 있습니다.")
-    st.link_button("구글 시트 열기", PORTFOLIO_SHEET_URL)
-    with st.form("three_strategy_unlock", clear_on_submit=True):
-        code = st.text_input("투자배분 탭 B1 연동 암호", type="password")
-        enter = st.form_submit_button("열기")
-    if enter:
-        try:
-            allowed = check_access(code)
-        except Exception:
-            st.warning("구글 시트 연결을 확인할 수 없습니다. 잠시 후 다시 시도해주세요.")
-        else:
-            if allowed:
-                st.session_state[AUTH] = True
-                st.rerun()
-            st.error("연동 암호를 확인해주세요.")
-    return False
-
-
-def _read(month):
-    return read_amounts(portfolio_sheet().worksheet(AMOUNT_TAB), month)
 
 
 def _history():
@@ -154,29 +127,33 @@ def _custom_plan(amounts):
     pair_total = amounts["kospi"] + amounts["meritz"]
     if not pair_total:
         return None
-    with st.expander("또 메리츠 금액을 바꿔 비교"):
+    with st.expander("코스피200과 또 메리츠 사이 비중 이동 비교"):
         enabled = st.checkbox("비교 배분 추가", key="three_compare_enabled")
-        st.caption("코스피200과 또 메리츠 합계, 나머지 네 금액은 유지합니다. 비교값은 구글 시트에 저장되지 않습니다.")
+        st.caption("전체 기준에서 코스피200과 또 메리츠의 합계, 나머지 네 구성의 비중을 유지합니다.")
         if enabled:
-            meritz = st.number_input("비교할 또 메리츠 금액 (원)", min_value=0.0, max_value=float(pair_total),
-                                     value=float(amounts["meritz"]), step=10000.0, key="three_compare_meritz")
+            meritz = st.number_input("비교할 또 메리츠 비율", min_value=0.0, max_value=float(pair_total),
+                                     value=float(amounts["meritz"]), step=1.0, key="three_compare_meritz")
             return amounts | {"kospi": pair_total-meritz, "meritz": meritz}
     return None
+
+
+def _allocation_summary(allocation):
+    total = sum(allocation.outer)
+    st.markdown(" · ".join(f"**{label} {ratio_part(part)}** ({part/total:.2%})"
+                           for label, part in zip(OUTER_LABELS, allocation.outer)))
+    st.caption("스노우볼 내부 · " + " / ".join(f"{label} {ratio_part(part)}"
+                                              for label, part in zip(INNER_LABELS, allocation.inner)))
 
 
 @st.fragment(run_every="60s")
 def dashboard_allocation():
     month = current_month()
-    st.subheader(f"{month} 종합 결과")
-    st.page_link(PAGE, label="3전략 조합 · 투자금 설정")
-    if not st.session_state.get(AUTH):
-        st.caption("3전략 조합에서 연동을 열면 여기에도 이번 달 배분과 성과가 표시됩니다.")
-        return
+    st.subheader("3전략 조합")
+    allocation = current_allocation()
+    amounts = allocation.weights()
+    _allocation_summary(allocation)
+    st.page_link(PAGE, label="비율 수정 및 상세 분석")
     try:
-        amounts = _read(month)
-        if not amounts:
-            st.info("이달 투자금액을 입력하면 종합 성과가 표시됩니다.")
-            return
         history, last = _history()
     except ValueError as exc:
         st.warning(str(exc))
@@ -184,23 +161,17 @@ def dashboard_allocation():
     except Exception:
         st.warning("종합 배분 자료를 불러오지 못했습니다.")
         return
-    _current_section(month, amounts, history)
-    st.caption("배분 · " + " / ".join(f"{name} {val/sum(amounts.values()):.1%}" for name, val in [
-        ("코스피200", amounts["kospi"]), ("스노우볼", sum(amounts[key] for key in SNOW)),
-        ("소형주", amounts["small"]),
-    ]))
     windows = _windows(history, last)
-    chosen = list(windows)[-1] if not list(windows.values())[-1].empty else list(windows)[0]
-    _headline(_results({chosen: windows[chosen]}, amounts))
+    chosen = next((name for name, rows in windows.items() if not rows.empty), None)
+    if chosen is not None:
+        _headline(_results({chosen: windows[chosen]}, amounts))
+    st.caption(f"{month} 월중 수익률")
+    _current_section(month, amounts, history)
 
 
 @st.fragment(run_every="60s")
-def _report(month):
+def _report(month, amounts):
     try:
-        amounts = _read(month)
-        if not amounts:
-            st.info("이달의 여섯 금액을 저장하면 분석을 시작합니다.")
-            return
         history, last = _history()
     except ValueError as exc:
         st.warning(str(exc))
@@ -208,23 +179,18 @@ def _report(month):
     except Exception:
         st.warning("구글 시트에서 분석 자료를 읽지 못했습니다.")
         return
-    st.subheader("저장된 배분")
-    weights = pd.DataFrame(
-        {"전략": list(LEG_LABELS.values()), "금액(원)": list(amounts.values()),
-         "비중": [v/sum(amounts.values()) for v in amounts.values()]})
-    _display(weights, ["비중"], hide_index=True)
-    plan = _custom_plan(amounts)
-    live, overview, season, schedule, optimizer = st.tabs(
-        ["이번 달", "백테스트", "계절성", "리밸런싱", "비중 비교"])
     windows = _windows(history, last)
     results = _results(windows, amounts)
+    _headline(results)
+    plan = _custom_plan(amounts)
+    overview, live, season, schedule, optimizer = st.tabs(
+        ["백테스트", "이번 달", "계절성", "리밸런싱", "비중 비교"])
     alternatives = _results(windows, plan) if plan else {}
     with live:
         _current_section(month, amounts, history, show_components=True)
         st.caption(f"소형주의 월 수익률은 구글 시트 {HISTORY_TAB} 탭의 소형주 열에서 읽습니다.")
     with overview:
         st.caption("매월 목표 비중을 복원한 기준 성과입니다. 전략 간 이동 비용은 리밸런싱 탭에서 적용할 수 있습니다.")
-        _headline(results)
         if not results:
             st.info("확정 월수익 자료가 필요합니다.")
         else:
@@ -302,7 +268,7 @@ def _report(month):
             pair_only = mode.startswith("코스피")
             candidate_base = amounts
             if pair_only:
-                st.caption("두 전략의 가변 금액을 1% 간격으로 나눕니다.")
+                st.caption("두 전략의 비중 합계를 1% 간격으로 나눕니다.")
             else:
                 internal = st.selectbox("스노우볼 내부 구성", ("저장한 비중", "4전략 균등", "또 메리츠 단독"))
                 if internal != "저장한 비중":
@@ -315,47 +281,28 @@ def _report(month):
 
 def render_combination():
     st.title("3전략 조합")
-    st.caption("코스피200 · 스노우볼 · 소형주 퀀트")
-    if not _access():
-        return
-    if st.button("잠그기", key="three_lock"):
-        st.session_state.pop(AUTH, None)
-        for key in list(st.session_state):
-            if key.startswith("three_amount_"):
-                del st.session_state[key]
-        st.rerun()
-    month = current_month()
-    st.subheader(f"{month} 투자금액")
-    st.link_button("투자배분 시트 열기", PORTFOLIO_SHEET_URL)
-    revision = st.session_state.get("three_form_revision", 0)
-    if st.button("시트에서 다시 읽기", key="three_refresh"):
-        st.session_state["three_form_revision"] = revision+1
-        load_history.clear()
-        st.rerun()
-    try:
-        tab = portfolio_sheet().worksheet(AMOUNT_TAB)
-        defaults = read_amounts(tab, month) or {}
-    except ValueError as exc:
-        st.warning(str(exc))
-        defaults = {}
-    except Exception:
-        st.warning("투자배분 탭을 읽지 못했습니다. 시트 연결을 확인해주세요.")
-        return
-    st.caption("원 단위 · 미투자는 0 · 시트에서 직접 수정한 금액도 1분 이내에 결과에 반영됩니다.")
-    with st.form(f"three_form_{month}_{revision}"):
-        amounts = {}
-        for col, key in zip([*st.columns(3), *st.columns(3)], LEGS):
-            amounts[key] = col.text_input(f"{LEG_LABELS[key]} (원)",
-                value=f"{defaults[key]:,.0f}" if key in defaults else "",
-                key=f"three_amount_{key}_{month}_{revision}")
-        save = st.form_submit_button("구글 시트에 저장", type="primary")
-    if save:
-        try:
-            save_amounts(tab, month, amounts)
-        except ValueError as exc:
-            st.error(str(exc))
-        except Exception:
-            st.error("시트에 저장하지 못했습니다. 입력값은 이 화면에 남아 있습니다.")
-        else:
-            st.success("이번 달 금액을 저장했습니다.")
-    _report(month)
+    allocation = current_allocation()
+    _allocation_summary(allocation)
+    with st.expander("비율 수정"):
+        with st.form(f"three_ratio_form_{allocation.encode()}"):
+            st.caption("전체 배분 비율")
+            outer = tuple(col.number_input(label, min_value=0.0, value=float(part), step=1.0)
+                          for col, label, part in zip(st.columns(3), OUTER_LABELS, allocation.outer))
+            st.caption("스노우볼 내부 배분 비율")
+            inner = tuple(col.number_input(label, min_value=0.0, value=float(part), step=1.0)
+                          for col, label, part in zip(st.columns(4), INNER_LABELS, allocation.inner))
+            save = st.form_submit_button("비율 저장", type="primary")
+            reset = st.form_submit_button("기본 비율 복원")
+        if save or reset:
+            try:
+                edited = DEFAULT_ALLOCATION if reset else Allocation(outer, inner)
+            except ValueError as exc:
+                st.error(str(exc))
+            else:
+                save_preferences(edited)
+                st.rerun()
+        url = share_url(allocation)
+        if url:
+            st.caption("이 브라우저에 비율을 저장합니다. 다른 기기에서는 이 링크를 열면 같은 비율을 적용합니다.")
+            st.code(url, language=None)
+    _report(current_month(), allocation.weights())

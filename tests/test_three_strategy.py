@@ -3,9 +3,8 @@ import pandas as pd
 import unittest
 
 from utils.three_strategy import (
-    LEGS, backtest_window, combine, parse_history, schedule_returns,
+    DEFAULT_ALLOCATION, LEGS, SNOW, Allocation, backtest_window, combine, parse_history, schedule_returns,
 )
-from utils.three_strategy_store import allocation_row, read_amounts, save_amounts
 
 
 def history():
@@ -62,34 +61,30 @@ def test_history_uses_native_fraction_and_keeps_blanks():
         parse_history(rows + [rows[0]])
 
 
-class FakeSheet:
-    def __init__(self, row=None):
-        self.row = row
-
-    def get(self, _address, **_kwargs):
-        return [self.row] if self.row else []
-
-    def update(self, *, range_name, values, **_kwargs):
-        self.address = range_name
-        self.row = values[0]
+def test_default_allocation_round_trips_without_turning_ratio_parts_into_currency():
+    assert DEFAULT_ALLOCATION.outer == (232, 195, 100)
+    assert DEFAULT_ALLOCATION.inner == (130, 30, 20, 15)
+    assert Allocation.decode(DEFAULT_ALLOCATION.encode()) == DEFAULT_ALLOCATION
+    assert tuple(DEFAULT_ALLOCATION.weights().values()) == (232, 130, 30, 20, 15, 100)
 
 
-def test_month_setting_write_only_updates_that_month_and_refuses_misalignment():
-    s = FakeSheet()
-    amounts = dict(zip(LEGS, [20, 3, 4, 5, 6, 1.5]))
-    save_amounts(s, "2026-12", amounts)
-    row = allocation_row("2026-12")
-    assert s.address == f"A{row}:G{row}"
-    assert read_amounts(s, "2026-12") == amounts
-    s.row[0] = "2026-11"
-    with raises("투자월"):
-        save_amounts(s, "2026-12", amounts)
+def test_editing_snowball_inner_ratio_preserves_snowball_outer_weight():
+    allocation = Allocation((232, 195, 100), (100, 30, 20, 15))
+    weights = allocation.weights()
+    close(sum(weights[key] for key in SNOW), 195)
+    close(weights["meritz"], 195 * 100 / 165)
+    assert weights["kospi"] == 232 and weights["small"] == 100
+    np.testing.assert_allclose(
+        combine(history(), weights),
+        combine(history(), Allocation((464, 390, 200), (200, 60, 40, 30)).weights()),
+    )
 
 
-def test_blank_or_partial_amount_row_is_not_silently_used():
-    with raises("여섯"):
-        read_amounts(FakeSheet(["2026-11", 1, 0]), "2026-11")
-    assert read_amounts(FakeSheet(["2026-11"]), "2026-11") is None
+def test_invalid_saved_ratio_is_rejected_and_zero_snowball_is_allowed():
+    for text in ("garbage", "1,2,3,4,5,6", "1,2,3,-1,2,3,4", "1,2,3,0,0,0,0", "nan,0,3,4,5,6,7"):
+        with raises("비율"):
+            Allocation.decode(text)
+    assert Allocation((2, 0, 1), (0, 0, 0, 0)).weights()["meritz"] == 0
 
 
 def load_tests(loader, tests, pattern):

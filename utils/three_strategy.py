@@ -1,5 +1,6 @@
 """코스피200·스노우볼·소형주의 월별 배분 계산."""
 from datetime import datetime, timedelta, timezone
+from dataclasses import dataclass
 from itertools import combinations_with_replacement
 import math
 import re
@@ -26,6 +27,47 @@ SCHEDULES = tuple(
 )
 
 
+def ratio_part(value):
+    value = float(value)
+    return str(int(value)) if value.is_integer() else str(value)
+
+
+@dataclass(frozen=True)
+class Allocation:
+    outer: tuple[float, float, float]
+    inner: tuple[float, float, float, float]
+
+    def __post_init__(self):
+        if len(self.outer) != 3 or len(self.inner) != 4:
+            raise ValueError("전체 3개와 스노우볼 내부 4개의 비율을 입력하세요.")
+        if not all(math.isfinite(v) and 0 <= v <= 2**53 - 1 for v in self.outer + self.inner):
+            raise ValueError("비율에는 0 이상의 숫자를 입력하세요.")
+        if sum(self.outer) == 0 or (self.outer[1] > 0 and sum(self.inner) == 0):
+            raise ValueError("전체 비율과 운용 중인 스노우볼의 내부 비율은 합계가 0보다 커야 합니다.")
+
+    def weights(self):
+        kospi, snowball, small = self.outer
+        inner_total = sum(self.inner)
+        sleeves = [snowball * part / inner_total for part in self.inner] if inner_total else [0] * 4
+        return dict(zip(LEGS, [kospi, *sleeves, small]))
+
+    def encode(self):
+        return ",".join(map(ratio_part, self.outer + self.inner))
+
+    @classmethod
+    def decode(cls, token):
+        if not isinstance(token, str) or len(token) > 256:
+            raise ValueError("저장된 비율을 읽을 수 없습니다.")
+        try:
+            values = tuple(map(float, token.split(",")))
+        except ValueError as error:
+            raise ValueError("저장된 비율을 읽을 수 없습니다.") from error
+        return cls(values[:3], values[3:])
+
+
+DEFAULT_ALLOCATION = Allocation((232, 195, 100), (130, 30, 20, 15))
+
+
 def current_month():
     return str(pd.Period(datetime.now(KST).date(), freq="M"))
 
@@ -37,9 +79,9 @@ def month_key(value):
     return value
 
 
-def validate_amounts(amounts):
+def validate_weights(amounts):
     if set(amounts) != set(LEGS):
-        raise ValueError("여섯 전략의 금액을 모두 입력하세요. 미투자는 0을 입력하세요.")
+        raise ValueError("여섯 구성의 비중을 모두 지정하세요.")
     result = {}
     for key in LEGS:
         try:
@@ -47,10 +89,10 @@ def validate_amounts(amounts):
         except ValueError:
             value = math.nan
         if not math.isfinite(value) or not 0 <= value <= 2**53 - 1:
-            raise ValueError(f"{LEG_LABELS[key]} 금액은 0 이상의 유효한 숫자여야 합니다.")
+            raise ValueError(f"{LEG_LABELS[key]} 비중은 0 이상의 유효한 숫자여야 합니다.")
         result[key] = value
     if not sum(result.values()):
-        raise ValueError("투자금 합계는 0보다 커야 합니다.")
+        raise ValueError("비중 합계는 0보다 커야 합니다.")
     return result
 
 
@@ -102,12 +144,12 @@ def backtest_window(history, selected, last_closed, *, common, verified_end=None
 
 
 def combine(frame, amounts):
-    weights = pd.Series(validate_amounts(amounts))
+    weights = pd.Series(validate_weights(amounts))
     return frame[list(LEGS)].fillna(0) @ (weights / weights.sum())
 
 
 def schedule_returns(frame, amounts, months, *, fee, pair_only):
-    target = np.array(list(validate_amounts(amounts).values()))
+    target = np.array(list(validate_weights(amounts).values()))
     target /= target.sum()
     units = target.copy()
     first_count = 2 if pair_only else len(LEGS)
@@ -140,7 +182,7 @@ def schedule_table(frame, amounts, *, fee, pair_only):
 
 
 def ratio_table(frame, amounts, *, pair_only):
-    amounts = validate_amounts(amounts)
+    amounts = validate_weights(amounts)
     plans = []
     if pair_only:
         total = amounts["kospi"]+amounts["meritz"]

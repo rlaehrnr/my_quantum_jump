@@ -33,9 +33,6 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
-st.title("종합 대시보드")
-dashboard_allocation()
-
 PAGE_KOSPI = "pages/1_🇰🇷_KOSPI200_모멘텀.py"
 PAGE_SMALL = "pages/5_내 소형주 퀀트 포트.py"
 PAGE_SNOW = "pages/6 ❄️ 스노우볼 포트.py"
@@ -299,6 +296,8 @@ def _safe(fn, title):
 
 
 _safe(render_kospi, "🇰🇷 KOSPI200 모멘텀")
+with st.container(border=True):
+    dashboard_allocation()
 snow, small = st.columns(2, gap="medium")
 with snow:
     _safe(render_snowball, "❄️ 스노우볼 포트")
