@@ -52,14 +52,15 @@ def _allocation_form(allocation):
             st.markdown(f"[현재 비율 공유 링크]({url})")
 
 
-def _read_current(key, month, allocation):
+def _read_current(key, month, allocation, *, cash_if_empty=False):
     try:
         if key == "snowball":
             curves, holdings = live.snowball_current(month)
             performance = live.combine_daily(curves, dict(zip(SNOW, allocation.inner)))
             return live.CurrentHoldings(holdings, performance)
-        loader = live.kospi_current if key == "kospi" else live.smallcap_current
-        return loader(month)
+        if key == "kospi":
+            return live.kospi_current(month)
+        return live.smallcap_current(month, cash_if_empty=cash_if_empty)
     except Exception:
         return live.CurrentHoldings(pd.DataFrame(), pd.DataFrame(), "보유 자료를 불러오지 못했습니다.")
 
@@ -108,19 +109,26 @@ def _combined_month(allocation):
     st.subheader(f"📈 {month.month}월 일별 수익률")
     st.caption("월초 투자비율로 합산 · 공통 종가일의 원화 기준 · 거래비용 제외")
     amounts = dict(zip(STRATEGY_PAGES, allocation.outer))
+    names = dict(zip(STRATEGY_PAGES, OUTER_LABELS))
     curves = {}
     for key, amount in amounts.items():
-        if amount > 0:
-            daily = _read_current(key, month, allocation).performance
-            if not daily.empty:
-                curves[key] = daily["포트 누적"]
-    labels = {f"{key} 누적": f"{title} 누적" for key, title in zip(STRATEGY_PAGES, OUTER_LABELS)}
-    unavailable = [STRATEGY_PAGES[key][0] for key, amount in amounts.items() if amount > 0 and key not in curves]
+        if amount <= 0:
+            continue
+        current = _read_current(key, month, allocation, cash_if_empty=True)
+        if key == "small":
+            if current.holdings.empty and not current.note:
+                names[key] = live.SMALLCAP_CASH_NAME
+                weight = amount / sum(allocation.outer)
+                st.caption(f"소형주 미등록 · 배정 비중 {weight:.1%}를 {names[key]}에 투자한 가정")
+            elif not current.performance.empty:
+                st.caption("소형주는 현재 등록 종목에 월초 동일 금액을 배분한 기준")
+        if not current.performance.empty:
+            curves[key] = current.performance["포트 누적"]
+    labels = {f"{key} 누적": f"{title} 누적" for key, title in names.items()}
+    unavailable = [names[key] for key, amount in amounts.items() if amount > 0 and key not in curves]
     note = ("수익률 대기 · " + ", ".join(unavailable) if unavailable else
             "비중이 있는 전략의 공통 종가일 자료가 준비되면 표시됩니다.")
     combined = live.combine_daily(curves, amounts)
-    if not combined.empty and amounts["small"] > 0:
-        st.caption("소형주는 현재 등록 종목에 월초 동일 금액을 배분한 기준")
     _daily_panel(combined, "three", labels, note, common_dates=True)
 
 

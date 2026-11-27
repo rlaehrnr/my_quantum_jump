@@ -42,7 +42,7 @@ def load_history():
 
 def read_positions(sheet, name):
     rows = sheet.worksheet(name).get_all_values()
-    if len(rows) < 2:
+    if not rows:
         return pd.DataFrame(columns=POSITION_COLUMNS)
     positions = pd.DataFrame(rows[1:], columns=rows[0])
     positions.columns = positions.columns.str.strip()

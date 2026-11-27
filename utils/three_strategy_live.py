@@ -22,6 +22,8 @@ KOSPI_CUT = 30
 KOSPI_TIMING_MONTHS = 6
 KOSPI_COST_PCT = .25
 KOSPI_ENSEMBLE_COLUMN = "앙상블 (50:50 전략)"
+SMALLCAP_CASH_TICKER = "488770"
+SMALLCAP_CASH_NAME = "KODEX 머니마켓액티브"
 KOSPI_DEFENSE = {"금": ("GOLD_KRW", "국내 금"), "현금": ("CASH", "현금"),
                  "인버스": (KOSPI_INVERSE_CODE, KOSPI_INVERSE_NAME)}
 SNOW_HOLDING_NAMES = {
@@ -179,12 +181,14 @@ def snowball_current(month):
     return curves, pd.DataFrame(holdings)
 
 
-def smallcap_current(month):
+def smallcap_current(month, *, cash_if_empty=False):
     positions, unread = smallcap_positions()
     holdings = positions[["계좌", "종목명", "종목코드"]]
     if unread:
         return CurrentHoldings(holdings, pd.DataFrame(), "보유 자료를 읽지 못한 계좌 · " + ", ".join(unread))
     tickers = tuple(holdings["종목코드"].unique())
+    if not tickers and cash_if_empty:
+        tickers = (SMALLCAP_CASH_TICKER,)
     performance = holding_performance("KR", tickers, month)
     return CurrentHoldings(holdings, performance[["포트 일간", "포트 누적"]] if not performance.empty else performance)
 

@@ -42,12 +42,53 @@ class ThreeStrategyHomeTests(unittest.TestCase):
         self.assertAlmostEqual(current.performance["포트 일간"].iloc[1], 1.045 / 1.05 - 1)
 
     def test_unread_smallcap_account_keeps_other_holdings_but_blocks_return(self):
-        positions = pd.DataFrame([{"계좌": "또", "종목명": "예시", "종목코드": "00104K", "수량": 2}])
-        with patch.object(live, "smallcap_positions", return_value=(positions, ["쏘"])):
-            current = live.smallcap_current(pd.Period("2026-11"))
+        rows = {
+            "ddo": [["종목명", "종목코드"], ["예시 우선주", "00104K"]],
+            "sso": [["헤더 없이 남은 종목", "000002"]],
+            "mom": [["종목명", "종목코드"]],
+        }
+        sheet = Mock()
+        sheet.worksheet.side_effect = lambda tab: Mock(get_all_values=lambda: rows[tab])
+        store.smallcap_positions.clear()
+        self.addCleanup(store.smallcap_positions.clear)
+        with (
+            patch.object(store, "portfolio_sheet", return_value=sheet),
+            patch.object(momentum_daily, "load_holding_closes") as quotes,
+        ):
+            current = live.smallcap_current(pd.Period("2026-11"), cash_if_empty=True)
         self.assertEqual(current.holdings["종목코드"].tolist(), ["00104K"])
         self.assertTrue(current.performance.empty)
         self.assertIn("쏘", current.note)
+        quotes.assert_not_called()
+
+    def test_combined_month_substitutes_etf_return_at_the_saved_smallcap_weight(self):
+        month = pd.Period("2025-11")
+        date = pd.Timestamp("2025-11-03")
+        holding = live.CurrentHoldings(
+            pd.DataFrame([{"종목코드": "000002"}]),
+            pd.DataFrame({"포트 누적": [.10]}, index=[date]),
+        )
+        snow = {"meritz": pd.Series([.02], index=[date])}
+        empty = pd.DataFrame(columns=["계좌", "종목명", "종목코드"])
+        closes = pd.DataFrame({"488770": [100_000, 100_400]}, index=[pd.Timestamp("2025-10-31"), date])
+        with (
+            patch.object(view, "current_month", return_value=str(month)),
+            patch.object(view, "load_history", side_effect=OSError),
+            patch.object(live, "kospi_current", return_value=holding),
+            patch.object(live, "snowball_current", return_value=(snow, holding.holdings)),
+            patch.object(live, "smallcap_positions", return_value=(empty, [])),
+            patch.object(momentum_daily, "load_holding_closes", return_value=closes) as quotes,
+        ):
+            app = AppTest.from_file("app.py", default_timeout=30)
+            app.query_params["ratio"] = "1,1,2,1,0,0,0"
+            app.run()
+            standalone = live.smallcap_current(month)
+        self.assertFalse(app.exception)
+        self.assertEqual(app.metric[0].value, "+3.20%")
+        self.assertIn("KODEX 머니마켓액티브 누적", app.dataframe[0].value.columns)
+        self.assertTrue(standalone.performance.empty)
+        quotes.assert_called_once()
+        self.assertEqual(quotes.call_args.args[1], ("488770",))
 
     def test_usd_curve_uses_daily_fx_and_ignores_a_missing_quote(self):
         dates = pd.to_datetime(["2026-10-30", "2026-11-02", "2026-11-03"])
